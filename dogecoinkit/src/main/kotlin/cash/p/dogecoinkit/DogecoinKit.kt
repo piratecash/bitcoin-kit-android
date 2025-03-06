@@ -2,6 +2,8 @@ package cash.p.dogecoinkit
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import cash.p.dogecoinkit.validators.LegacyDifficultyAdjustmentValidator
+import cash.p.dogecoinkit.validators.ProofOfWorkValidator
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
@@ -14,12 +16,8 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BitsValidator
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyTestNetDifficultyValidator
-import io.horizontalsystems.bitcoincore.core.purpose
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
-import io.horizontalsystems.bitcoincore.managers.Bip49RestoreKeyConverter
-import io.horizontalsystems.bitcoincore.managers.Bip84RestoreKeyConverter
-import io.horizontalsystems.bitcoincore.managers.Bip86RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.Checkpoint
@@ -34,8 +32,6 @@ import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
-import cash.p.dogecoinkit.validators.LegacyDifficultyAdjustmentValidator
-import cash.p.dogecoinkit.validators.ProofOfWorkValidator
 
 class DogecoinKit : AbstractKit {
     enum class NetworkType {
@@ -62,9 +58,16 @@ class DogecoinKit : AbstractKit {
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        purpose: Purpose = Purpose.BIP44
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose)
+        confirmationsThreshold: Int = defaultConfirmationsThreshold
+    ) : this(
+        context,
+        Mnemonic().toSeed(words, passphrase),
+        walletId,
+        networkType,
+        peerSize,
+        syncMode,
+        confirmationsThreshold
+    )
 
     constructor(
         context: Context,
@@ -73,9 +76,17 @@ class DogecoinKit : AbstractKit {
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        purpose: Purpose = Purpose.BIP44
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold)
+        confirmationsThreshold: Int = defaultConfirmationsThreshold
+    ) : this(
+        context,
+        HDExtendedKey(seed, Purpose.BIP44),
+        Purpose.BIP44,
+        walletId,
+        networkType,
+        peerSize,
+        syncMode,
+        confirmationsThreshold
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
@@ -106,7 +117,6 @@ class DogecoinKit : AbstractKit {
             networkType = networkType,
             walletId = walletId,
             syncMode = syncMode,
-            purpose = purpose,
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold
         )
@@ -134,8 +144,8 @@ class DogecoinKit : AbstractKit {
         network = network(networkType)
 
         val address = parseAddress(watchAddress, network)
-        val watchAddressPublicKey = WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
-        val purpose = address.scriptType.purpose ?: throw IllegalStateException("Not supported scriptType ${address.scriptType}")
+        val watchAddressPublicKey =
+            WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
 
         bitcoinCore = bitcoinCore(
             context = context,
@@ -144,7 +154,6 @@ class DogecoinKit : AbstractKit {
             networkType = networkType,
             walletId = walletId,
             syncMode = syncMode,
-            purpose = purpose,
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold
         )
@@ -157,14 +166,15 @@ class DogecoinKit : AbstractKit {
         networkType: NetworkType,
         walletId: String,
         syncMode: SyncMode,
-        purpose: Purpose,
         peerSize: Int,
         confirmationsThreshold: Int
     ): BitcoinCore {
-        val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
+        val database =
+            CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode))
         val storage = Storage(database)
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
-        val apiSyncStateManager = ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
+        val apiSyncStateManager =
+            ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
         val blockchairApi = BlockchairApi(network.blockchairChainId)
         val apiTransactionProvider = apiTransactionProvider(networkType, blockchairApi)
         val paymentAddressParser = PaymentAddressParser("Dogecoin", removeScheme = true)
@@ -176,7 +186,7 @@ class DogecoinKit : AbstractKit {
             .setContext(context)
             .setExtendedKey(extendedKey)
             .setWatchAddressPublicKey(watchAddressPublicKey)
-            .setPurpose(purpose)
+            .setPurpose(Purpose.BIP44)
             .setNetwork(network)
             .setCheckpoint(checkpoint)
             .setPaymentAddressParser(paymentAddressParser)
@@ -193,35 +203,24 @@ class DogecoinKit : AbstractKit {
         //  extending bitcoinCore
 
         val bech32AddressConverter = SegwitAddressConverter(network.addressSegwitHrp)
-        val base58AddressConverter = Base58AddressConverter(network.addressVersion, network.addressScriptVersion)
+        val base58AddressConverter =
+            Base58AddressConverter(network.addressVersion, network.addressScriptVersion)
 
         bitcoinCore.prependAddressConverter(bech32AddressConverter)
 
-        when (purpose) {
-            Purpose.BIP44 -> {
-                bitcoinCore.addRestoreKeyConverter(Bip44RestoreKeyConverter(base58AddressConverter))
-            }
-
-            Purpose.BIP49 -> {
-                bitcoinCore.addRestoreKeyConverter(Bip49RestoreKeyConverter(base58AddressConverter))
-            }
-
-            Purpose.BIP84 -> {
-                bitcoinCore.addRestoreKeyConverter(Bip84RestoreKeyConverter(SegwitAddressConverter(network.addressSegwitHrp)))
-            }
-
-            Purpose.BIP86 -> {
-                bitcoinCore.addRestoreKeyConverter(Bip86RestoreKeyConverter(SegwitAddressConverter(network.addressSegwitHrp)))
-            }
-        }
-
+        bitcoinCore.addRestoreKeyConverter(Bip44RestoreKeyConverter(base58AddressConverter))
         return bitcoinCore
     }
 
     private fun parseAddress(address: String, network: Network): Address {
         val addressConverter = AddressConverterChain().apply {
             prependConverter(SegwitAddressConverter(network.addressSegwitHrp))
-            prependConverter(Base58AddressConverter(network.addressVersion, network.addressScriptVersion))
+            prependConverter(
+                Base58AddressConverter(
+                    network.addressVersion,
+                    network.addressScriptVersion
+                )
+            )
         }
         return addressConverter.convert(address)
     }
@@ -245,11 +244,32 @@ class DogecoinKit : AbstractKit {
         val blockHelper = BlockValidatorHelper(storage)
 
         if (networkType == NetworkType.MainNet) {
-            blockValidatorChain.add(LegacyDifficultyAdjustmentValidator(blockHelper, heightInterval, targetTimespan, maxTargetBits))
+            blockValidatorChain.add(
+                LegacyDifficultyAdjustmentValidator(
+                    blockHelper,
+                    heightInterval,
+                    targetTimespan,
+                    maxTargetBits
+                )
+            )
             blockValidatorChain.add(BitsValidator())
         } else if (networkType == NetworkType.TestNet) {
-            blockValidatorChain.add(LegacyDifficultyAdjustmentValidator(blockHelper, heightInterval, targetTimespan, maxTargetBits))
-            blockValidatorChain.add(LegacyTestNetDifficultyValidator(storage, heightInterval, targetSpacing, maxTargetBits))
+            blockValidatorChain.add(
+                LegacyDifficultyAdjustmentValidator(
+                    blockHelper,
+                    heightInterval,
+                    targetTimespan,
+                    maxTargetBits
+                )
+            )
+            blockValidatorChain.add(
+                LegacyTestNetDifficultyValidator(
+                    storage,
+                    heightInterval,
+                    targetSpacing,
+                    maxTargetBits
+                )
+            )
             blockValidatorChain.add(BitsValidator())
         }
 
@@ -275,7 +295,8 @@ class DogecoinKit : AbstractKit {
 
         const val maxTargetBits: Long = 0x1e0fffff      // Maximum difficulty
         const val targetSpacing = 150                   // 2.5 minutes per block.
-        const val targetTimespan: Long = 302400         // 3.5 days per difficulty cycle, on average.
+        const val targetTimespan: Long =
+            302400         // 3.5 days per difficulty cycle, on average.
         const val heightInterval = targetTimespan / targetSpacing // 2016 blocks
 
         val defaultNetworkType: NetworkType = NetworkType.MainNet
@@ -283,14 +304,26 @@ class DogecoinKit : AbstractKit {
         const val defaultPeerSize: Int = 10
         const val defaultConfirmationsThreshold: Int = 6
 
-        private fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode, purpose: Purpose): String =
-            "Dogecoin-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}-${purpose.name}"
+        private fun getDatabaseName(
+            networkType: NetworkType,
+            walletId: String,
+            syncMode: SyncMode
+        ): String =
+            "Dogecoin-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}"
 
         fun clear(context: Context, networkType: NetworkType, walletId: String) {
             for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
                 for (purpose in Purpose.values())
                     try {
-                        SQLiteDatabase.deleteDatabase(context.getDatabasePath(getDatabaseName(networkType, walletId, syncMode, purpose)))
+                        SQLiteDatabase.deleteDatabase(
+                            context.getDatabasePath(
+                                getDatabaseName(
+                                    networkType,
+                                    walletId,
+                                    syncMode
+                                )
+                            )
+                        )
                     } catch (ex: Exception) {
                         continue
                     }
