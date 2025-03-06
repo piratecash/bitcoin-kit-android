@@ -192,6 +192,7 @@ class DogecoinKit : AbstractKit {
             .setPaymentAddressParser(paymentAddressParser)
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
+            .setBlockHeaderHasher(ScryptHasher())
             .setSendType(BitcoinCore.SendType.API(blockchairApi))
             .setConfirmationThreshold(confirmationsThreshold)
             .setStorage(storage)
