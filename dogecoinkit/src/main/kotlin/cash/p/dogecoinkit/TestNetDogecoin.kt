@@ -4,12 +4,12 @@ import io.horizontalsystems.bitcoincore.network.Network
 
 class TestNetDogecoin : Network() {
     override val protocolVersion: Int = 70015
-    override var port: Int = 19335
+    override var port: Int = 44556
 
-    override var magic: Long = 0xf1c8d2fd
-    override var bip32HeaderPub: Int = 0x043587CF
+    override var magic: Long = 0xDCB7C1FC
+    override var bip32HeaderPub: Int = 0x043587cf
     override var bip32HeaderPriv: Int = 0x04358394
-    override var addressVersion: Int = 111
+    override var addressVersion: Int = 113
     override var addressSegwitHrp: String = "tltc"
     override var addressScriptVersion: Int = 0x32
     override var coinType: Int = 1
@@ -21,8 +21,7 @@ class TestNetDogecoin : Network() {
     override val syncableFromApi = false
 
     override var dnsSeeds = listOf(
-            "testnet-seed.ltc.xurious.com",
-            "seed-b.litecoin.loshan.co.uk",
-            "dnsseed-testnet.thrasher.io"
+        "jrn.me.uk",
+        "testseed.jrn.me.uk"
     )
 }
