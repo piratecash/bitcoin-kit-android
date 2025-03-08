@@ -10,8 +10,8 @@ class MainNetDogecoin : Network() {
     override var bip32HeaderPub: Int = 0x02FACAFD   // The 4 byte header that serializes in base58 to "xpub".
     override var bip32HeaderPriv: Int = 0x02FAC398  // The 4 byte header that serializes in base58 to "xprv"
     override var addressVersion: Int = 0x1E
-    override var addressSegwitHrp: String = "ltc"
-    override var addressScriptVersion: Int = 0x32
+    override var addressSegwitHrp: String = "doge"
+    override var addressScriptVersion: Int = 0x16
     override var coinType: Int = 3
     override val blockchairChainId: String = "dogecoin"
 

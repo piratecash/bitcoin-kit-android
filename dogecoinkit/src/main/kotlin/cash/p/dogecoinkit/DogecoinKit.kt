@@ -2,7 +2,7 @@ package cash.p.dogecoinkit
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
-import cash.p.dogecoinkit.validators.LegacyDifficultyAdjustmentValidator
+import cash.p.dogecoinkit.validators.DogeDifficultyAdjustmentValidator
 import cash.p.dogecoinkit.validators.ProofOfWorkValidator
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
@@ -177,7 +177,7 @@ class DogecoinKit : AbstractKit {
             ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
         val blockchairApi = BlockchairApi(network.blockchairChainId)
         val apiTransactionProvider = apiTransactionProvider(networkType, blockchairApi)
-        val paymentAddressParser = PaymentAddressParser("Dogecoin", removeScheme = true)
+        val paymentAddressParser = PaymentAddressParser("dogecoin", removeScheme = true)
         val blockValidatorSet = blockValidatorSet(storage, networkType)
 
         val coreBuilder = BitcoinCoreBuilder()
@@ -202,14 +202,20 @@ class DogecoinKit : AbstractKit {
             .build()
 
         //  extending bitcoinCore
-
-        val bech32AddressConverter = SegwitAddressConverter(network.addressSegwitHrp)
-        val base58AddressConverter =
-            Base58AddressConverter(network.addressVersion, network.addressScriptVersion)
-
-        bitcoinCore.prependAddressConverter(bech32AddressConverter)
-
-        bitcoinCore.addRestoreKeyConverter(Bip44RestoreKeyConverter(base58AddressConverter))
+        bitcoinCore.prependAddressConverter(
+            Base58AddressConverter(
+                network.addressVersion,
+                network.addressScriptVersion
+            )
+        )
+        bitcoinCore.addRestoreKeyConverter(
+            Bip44RestoreKeyConverter(
+                Base58AddressConverter(
+                    network.addressVersion,
+                    network.addressScriptVersion
+                )
+            )
+        )
         return bitcoinCore
     }
 
@@ -246,20 +252,16 @@ class DogecoinKit : AbstractKit {
 
         if (networkType == NetworkType.MainNet) {
             blockValidatorChain.add(
-                LegacyDifficultyAdjustmentValidator(
+                DogeDifficultyAdjustmentValidator(
                     blockHelper,
-                    heightInterval,
-                    targetTimespan,
                     maxTargetBits
                 )
             )
             blockValidatorChain.add(BitsValidator())
         } else if (networkType == NetworkType.TestNet) {
             blockValidatorChain.add(
-                LegacyDifficultyAdjustmentValidator(
+                DogeDifficultyAdjustmentValidator(
                     blockHelper,
-                    heightInterval,
-                    targetTimespan,
                     maxTargetBits
                 )
             )
