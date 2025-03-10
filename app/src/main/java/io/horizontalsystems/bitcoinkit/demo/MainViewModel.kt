@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoinkit.demo
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import cash.p.dogecoinkit.DogecoinKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
@@ -13,14 +14,12 @@ import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
-import io.horizontalsystems.bitcoinkit.BitcoinKit
-import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hodler.HodlerData
 import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
 import io.reactivex.disposables.CompositeDisposable
 
-class MainViewModel : ViewModel(), BitcoinKit.Listener {
+class MainViewModel : ViewModel(), DogecoinKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -45,19 +44,26 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: BitcoinKit
+    private lateinit var bitcoinKit: DogecoinKit
 
     private val walletId = "MyWallet"
-    private val networkType = BitcoinKit.NetworkType.MainNet
-    private val syncMode = BitcoinCore.SyncMode.Api()
-    private val purpose = Purpose.BIP44
+    private val networkType = DogecoinKit.NetworkType.MainNet
+    private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         //TODO create unique seed phrase,perhaps using shared preferences?
         val words = "used ugly meat glad balance divorce inner artwork hire invest already piano".split(" ")
         val passphrase = ""
 
-        bitcoinKit = BitcoinKit(App.instance, words, passphrase, walletId, networkType, syncMode = syncMode, purpose = purpose)
+        bitcoinKit = DogecoinKit(
+            context = App.instance,
+            words = words,
+            passphrase = passphrase,
+            walletId = walletId,
+            syncMode = syncMode,
+            networkType = networkType,
+            confirmationsThreshold = 3,
+        )
 
         bitcoinKit.listener = this
 
@@ -79,7 +85,7 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        BitcoinKit.clear(App.instance, networkType, walletId)
+        DogecoinKit.clear(App.instance, networkType, walletId)
 
         init()
     }

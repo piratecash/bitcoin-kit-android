@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
+import java.io.IOException
 
 /**
  * MerkleBlock Message
@@ -17,12 +18,13 @@ import io.horizontalsystems.bitcoincore.storage.BlockHeader
  *  Variable    flagsBits       Flag bits packed 8 per byte, least significant bit first
  */
 class MerkleBlockMessage(
-        var header: BlockHeader,
-        var txCount: Int,
-        var hashCount: Int,
-        var hashes: List<ByteArray>,
-        var flagsCount: Int,
-        var flags: ByteArray) : IMessage {
+    var header: BlockHeader,
+    var txCount: Int,
+    var hashCount: Int,
+    var hashes: List<ByteArray>,
+    var flagsCount: Int,
+    var flags: ByteArray
+) : IMessage {
 
     private val blockHash: String by lazy {
         header.hash.toReversedHex()
@@ -41,14 +43,15 @@ class MerkleBlockMessageParser(private val blockHeaderParser: BlockHeaderParser)
         val txCount = input.readInt()
 
         val hashCount = input.readVarInt().toInt()
-        val hashes: MutableList<ByteArray> = mutableListOf()
+        val hashes = mutableListOf<ByteArray>()
         repeat(hashCount) {
             hashes.add(input.readBytes(32))
         }
-
         val flagsCount = input.readVarInt().toInt()
+        if (flagsCount > input.available()) {
+            throw IOException("Bad merkleblock: flagsCount=$flagsCount but only ${input.available()} bytes left")
+        }
         val flags = input.readBytes(flagsCount)
-
         return MerkleBlockMessage(header, txCount, hashCount, hashes, flagsCount, flags)
     }
 }

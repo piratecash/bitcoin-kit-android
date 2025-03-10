@@ -37,6 +37,7 @@ class SendReceiveFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_send_receive, container, false)
     }
 
+    @Deprecated("Super method is deprecated")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 

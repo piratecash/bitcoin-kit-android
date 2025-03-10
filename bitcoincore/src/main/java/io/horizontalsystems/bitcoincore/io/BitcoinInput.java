@@ -20,6 +20,10 @@ public class BitcoinInput implements AutoCloseable {
         this.in = in;
     }
 
+    public int available() throws IOException {
+        return in.available();
+    }
+
     /**
      * Read btc var int (1~4 bytes). Reference:
      * https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer

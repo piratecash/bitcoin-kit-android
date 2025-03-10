@@ -63,9 +63,13 @@ class PeerConnection(
 
                 // try receive message:
                 while (isRunning && inputStream.available() > 0) {
-                    val parsedMsg = networkMessageParser.parseMessage(bitcoinInput)
-                    logger.info("<= $parsedMsg")
-                    listener.onMessage(parsedMsg)
+                    try {
+                        val parsedMsg = networkMessageParser.parseMessage(bitcoinInput)
+                        logger.info("<= $parsedMsg")
+                        listener.onMessage(parsedMsg)
+                    } catch (ex : Exception) {
+                        logger.warning("Failed to parse message: ${ex.message}")
+                    }
                 }
             }
         } catch (e: Exception) {
