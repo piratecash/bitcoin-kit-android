@@ -80,7 +80,6 @@ class DogecoinKit : AbstractKit {
     ) : this(
         context,
         HDExtendedKey(seed, Purpose.BIP44),
-        Purpose.BIP44,
         walletId,
         networkType,
         peerSize,
@@ -101,7 +100,6 @@ class DogecoinKit : AbstractKit {
     constructor(
         context: Context,
         extendedKey: HDExtendedKey,
-        purpose: Purpose,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,

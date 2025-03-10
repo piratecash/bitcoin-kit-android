@@ -96,7 +96,7 @@ class BlockchairApi(
         receivedTransactionItems: List<Transaction> = emptyList()
     ): Pair<List<AddressItem>, List<Transaction>> {
         try {
-            val params = "?transaction_details=true&limit=$limit,0&offset=${receivedTransactionItems.size}"
+            val params = "?transaction_details=true&limit=$limit&offset=${receivedTransactionItems.size}"
             val url = "$chainId/dashboards/addresses/${addresses.joinToString(separator = ",")}"
             val response = apiManager.doOkHttpGet(url + params).asObject()
             val data = response.get("data").asObject()

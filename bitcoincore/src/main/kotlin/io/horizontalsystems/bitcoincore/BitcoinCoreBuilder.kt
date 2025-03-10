@@ -404,7 +404,7 @@ class BitcoinCoreBuilder {
         val initialDownload: IInitialDownload
         val merkleBlockExtractor = MerkleBlockExtractor(network.maxBlockSize)
 
-        when (val syncMode = syncMode) {
+        when (syncMode) {
             is BitcoinCore.SyncMode.Blockchair -> {
                 val blockchairApi = if (apiTransactionProvider is BlockchairTransactionProvider) {
                     apiTransactionProvider.blockchairApi

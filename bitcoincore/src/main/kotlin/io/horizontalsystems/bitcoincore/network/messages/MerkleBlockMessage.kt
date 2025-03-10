@@ -40,25 +40,18 @@ class MerkleBlockMessageParser(private val blockHeaderParser: BlockHeaderParser)
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
         val header = blockHeaderParser.parse(input)
-        input.mark()
         val txCount = input.readInt()
 
-        return try {
-            val hashCount = input.readVarInt().toInt()
-            val hashes = mutableListOf<ByteArray>()
-            repeat(hashCount) {
-                hashes.add(input.readBytes(32))
-            }
-            val flagsCount = input.readVarInt().toInt()
-            if (flagsCount > input.available()) {
-                throw IOException("Bad merkleblock: flagsCount=$flagsCount but only ${input.available()} bytes left")
-            }
-            val flags = input.readBytes(flagsCount)
-            MerkleBlockMessage(header, txCount, hashCount, hashes, flagsCount, flags)
-        } catch (e: Exception) {
-            // Looks like it's not a partial merkle block, trying to parse as full transaction
-            input.reset()
-            TransactionMessageParser().parseMessage(input)
+        val hashCount = input.readVarInt().toInt()
+        val hashes = mutableListOf<ByteArray>()
+        repeat(hashCount) {
+            hashes.add(input.readBytes(32))
         }
+        val flagsCount = input.readVarInt().toInt()
+        if (flagsCount > input.available()) {
+            throw IOException("Bad merkleblock: flagsCount=$flagsCount but only ${input.available()} bytes left")
+        }
+        val flags = input.readBytes(flagsCount)
+        return MerkleBlockMessage(header, txCount, hashCount, hashes, flagsCount, flags)
     }
 }
