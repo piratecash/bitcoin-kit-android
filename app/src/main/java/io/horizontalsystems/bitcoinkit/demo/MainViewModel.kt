@@ -52,7 +52,7 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
 
     fun init() {
         //TODO create unique seed phrase,perhaps using shared preferences?
-        val words = "used ugly meat glad balance divorce inner artwork hire invest already piano".split(" ")
+        val words = "".split(" ")
         val passphrase = ""
 
         bitcoinKit = DogecoinKit(
