@@ -14,6 +14,9 @@ import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
 import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class TransactionSender(
     private val transactionSyncer: TransactionSyncer,
@@ -26,6 +29,8 @@ class TransactionSender(
     private val maxRetriesCount: Int = 3,
     private val retriesPeriod: Int = 60
 ) : IPeerTaskHandler, TransactionSendTimer.Listener {
+
+    private val coroutineScope = CoroutineScope(Dispatchers.IO)
 
     fun sendPendingTransactions() {
         try {
@@ -100,7 +105,7 @@ class TransactionSender(
         }
     }
 
-    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi) {
+    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi) = coroutineScope.launch {
         transactions.forEach { transaction ->
             try {
                 val hex = transactionSerializer.serialize(transaction).toHexString()

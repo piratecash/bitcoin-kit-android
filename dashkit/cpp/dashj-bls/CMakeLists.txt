@@ -29,13 +29,13 @@ include_directories(#${JNI_INCLUDE_DIRS}
 )
 message(STATUS "binary dir = ${CMAKE_BINARY_DIR}")
 
-if (${ANDROID_ABI} STREQUAL "x86_64")
+if ("${ANDROID_ABI}" STREQUAL "x86_64")
 	include_directories(${ANDROID_SYSROOT}/usr/include/x86_64-linux-android)
-elseif (${ANDROID_ABI} STREQUAL "x86")
+elseif ("${ANDROID_ABI}" STREQUAL "x86")
 	include_directories(${ANDROID_SYSROOT}/usr/include/i686-linux-android)
-elseif (${ANDROID_ABI} STREQUAL "arm64-v8a")
+elseif ("${ANDROID_ABI}" STREQUAL "arm64-v8a")
 	include_directories(${ANDROID_SYSROOT}/usr/include/aarch64-linux-android)
-elseif (${ANDROID_ABI} STREQUAL "armeabi-v7a")
+elseif ("${ANDROID_ABI}" STREQUAL "armeabi-v7a")
 	include_directories(${ANDROID_SYSROOT}/usr/include/arm-linux-androideabi)
 endif()
 

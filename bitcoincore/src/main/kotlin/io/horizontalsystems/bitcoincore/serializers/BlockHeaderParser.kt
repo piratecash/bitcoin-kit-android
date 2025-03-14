@@ -19,6 +19,14 @@ class BlockHeaderParser(private val hasher: IHasher) {
         val bits = input.readUnsignedInt()
         val nonce = input.readUnsignedInt()
 
-        return BlockHeader(version, previousBlockHeaderHash, merkleRoot, timestamp, bits, nonce, hash)
+        return BlockHeader(
+            version = version,
+            previousBlockHeaderHash = previousBlockHeaderHash,
+            merkleRoot = merkleRoot,
+            timestamp = timestamp,
+            bits = bits,
+            nonce = nonce,
+            hash = hash
+        )
     }
 }
