@@ -23,6 +23,14 @@ class MainNetDogecoin : Network() {
     override var dnsSeeds = listOf(
         "multidoge.org",
         "seed.multidoge.org",
-        "seed2.multidoge.org"
+        "seed2.multidoge.org",
+        "154.53.48.56",
+        "47.105.52.43",
+        "66.187.70.50",
+        "73.14.122.226",
+        "65.108.219.235",
+        "95.216.34.97",
+        "47.130.57.2",
+        "144.6.50.249"
     )
 }
