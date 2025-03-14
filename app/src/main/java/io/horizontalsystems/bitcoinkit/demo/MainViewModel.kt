@@ -102,7 +102,10 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
     //
     // BitcoinKit Listener implementations
     //
-    override fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>) {
+    override fun onTransactionsUpdate(
+        inserted: List<TransactionInfo>,
+        updated: List<TransactionInfo>
+    ) {
         setTransactionFilterType(transactionFilterType)
     }
 
@@ -160,9 +163,11 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
             address.isNullOrBlank() -> {
                 errorLiveData.value = "Send address cannot be blank"
             }
+
             amount == null -> {
                 errorLiveData.value = "Send amount cannot be blank"
             }
+
             else -> {
                 try {
                     val transaction = bitcoinKit.send(
@@ -194,13 +199,20 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
 
     fun onMaxClick() {
         try {
-            amountLiveData.value = bitcoinKit.maximumSpendableValue(address, null, feePriority.feeRate, null, getPluginData())
+            amountLiveData.value = bitcoinKit.maximumSpendableValue(
+                address,
+                null,
+                feePriority.feeRate,
+                null,
+                getPluginData()
+            )
         } catch (e: Exception) {
             amountLiveData.value = 0
             errorLiveData.value = when (e) {
 
                 is SendValueErrors.Dust,
                 is SendValueErrors.EmptyOutputs -> "You need at least ${e.message} satoshis to make an transaction"
+
                 is AddressFormatException -> "Could not Format Address"
                 else -> e.message ?: "Maximum could not be calculated"
             }
@@ -218,7 +230,14 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
     }
 
     private fun fee(value: Long, address: String? = null): BitcoinSendInfo {
-        return bitcoinKit.sendInfo(value, address, null, feeRate = feePriority.feeRate, unspentOutputs = null, pluginData = getPluginData())
+        return bitcoinKit.sendInfo(
+            value,
+            address,
+            null,
+            feeRate = feePriority.feeRate,
+            unspentOutputs = null,
+            pluginData = getPluginData()
+        )
     }
 
     private fun getPluginData(): MutableMap<Byte, IPluginData> {
@@ -236,10 +255,13 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
     fun setTransactionFilterType(transactionFilterType: TransactionFilterType?) {
         this.transactionFilterType = transactionFilterType
 
-        bitcoinKit.transactions(type = transactionFilterType).subscribe { txList: List<TransactionInfo> ->
-            transactions.postValue(txList)
-        }.let {
-            disposables.add(it)
-        }
+        bitcoinKit.transactions(type = transactionFilterType)
+            .subscribe(/* onSuccess = */ { txList: List<TransactionInfo> ->
+                transactions.postValue(txList)
+            }, /* onError = */ { e ->
+                errorLiveData.value = e.message
+            }).let {
+                disposables.add(it)
+            }
     }
 }
