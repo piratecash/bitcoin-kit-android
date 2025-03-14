@@ -12,5 +12,4 @@ class MerkleBlock(val header: BlockHeader, val associatedTransactionHashes: Map<
 
     val complete: Boolean
         get() = associatedTransactionHashes.size == associatedTransactions.size
-
 }

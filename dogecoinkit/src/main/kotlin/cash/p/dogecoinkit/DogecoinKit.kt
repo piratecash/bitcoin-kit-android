@@ -2,6 +2,7 @@ package cash.p.dogecoinkit
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import cash.p.dogecoinkit.messages.DogeCoinMerkleBlockMessageParser
 import cash.p.dogecoinkit.validators.DogeDifficultyAdjustmentValidator
 import cash.p.dogecoinkit.validators.ProofOfWorkValidator
 import io.horizontalsystems.bitcoincore.AbstractKit
@@ -16,6 +17,7 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BitsValidator
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyTestNetDifficultyValidator
+import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
@@ -23,6 +25,8 @@ import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.network.messages.MerkleBlockMessageParser
+import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
@@ -179,6 +183,7 @@ class DogecoinKit : AbstractKit {
         val blockValidatorSet = blockValidatorSet(storage, networkType)
 
         val coreBuilder = BitcoinCoreBuilder()
+        val blockHeaderHasher = DoubleSha256Hasher()
 
         val bitcoinCore = coreBuilder
             .setContext(context)
@@ -190,7 +195,7 @@ class DogecoinKit : AbstractKit {
             .setPaymentAddressParser(paymentAddressParser)
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
-            .setBlockHeaderHasher(ScryptHasher())
+            .setBlockHeaderHasher(blockHeaderHasher)
             .setSendType(BitcoinCore.SendType.API(blockchairApi))
             .setConfirmationThreshold(confirmationsThreshold)
             .setStorage(storage)
@@ -198,6 +203,8 @@ class DogecoinKit : AbstractKit {
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
             .build()
+            // set message parser supports AuxPow
+            .addMessageParser(DogeCoinMerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
 
         //  extending bitcoinCore
         bitcoinCore.prependAddressConverter(
