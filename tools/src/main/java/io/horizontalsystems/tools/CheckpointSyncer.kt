@@ -94,7 +94,17 @@ class CheckpointSyncer(
         }
 
         val peerHostManager = PeerAddressManager(network)
-        peerGroup = PeerGroup(peerHostManager, network, peerManager, peerSize, networkMessageParser, networkMessageSerializer, connectionManager, 0, false).also {
+        peerGroup = PeerGroup(
+            hostManager = peerHostManager,
+            network = network,
+            peerManager = peerManager,
+            peerSize = peerSize,
+            networkMessageParser = networkMessageParser,
+            networkMessageSerializer = networkMessageSerializer,
+            connectionManager = connectionManager,
+            localDownloadedBestBlockHeight = 0,
+            handleAddrMessage = false
+        ).also {
             peerHostManager.listener = it
         }
 

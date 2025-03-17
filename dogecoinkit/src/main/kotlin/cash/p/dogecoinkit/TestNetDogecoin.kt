@@ -10,7 +10,7 @@ class TestNetDogecoin : Network() {
     override var bip32HeaderPub: Int = 0x043587cf
     override var bip32HeaderPriv: Int = 0x04358394
     override var addressVersion: Int = 113
-    override var addressSegwitHrp: String = "doge"
+    override var addressSegwitHrp: String = ""
     override var addressScriptVersion: Int = 0x16
     override var coinType: Int = 1
     override val blockchairChainId: String = ""

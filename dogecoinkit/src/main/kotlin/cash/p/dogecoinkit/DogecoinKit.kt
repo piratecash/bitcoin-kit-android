@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import cash.p.dogecoinkit.messages.DogeCoinMerkleBlockMessageParser
 import cash.p.dogecoinkit.validators.DogeDifficultyAdjustmentValidator
+import cash.p.dogecoinkit.validators.DogeTestNetDifficultyAdjustmentValidator
 import cash.p.dogecoinkit.validators.ProofOfWorkValidator
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
@@ -265,11 +266,12 @@ class DogecoinKit : AbstractKit {
             blockValidatorChain.add(BitsValidator())
         } else if (networkType == NetworkType.TestNet) {
             blockValidatorChain.add(
-                DogeDifficultyAdjustmentValidator(
+                DogeTestNetDifficultyAdjustmentValidator(
                     blockHelper,
                     maxTargetBits
                 )
             )
+/*
             blockValidatorChain.add(
                 LegacyTestNetDifficultyValidator(
                     storage,
@@ -278,6 +280,7 @@ class DogecoinKit : AbstractKit {
                     maxTargetBits
                 )
             )
+*/
             blockValidatorChain.add(BitsValidator())
         }
 
