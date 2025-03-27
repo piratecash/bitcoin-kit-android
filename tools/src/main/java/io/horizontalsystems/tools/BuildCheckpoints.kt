@@ -10,6 +10,8 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoinkit.MainNet
 import io.horizontalsystems.bitcoinkit.TestNet
+import io.horizontalsystems.cosantakit.MainNetCosanta
+import io.horizontalsystems.cosantakit.TestNetCosanta
 import io.horizontalsystems.dashkit.MainNetDash
 import io.horizontalsystems.dashkit.TestNetDash
 import io.horizontalsystems.ecash.MainNetECash
@@ -56,9 +58,17 @@ class BuildCheckpoints : CheckpointSyncer.Listener {
             listener = this
         ))*/
 
-        it.add(CheckpointSyncer(
+        /*it.add(CheckpointSyncer(
             network = TestNetDogecoin(),
             checkpointInterval = 240,
+            blocksToKeep = 20,
+            listener = this
+        ))*/
+
+        // Cosanta
+        it.add(CheckpointSyncer(
+            network = MainNetCosanta(),
+            checkpointInterval = 2,
             blocksToKeep = 20,
             listener = this
         ))
@@ -135,6 +145,8 @@ class BuildCheckpoints : CheckpointSyncer.Listener {
             is MainNetDogecoin,
             is TestNetDogecoin -> "dogecoinkit"
             is MainNetECash -> "ecashkit"
+            is TestNetCosanta,
+            is MainNetCosanta -> "cosantakit"
             else -> throw Exception("Invalid network: ${network.javaClass.name}")
         }
     }

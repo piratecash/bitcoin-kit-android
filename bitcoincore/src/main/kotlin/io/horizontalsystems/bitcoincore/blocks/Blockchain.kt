@@ -22,7 +22,7 @@ class Blockchain(
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash) ?: throw BlockValidatorException.NoPreviousBlock()
 
-        val block = Block(merkleBlock.header, parentBlock)
+        val block = Block(merkleBlock, parentBlock)
         blockValidator?.validate(block, parentBlock)
 
         block.stale = true

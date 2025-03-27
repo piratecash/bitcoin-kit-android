@@ -2,7 +2,6 @@ package io.horizontalsystems.bitcoinkit.demo
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import cash.p.dogecoinkit.DogecoinKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
@@ -14,12 +13,13 @@ import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
+import io.horizontalsystems.cosantakit.CosantaKit
 import io.horizontalsystems.hodler.HodlerData
 import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
 import io.reactivex.disposables.CompositeDisposable
 
-class MainViewModel : ViewModel(), DogecoinKit.Listener {
+class MainViewModel : ViewModel(), CosantaKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -44,18 +44,18 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: DogecoinKit
+    private lateinit var bitcoinKit: CosantaKit
 
     private val walletId = "MyWallet"
-    private val networkType = DogecoinKit.NetworkType.MainNet
-    private val syncMode = BitcoinCore.SyncMode.Blockchair()
+    private val networkType = CosantaKit.NetworkType.MainNet
+    private val syncMode = BitcoinCore.SyncMode.Api()
 
     fun init() {
         //TODO create unique seed phrase,perhaps using shared preferences?
         val words = "".split(" ")
         val passphrase = ""
 
-        bitcoinKit = DogecoinKit(
+        bitcoinKit = CosantaKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -85,7 +85,7 @@ class MainViewModel : ViewModel(), DogecoinKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        DogecoinKit.clear(App.instance, networkType, walletId)
+        CosantaKit.clear(App.instance, networkType, walletId)
 
         init()
     }

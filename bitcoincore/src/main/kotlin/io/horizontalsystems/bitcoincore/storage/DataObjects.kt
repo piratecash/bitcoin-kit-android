@@ -2,18 +2,27 @@ package io.horizontalsystems.bitcoincore.storage
 
 import androidx.room.Embedded
 import io.horizontalsystems.bitcoincore.extensions.toHexString
-import io.horizontalsystems.bitcoincore.models.*
+import io.horizontalsystems.bitcoincore.models.Block
+import io.horizontalsystems.bitcoincore.models.PublicKey
+import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
+import io.horizontalsystems.bitcoincore.models.TransactionMetadata
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 
 class BlockHeader(
-        val version: Int,
-        val previousBlockHeaderHash: ByteArray,
-        val merkleRoot: ByteArray,
-        val timestamp: Long,
-        val bits: Long,
-        val nonce: Long,
-        val hash: ByteArray)
+    val version: Int,
+    val previousBlockHeaderHash: ByteArray,
+    val merkleRoot: ByteArray,
+    val timestamp: Long,
+    val bits: Long,
+    val nonce: Long,
+    val hash: ByteArray,
+    val posBlockSig: ByteArray? = null,
+    val posStakeHash: ByteArray? = null,
+    val posStakeN: Int? = null,
+)
 
 open class FullTransaction(
     val header: Transaction,
@@ -26,7 +35,14 @@ open class FullTransaction(
 
     init {
         if (forceHashUpdate) {
-            setHash(HashUtils.doubleSha256(TransactionSerializer.serialize(this, withWitness = false)))
+            setHash(
+                HashUtils.doubleSha256(
+                    TransactionSerializer.serialize(
+                        this,
+                        withWitness = false
+                    )
+                )
+            )
         }
     }
 
@@ -46,17 +62,20 @@ open class FullTransaction(
 }
 
 class InputToSign(
-        val input: TransactionInput,
-        val previousOutput: TransactionOutput,
-        val previousOutputPublicKey: PublicKey)
+    val input: TransactionInput,
+    val previousOutput: TransactionOutput,
+    val previousOutputPublicKey: PublicKey
+)
 
 class TransactionWithBlock(
-        @Embedded val transaction: Transaction,
-        @Embedded val block: Block?)
+    @Embedded val transaction: Transaction,
+    @Embedded val block: Block?
+)
 
 class PublicKeyWithUsedState(
-        @Embedded val publicKey: PublicKey,
-        val usedCount: Int) {
+    @Embedded val publicKey: PublicKey,
+    val usedCount: Int
+) {
 
     val used: Boolean
         get() = usedCount > 0
@@ -95,11 +114,11 @@ class UnspentOutputInfo(
 }
 
 class FullTransactionInfo(
-        val block: Block?,
-        val header: Transaction,
-        val inputs: List<InputWithPreviousOutput>,
-        val outputs: List<TransactionOutput>,
-        val metadata: TransactionMetadata
+    val block: Block?,
+    val header: Transaction,
+    val inputs: List<InputWithPreviousOutput>,
+    val outputs: List<TransactionOutput>,
+    val metadata: TransactionMetadata
 ) {
 
     val rawTransaction: String

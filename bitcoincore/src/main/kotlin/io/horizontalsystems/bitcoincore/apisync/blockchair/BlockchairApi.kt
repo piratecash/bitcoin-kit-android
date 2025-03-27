@@ -15,7 +15,7 @@ import java.util.TimeZone
 
 class BlockchairApi(
     private val chainId: String,
-) {
+): Api {
     private val apiManager = ApiManager("https://api.blocksdecoded.com/v1/blockchair")
     private val limit = 10000
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -24,7 +24,7 @@ class BlockchairApi(
         dateFormat.timeZone = TimeZone.getTimeZone("GMT")
     }
 
-    fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
+    override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
         val transactionItemsMap = mutableMapOf<String, TransactionItem>()
 
         for (chunk in addresses.chunked(100)) {
@@ -53,7 +53,7 @@ class BlockchairApi(
         return transactionItemsMap.values.toList()
     }
 
-    fun blockHashes(heights: List<Int>): Map<Int, String> {
+    override fun blockHashes(heights: List<Int>): Map<Int, String> {
         val hashesMap = mutableMapOf<Int, String>()
 
         for (chunk in heights.chunked(10)) {
@@ -64,7 +64,7 @@ class BlockchairApi(
         return hashesMap
     }
 
-    fun lastBlockHeader(): BlockHeaderItem {
+    override fun lastBlockHeader(): BlockHeaderItem {
         val params = "?limit=0"
         val url = "$chainId/stats"
         val response = apiManager.doOkHttpGet(url + params).asObject()
@@ -78,7 +78,7 @@ class BlockchairApi(
         return BlockHeaderItem(hash.hexToByteArray(), height, timestamp!!)
     }
 
-    fun broadcastTransaction(rawTransactionHex: String) {
+    override fun broadcastTransaction(rawTransactionHex: String) {
         val apiManager = ApiManager("https://api.blockchair.com")
         val url = "$chainId/push/transaction"
 

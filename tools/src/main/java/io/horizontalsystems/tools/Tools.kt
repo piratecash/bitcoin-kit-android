@@ -9,7 +9,7 @@ import java.util.logging.Logger
 // Go to
 // Edit Configurations... -> ToolsKt -> VM Options
 // And paste the following
-// -classpath $Classpath$:bitcoincashkit/src/main/resources:bitcoinkit/src/main/resources:dashkit/src/main/resources:ecashkit/src/main/resources:litecoinkit/src/main/resources:dogecoinkit/src/main/resources
+// -classpath $Classpath$:bitcoincashkit/src/main/resources:bitcoinkit/src/main/resources:dashkit/src/main/resources:ecashkit/src/main/resources:litecoinkit/src/main/resources:dogecoinkit/src/main/resources:cosantakit/src/main/resources
 fun main() {
     Logger.getLogger("").level = Level.SEVERE
     syncCheckpoints()
@@ -21,15 +21,18 @@ private fun syncCheckpoints() {
 }
 
 private fun buildCustomCheckpoint() {
-    val checkpointBlock = Block(BlockHeader(
-            version = 2,
-            previousBlockHeaderHash = HashUtils.toBytesAsLE("00000000000000006bcf448b771c8f4db4e2ca653474e3b29504ec08422b3fba"),
-            merkleRoot = HashUtils.toBytesAsLE("4ea18e999a57fc55fb390558dbb88a7b9c55c71c7de4cec160c045802ee587d2"),
-            timestamp = 1397755646,
-            bits = 419470732,
-            nonce = 2160181286,
-            hash = HashUtils.toBytesAsLE("00000000000000003decdbb5f3811eab3148fbc29d3610528eb3b50d9ee5723f")
-    ), 296352)
+    val checkpointBlock = Block(
+        header = BlockHeader(
+            version = 939524096,
+            previousBlockHeaderHash = HashUtils.toBytesAsLE("000192e475f2f325cde276f22cf01414cd76416e1ac00937de7f82d00303b4de"),
+            merkleRoot = HashUtils.toBytesAsLE("949055bf239b623f4e99ffc01730863440c91700c62dcac30e2e31c3e60afdef"),
+            timestamp = 1742511558,
+            bits = 0x1b32c619, // 0x1b32c619 соответствует полю "bits": "1b32c619"
+            nonce = 2968642242,
+            hash = HashUtils.toBytesAsLE("0000db0b2355298eac8f1d508ba044f157d47fb59a7cfe3c4dc8a026eb825fbb")
+        ),
+        height = 735306
+    )
 
     BuildCheckpoints().build(checkpointBlock)
 }

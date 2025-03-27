@@ -25,13 +25,6 @@ android {
         targetSdkVersion 34
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        externalNativeBuild {
-            cmake {
-                cFlags '-DHAVE_CONFIG_H -DWORD=32'
-                cppFlags ""
-            }
-        }
     }
 
     buildTypes {
@@ -51,12 +44,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = '17' }
-
-    externalNativeBuild {
-        cmake {
-            path 'cpp/CMakeLists.txt'
-        }
-    }
 }
 
 dependencies {
@@ -73,7 +60,7 @@ dependencies {
     ksp "androidx.room:room-compiler:$room_version"
 
     api project(':bitcoincore')
-    implementation files('libs/dashj-bls-0.15.3.jar')
+    implementation project(':dashlib')
     implementation 'de.sfuhrm:saphir-hash-jca:3.0.6'
 
     // Test helpers
