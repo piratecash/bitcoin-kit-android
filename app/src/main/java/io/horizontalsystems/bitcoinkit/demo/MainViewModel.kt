@@ -48,11 +48,11 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
 
     private val walletId = "MyWallet"
     private val networkType = CosantaKit.NetworkType.MainNet
-    private val syncMode = BitcoinCore.SyncMode.Api()
+    private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         //TODO create unique seed phrase,perhaps using shared preferences?
-        val words = "".split(" ")
+        val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
         bitcoinKit = CosantaKit(

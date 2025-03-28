@@ -13,6 +13,9 @@ configurations.all {
     }
 }
 
+def localProperties = new Properties()
+localProperties.load(new FileInputStream(rootProject.file("local.properties")))
+
 android {
     namespace 'io.horizontalsystems.bitcoinkit.demo'
     compileSdk 34
@@ -24,6 +27,7 @@ android {
         versionCode 1
         versionName "0.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "WORDS", "${localProperties['words']}"
     }
     buildTypes {
         release {
