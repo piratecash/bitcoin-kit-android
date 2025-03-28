@@ -49,7 +49,6 @@ import io.horizontalsystems.cosantakit.managers.MasternodeListSyncer
 import io.horizontalsystems.cosantakit.managers.MasternodeSortedList
 import io.horizontalsystems.cosantakit.managers.QuorumListManager
 import io.horizontalsystems.cosantakit.managers.QuorumSortedList
-import io.horizontalsystems.cosantakit.masternodelist.MasternodeCbTxHasher
 import io.horizontalsystems.cosantakit.masternodelist.MasternodeListMerkleRootCalculator
 import io.horizontalsystems.cosantakit.masternodelist.MerkleRootCreator
 import io.horizontalsystems.cosantakit.masternodelist.MerkleRootHasher
@@ -62,7 +61,6 @@ import io.horizontalsystems.cosantakit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.cosantakit.messages.TransactionLockMessageParser
 import io.horizontalsystems.cosantakit.messages.TransactionLockVoteMessageParser
 import io.horizontalsystems.cosantakit.messages.TransactionMessageParser
-import io.horizontalsystems.cosantakit.models.CoinbaseTransactionSerializer
 import io.horizontalsystems.cosantakit.models.CosantaTransactionInfo
 import io.horizontalsystems.cosantakit.models.InstantTransactionState
 import io.horizontalsystems.cosantakit.storage.CosantaKitDatabase
@@ -269,8 +267,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         val merkleRootCreator = MerkleRootCreator(merkleRootHasher)
         val masternodeListMerkleRootCalculator =
             MasternodeListMerkleRootCalculator(merkleRootCreator)
-        val masternodeCbTxHasher =
-            MasternodeCbTxHasher(CoinbaseTransactionSerializer(), merkleRootHasher)
 
         val quorumListManager = QuorumListManager(
             cosantaStorage,
@@ -280,7 +276,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         val masternodeListManager = MasternodeListManager(
             cosantaStorage,
             masternodeListMerkleRootCalculator,
-            masternodeCbTxHasher,
             MerkleBranch(),
             MasternodeSortedList(),
             quorumListManager
