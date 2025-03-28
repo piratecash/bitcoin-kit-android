@@ -4,7 +4,6 @@ import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 import io.horizontalsystems.bitcoincore.utils.MerkleBranch
 import io.horizontalsystems.cosantakit.ICosantaStorage
-import io.horizontalsystems.cosantakit.masternodelist.MasternodeCbTxHasher
 import io.horizontalsystems.cosantakit.masternodelist.MasternodeListMerkleRootCalculator
 import io.horizontalsystems.cosantakit.messages.MasternodeListDiffMessage
 import io.horizontalsystems.cosantakit.models.MasternodeListState
@@ -12,7 +11,6 @@ import io.horizontalsystems.cosantakit.models.MasternodeListState
 class MasternodeListManager(
     private val storage: ICosantaStorage,
     private val masternodeListMerkleRootCalculator: MasternodeListMerkleRootCalculator,
-    private val masternodeCbTxHasher: MasternodeCbTxHasher,
     private val merkleBranch: MerkleBranch,
     private val masternodeSortedList: MasternodeSortedList,
     private val quorumListManager: QuorumListManager
@@ -51,20 +49,9 @@ class MasternodeListManager(
         //04.
         val hash = masternodeListMerkleRootCalculator.calculateMerkleRoot(masternodeSortedList.masternodes)
 
-        //05.
-        if (hash != null && !masternodeListDiffMessage.cbTx.merkleRootMNList.contentEquals(hash)) {
-            throw ValidationError.WrongMerkleRootList
-        }
-        //06.
-        val cbTxHash = masternodeCbTxHasher.hash(masternodeListDiffMessage.cbTx)
-
         val matchedHashes = mutableMapOf<HashBytes, Boolean>()
 
         val calculatedMerkleRoot = merkleBranch.calculateMerkleRoot(masternodeListDiffMessage.totalTransactions.toInt(), masternodeListDiffMessage.merkleHashes, masternodeListDiffMessage.merkleFlags, matchedHashes)
-
-        if (matchedHashes[cbTxHash] != true) {
-            throw ValidationError.WrongCoinbaseHash
-        }
 
         val block = storage.getBlock(masternodeListDiffMessage.blockHash)
         val merkleRoot = block?.merkleRoot

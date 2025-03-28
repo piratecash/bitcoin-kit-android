@@ -4,7 +4,7 @@ import io.horizontalsystems.bitcoincore.network.Network
 
 class MainNetCosanta : Network() {
 
-    override val protocolVersion = 70226
+    override val protocolVersion = 70227
     override val noBloomVersion = 70201
 
     override var port: Int = 60606
@@ -25,6 +25,7 @@ class MainNetCosanta : Network() {
         "m1.cosanta.net",
         "m2.cosanta.net",
         "dns.cosanta.io",
-        "dns.cosa.is"
+        "dns.cosa.is",
+        "65.109.95.133",
     )
 }

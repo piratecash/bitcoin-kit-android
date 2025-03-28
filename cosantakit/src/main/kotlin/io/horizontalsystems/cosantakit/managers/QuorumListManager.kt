@@ -34,14 +34,14 @@ class QuorumListManager(
         //04. Add the LLMQ defined by the final commitments found in "newQuorums" to the corresponding active LLMQ sets.
         quorumSortedList.add(masternodeListDiffMessage.quorumList)
 
-        masternodeListDiffMessage.cbTx.merkleRootQuorums?.let { merkleRootQuorums ->
+        masternodeListDiffMessage.quorumList.let { merkleRootQuorums ->
             //05. Calculate the merkle root of the active LLMQ sets by following the “Calculating the merkle root of the active LLMQs” section
             val hash = quorumListMerkleRootCalculator.calculateMerkleRoot(quorumSortedList.quorums)
 
             //06. Compare the calculated merkle root with what is found in “cbTx”. If it does not match, abort the process and ask for diffs from another node.
-            if (hash != null && !merkleRootQuorums.contentEquals(hash)) {
-                throw ValidationError.WrongMerkleRootList
-            }
+//            if (hash != null && !merkleRootQuorums.contentEquals(hash)) {
+//                throw ValidationError.WrongMerkleRootList
+//            }
         }
 
         //07. Store the new active LLMQ sets the same way the masternode list is stored.

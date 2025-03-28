@@ -68,6 +68,7 @@ class PeerConnection(
                         logger.info("<= $parsedMsg")
                         listener.onMessage(parsedMsg)
                     } catch (ex : Exception) {
+                        ex.printStackTrace()
                         logger.warning("Failed to parse message: ${ex.message}")
                     }
                 }

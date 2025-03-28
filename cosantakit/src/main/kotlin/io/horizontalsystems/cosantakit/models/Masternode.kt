@@ -8,7 +8,6 @@ import io.horizontalsystems.bitcoincore.utils.HashUtils
 
 @Entity
 class Masternode() : Comparable<Masternode> {
-    var nVersion = 0
     @PrimaryKey
     var proRegTxHash = byteArrayOf()
     var confirmedHash = byteArrayOf()
@@ -24,22 +23,15 @@ class Masternode() : Comparable<Masternode> {
     var hash = byteArrayOf()
 
     constructor(input: BitcoinInputMarkable) : this() {
-        nVersion = input.readUnsignedShort()
         proRegTxHash = input.readBytes(32)
         confirmedHash = input.readBytes(32)
+
         ipAddress = input.readBytes(16)
         port = input.readUnsignedShort()
+
         pubKeyOperator = input.readBytes(48)
         keyIDVoting = input.readBytes(20)
         isValid = input.read() != 0
-
-        if (nVersion >= 2) {
-            type = input.readUnsignedShort()
-            if (type == 1) {
-                platformHTTPPort = input.readUnsignedShort()
-                platformNodeID = input.readBytes(20)
-            }
-        }
 
         val payload = BitcoinOutput()
             .write(proRegTxHash)

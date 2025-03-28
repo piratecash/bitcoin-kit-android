@@ -1,34 +1,44 @@
 package io.horizontalsystems.cosantakit.models
 
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.serializers.InputSerializer
+import io.horizontalsystems.bitcoincore.serializers.OutputSerializer
+import io.horizontalsystems.bitcoincore.storage.FullTransaction
 
-class CoinbaseTransaction(input: BitcoinInputMarkable) {
-    val transaction = TransactionSerializer.deserialize(input)
-    val coinbaseTransactionSize: Long
-    val version: Int
-    val height: Long
-    val merkleRootMNList: ByteArray
-    val merkleRootQuorums: ByteArray?
-    var bestCLHeightDiff: Long? = null
-    var bestCLSignature: ByteArray? = null
-    var creditPoolBalance: Long? = null
+internal object CoinbaseTransaction {
+    fun deserialize(input: BitcoinInputMarkable): FullTransaction {
+        val transaction = Transaction()
+        val inputs = mutableListOf<TransactionInput>()
+        val outputs = mutableListOf<TransactionOutput>()
 
-    init {
-        coinbaseTransactionSize = input.readVarInt()
+        val n32bitVersion = input.readInt()
+        transaction.version = (n32bitVersion and 0xFFFF).toInt()
+        val nType = (n32bitVersion shr 16).toUShort()
 
-        version = input.readUnsignedShort()
-        height = input.readUnsignedInt()
-        merkleRootMNList = input.readBytes(32)
-        merkleRootQuorums = when {
-            version >= 2 -> input.readBytes(32)
-            else -> null
+        //  inputs
+        val inputCount = input.readVarInt()
+        repeat(inputCount.toInt()) {
+            inputs.add(InputSerializer.deserialize(input))
         }
 
-        if (version >= 3) {
-            bestCLHeightDiff = input.readVarInt()
-            bestCLSignature = input.readBytes(96)
-            creditPoolBalance = input.readLong()
+        //  outputs
+        val outputCount = input.readVarInt()
+        for (i in 0 until outputCount) {
+            outputs.add(OutputSerializer.deserialize(input, i))
         }
+
+        transaction.lockTime = input.readUnsignedInt()
+
+        var vExtraPayload: ByteArray? = null
+        if (transaction.version == 3 && nType != 0.toUShort()) {
+            val payloadSize = input.readVarInt()
+            vExtraPayload = input.readBytes(payloadSize.toInt())
+        }
+
+        return FullTransaction(transaction, inputs, outputs)
     }
+
 }
