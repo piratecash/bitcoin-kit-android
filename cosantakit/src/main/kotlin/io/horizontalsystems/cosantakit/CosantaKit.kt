@@ -15,14 +15,12 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
-import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelector
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorSingleNoChange
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.Checkpoint
-import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
@@ -71,7 +69,6 @@ import io.horizontalsystems.cosantakit.validators.CosantaProofOfWorkValidator
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
-import io.reactivex.Single
 
 class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     enum class NetworkType {
@@ -220,8 +217,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
 
         cosantaTransactionInfoConverter = CosantaTransactionInfoConverter(instantTransactionManager)
 
-        val blockHelper = BlockValidatorHelper(coreStorage)
-
         val blockValidatorSet = BlockValidatorSet()
         blockValidatorSet.addBlockValidator(CosantaProofOfWorkValidator())
         blockValidatorSet.addBlockValidator(CosantaProofOfStakeValidator())
@@ -350,7 +345,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             val cosantaApi = CosantaApi()
 
             if (syncMode is SyncMode.Blockchair) {
-//                val blockchairApi = BlockchairApi(network.blockchairChainId)
                 val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(cosantaApi)
                 val blockchairProvider =
                     BlockchairTransactionProvider(cosantaApi, blockchairBlockHashFetcher)
@@ -368,20 +362,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         NetworkType.TestNet -> {
             InsightApi("https://testnet-insight.dash.org/insight-api")
         }
-    }
-
-    fun cosantaTransactions(
-        fromUid: String? = null,
-        type: TransactionFilterType? = null,
-        limit: Int? = null
-    ): Single<List<CosantaTransactionInfo>> {
-        return transactions(fromUid, type, limit).map {
-            it.mapNotNull { it as? CosantaTransactionInfo }
-        }
-    }
-
-    fun getCosantaTransaction(hash: String): CosantaTransactionInfo? {
-        return getTransaction(hash) as? CosantaTransactionInfo
     }
 
     // BitcoinCore.Listener
@@ -426,12 +406,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
     }
 
     companion object {
-        const val maxTargetBits: Long = 0x1e0fffff
-
-        const val targetSpacing = 150             // 2.5 min. for mining 1 Block
-        const val targetTimespan = 3600L          // 1 hour for 24 blocks
-        const val heightInterval = targetTimespan / targetSpacing
-
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
         const val defaultPeerSize: Int = 5
