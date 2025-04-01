@@ -21,6 +21,7 @@ import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.Checkpoint
+import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
@@ -52,6 +53,18 @@ import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
 import io.reactivex.Single
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.net.Inet6Address
+import java.net.InetAddress
+import java.net.UnknownHostException
+import java.util.logging.Logger
+import kotlin.collections.map
 
 class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     enum class NetworkType {
@@ -75,6 +88,12 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     private val dashStorage: DashStorage
     private val instantSend: InstantSend
     private val dashTransactionInfoConverter: DashTransactionInfoConverter
+
+    private val coreStorage: Storage
+
+    private val mutex = Mutex()
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val logger = Logger.getLogger("DashKit Custom")
 
     constructor(
         context: Context,
@@ -166,7 +185,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val coreDatabase = CoreDatabase.getInstance(context, getDatabaseNameCore(networkType, walletId, syncMode))
         val dashDatabase = DashKitDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode))
 
-        val coreStorage = Storage(coreDatabase)
+        coreStorage = Storage(coreDatabase)
         dashStorage = DashStorage(dashDatabase, coreStorage)
 
         network = network(networkType)
@@ -272,6 +291,23 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val confirmedUnspentOutputProvider = ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold)
         bitcoinCore.prependUnspentOutputSelector(UnspentOutputSelector(calculator, dustCalculator, confirmedUnspentOutputProvider))
         bitcoinCore.prependUnspentOutputSelector(UnspentOutputSelectorSingleNoChange(calculator, dustCalculator, confirmedUnspentOutputProvider))
+    }
+
+    fun addPeers(dnsList: List<String>) {
+        coroutineScope.launch {
+            dnsList.map { host ->
+                launch {
+                    val ips = getIpByUrl(host)
+                    if (ips != null) {
+                        mutex.withLock {
+                            coreStorage.setPeerAddresses(ips.map { PeerAddress(it, 0) })
+                        }
+                    } else {
+                        logger.warning("Cannot look up host: $host")
+                    }
+                }
+            }.joinAll()
+        }
     }
 
     private fun apiTransactionProvider(
@@ -385,6 +421,15 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
                 }
             }
         }
-    }
 
+        private fun getIpByUrl(host: String): List<String>? = try {
+            InetAddress
+                .getAllByName(host)
+                .filter { it !is Inet6Address }
+                .mapNotNull { it.hostAddress }
+        } catch (e: UnknownHostException) {
+            e.printStackTrace()
+            null
+        }
+    }
 }
