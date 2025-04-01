@@ -14,9 +14,11 @@ class DogeCoinMerkleBlockMessageParser(private val blockHeaderParser: BlockHeade
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
         val header = blockHeaderParser.parse(input)
 
-        if (isAuxBlock(header.version.toLong())) {
-            val auxPoWMessage = AuxPowSerializer.deserialize(input)
+        val auxPoWMessage = if (isAuxBlock(header.version.toLong())) {
+            AuxPowSerializer.deserialize(input)
             // No need this data, just parse it to skip
+        } else {
+            null
         }
 
         val txCount = input.readInt()
@@ -32,7 +34,15 @@ class DogeCoinMerkleBlockMessageParser(private val blockHeaderParser: BlockHeade
             throw IOException("Bad merkleblock: flagsCount=$flagsCount but only ${input.available()} bytes left")
         }
         val flags = input.readBytes(flagsCount)
-        return MerkleBlockMessage(header, txCount, hashCount, hashes, flagsCount, flags)
+        return MerkleBlockMessage(
+            header = header,
+            txCount = txCount,
+            hashCount = hashCount,
+            hashes = hashes,
+            flagsCount = flagsCount,
+            flags = flags,
+            extraData = auxPoWMessage
+        )
     }
 
     private fun isAuxBlock(version: Long): Boolean {

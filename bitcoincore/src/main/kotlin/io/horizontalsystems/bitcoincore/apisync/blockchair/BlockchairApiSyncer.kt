@@ -63,7 +63,7 @@ class BlockchairApiSyncer(
             previousBlockHeaderHash = byteArrayOf(),
             merkleRoot = byteArrayOf(),
             timestamp = blockHeaderItem.timestamp,
-            bits = 0,
+            bits = -1,
             nonce = 0
         )
 

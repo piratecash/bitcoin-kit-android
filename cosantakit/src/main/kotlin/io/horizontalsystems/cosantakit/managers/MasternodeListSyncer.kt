@@ -44,7 +44,7 @@ class MasternodeListSyncer(
                         val baseBlockHash = masternodeListManager.baseBlockHash
 
                         if (!blockHash.contentEquals(baseBlockHash)) {
-                            val task = peerTaskFactory.createRequestMasternodeListDiffTask(baseBlockHash, blockHash.reversedArray())
+                            val task = peerTaskFactory.createRequestMasternodeListDiffTask(baseBlockHash, blockHash)
                             syncedPeer.addTask(task)
 
                             workingPeer = syncedPeer

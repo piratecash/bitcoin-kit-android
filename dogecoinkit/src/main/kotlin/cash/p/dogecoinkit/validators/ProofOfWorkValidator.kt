@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 import io.horizontalsystems.bitcoincore.models.Block
 import cash.p.dogecoinkit.ScryptHasher
+import cash.p.dogecoinkit.serializers.AuxHeader
 import java.math.BigInteger
 
 class ProofOfWorkValidator(private val scryptHasher: ScryptHasher) : IBlockChainedValidator {
@@ -16,7 +17,19 @@ class ProofOfWorkValidator(private val scryptHasher: ScryptHasher) : IBlockChain
 
         val powHash = scryptHasher.hash(blockHeaderData).toHexString()
 
-        check(BigInteger(powHash, 16) < CompactBits.decode(block.bits)) {
+        if(block.merkleBlock?.extraData as? AuxHeader != null) {
+            val auxHeader = block.merkleBlock?.extraData as AuxHeader
+            validateAuxPow(auxHeader, block.bits)
+        } else {
+            check(BigInteger(powHash, 16) < CompactBits.decode(block.bits)) {
+                throw BlockValidatorException.InvalidProofOfWork()
+            }
+        }
+    }
+
+    private fun validateAuxPow(auxHeader: AuxHeader, bits: Long) {
+        val powHash = scryptHasher.hash(auxHeader.constructParentHeader()).toHexString()
+        check(BigInteger(powHash, 16) < CompactBits.decode(bits)) {
             throw BlockValidatorException.InvalidProofOfWork()
         }
     }

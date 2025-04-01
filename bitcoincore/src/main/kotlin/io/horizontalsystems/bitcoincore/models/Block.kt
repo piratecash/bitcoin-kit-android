@@ -38,6 +38,7 @@ class Block() {
     var height: Int = 0
     var stale = false
     var partial = false
+    var orphan = false
 
     @Ignore
     var merkleBlock: MerkleBlock? = null

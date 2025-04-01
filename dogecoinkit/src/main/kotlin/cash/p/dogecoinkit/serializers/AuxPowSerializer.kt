@@ -1,9 +1,7 @@
 package cash.p.dogecoinkit.serializers
 
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
-import io.horizontalsystems.bitcoincore.io.UnsafeByteArrayOutputStream
-import io.horizontalsystems.bitcoincore.utils.Utils
-import java.io.ByteArrayOutputStream
+import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 
 
 object AuxPowSerializer {
@@ -90,17 +88,14 @@ class AuxHeader {
     var parentBlockBits: Long = 0
     var parentBlockNonce: Long = 0
 
-
-    fun constructParentHeader(): ByteArray {
-        val stream: ByteArrayOutputStream = UnsafeByteArrayOutputStream(80)
-        Utils.uint32ToByteStreamLE(parentBlockVersion, stream)
-        stream.write(Utils.reverseBytes(parentBlockPrev))
-        stream.write(Utils.reverseBytes(parentBlockMerkleRoot))
-        Utils.uint32ToByteStreamLE(parentBlockTime, stream)
-        Utils.uint32ToByteStreamLE(parentBlockBits, stream)
-        Utils.uint32ToByteStreamLE(parentBlockNonce, stream)
-        return stream.toByteArray()
-    }
+    fun constructParentHeader(): ByteArray = BitcoinOutput()
+        .writeUnsignedInt(parentBlockVersion)
+        .write(parentBlockPrev)
+        .write(parentBlockMerkleRoot)
+        .writeUnsignedInt(parentBlockTime)
+        .writeUnsignedInt(parentBlockBits)
+        .writeUnsignedInt(parentBlockNonce)
+        .toByteArray()
 }
 
 class AuxCoinbaseOut {

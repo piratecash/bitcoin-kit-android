@@ -38,7 +38,7 @@ internal class CbTxDto(
 
 internal fun BlockDto.toBlockHeaderItem(): BlockHeaderItem {
     return BlockHeaderItem(
-        hash = hash.hexToByteArray(),
+        hash = hash.hexToByteArray().reversedArray(),
         height = height,
         timestamp = time
     )

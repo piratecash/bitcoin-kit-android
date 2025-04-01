@@ -46,7 +46,6 @@ import io.horizontalsystems.dashkit.models.DashTransactionInfo
 import io.horizontalsystems.dashkit.models.InstantTransactionState
 import io.horizontalsystems.dashkit.storage.DashKitDatabase
 import io.horizontalsystems.dashkit.storage.DashStorage
-import io.horizontalsystems.dashkit.tasks.PeerTaskFactory
 import io.horizontalsystems.dashkit.validators.DarkGravityWaveTestnetValidator
 import io.horizontalsystems.dashkit.validators.DarkGravityWaveValidator
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
@@ -61,7 +60,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     }
 
     interface Listener {
-        fun onTransactionsUpdate(inserted: List<DashTransactionInfo>, updated: List<DashTransactionInfo>)
+        fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>)
         fun onTransactionsDelete(hashes: List<String>)
         fun onBalanceUpdate(balance: BalanceInfo)
         fun onLastBlockInfoUpdate(blockInfo: BlockInfo)
@@ -231,8 +230,6 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .addMessageParser(ISLockMessageParser())
             .addMessageParser(TransactionMessageParser())
 
-        bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())
-
         val merkleRootHasher = MerkleRootHasher()
         val merkleRootCreator = MerkleRootCreator(merkleRootHasher)
         val masternodeListMerkleRootCalculator = MasternodeListMerkleRootCalculator(merkleRootCreator)
@@ -247,11 +244,6 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             MasternodeSortedList(),
             quorumListManager
         )
-        val masternodeSyncer = MasternodeListSyncer(bitcoinCore, PeerTaskFactory(), masternodeListManager, bitcoinCore.initialDownload)
-
-        bitcoinCore.addPeerTaskHandler(masternodeSyncer)
-        bitcoinCore.addPeerSyncListener(masternodeSyncer)
-        bitcoinCore.addPeerGroupListener(masternodeSyncer)
 
         val base58AddressConverter = Base58AddressConverter(network.addressVersion, network.addressScriptVersion)
         bitcoinCore.addRestoreKeyConverter(Bip44RestoreKeyConverter(base58AddressConverter))

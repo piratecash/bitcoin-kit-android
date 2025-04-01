@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.blocks
 
 import io.horizontalsystems.bitcoincore.core.IBlockSyncListener
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
+import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.network.peer.Peer
@@ -42,6 +43,8 @@ class BlockDownload(
         if (peer.synced && inventoryItems.any { it.type == InventoryItem.MSG_BLOCK }) {
             peer.synced = false
             syncedPeers.remove(peer)
+            blockSyncer.addBlockHashes(inventoryItems.filter { it.type == InventoryItem.MSG_BLOCK }
+                .map { it.hash })
 
             assignNextSyncPeer()
         }
@@ -151,14 +154,41 @@ class BlockDownload(
                 return
             }
 
+            // Need to request all blocks to resolve orphaned blocks
+            (blockSyncer.getOrphanParents()).let {
+                if (!it.isEmpty()) {
+                    logger.info("Requesting orphan parents (${it.size} [${it[0].headerHash.toHexString()}, ...]")
+                    peer.addTask(
+                        GetMerkleBlocksTask(
+                            hashes = it,
+                            merkleBlockHandler = this,
+                            merkleBlockExtractor = merkleBlockExtractor,
+                            minMerkleBlocks = minMerkleBlocks,
+                            minTransactions = minTransactions,
+                            minReceiveBytes = minReceiveBytes
+                        )
+                    )
+                }
+            }
+
             val blockHashes = blockSyncer.getBlockHashes(limit = 50)
             if (blockHashes.isEmpty()) {
                 peer.synced = true
             } else {
-                peer.addTask(GetMerkleBlocksTask(blockHashes, this, merkleBlockExtractor, minMerkleBlocks, minTransactions, minReceiveBytes))
+                peer.addTask(
+                    GetMerkleBlocksTask(
+                        hashes = blockHashes,
+                        merkleBlockHandler = this,
+                        merkleBlockExtractor = merkleBlockExtractor,
+                        minMerkleBlocks = minMerkleBlocks,
+                        minTransactions = minTransactions,
+                        minReceiveBytes = minReceiveBytes
+                    )
+                )
             }
 
             if (peer.synced) {
+
                 syncedPeers.add(peer)
 
                 blockSyncer.downloadCompleted()

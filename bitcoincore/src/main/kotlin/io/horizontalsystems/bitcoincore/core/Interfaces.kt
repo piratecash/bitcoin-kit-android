@@ -60,11 +60,13 @@ interface IStorage {
 
     //  Block
 
+    fun getOrphanBlocks(): List<Block>
     fun getBlockByHeightStalePrioritized(height: Int): Block?
 
     fun getBlock(height: Int): Block?
     fun getBlock(hashHash: ByteArray): Block?
     fun getBlock(stale: Boolean, sortedHeight: String): Block?
+    fun getOrphanChild(parentHash: ByteArray): Block?
 
     fun getBlocks(stale: Boolean): List<Block>
     fun getBlocks(heightGreaterThan: Int, sortedBy: String, limit: Int): List<Block>

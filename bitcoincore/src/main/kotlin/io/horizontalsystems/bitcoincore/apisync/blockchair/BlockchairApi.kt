@@ -75,7 +75,7 @@ class BlockchairApi(
         val date = data["best_block_time"].asString()
         val timestamp = dateStringToTimestamp(date)
 
-        return BlockHeaderItem(hash.hexToByteArray(), height, timestamp!!)
+        return BlockHeaderItem(hash.hexToByteArray().reversedArray(), height, timestamp!!)
     }
 
     override fun broadcastTransaction(rawTransactionHex: String) {

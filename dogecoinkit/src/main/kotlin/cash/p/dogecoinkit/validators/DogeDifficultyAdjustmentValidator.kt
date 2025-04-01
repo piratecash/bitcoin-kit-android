@@ -33,6 +33,7 @@ class DogeDifficultyAdjustmentValidator(
         val storedPrev = checkNotNull(validatorHelper.getPrevious(block, 1)) {
             BlockValidatorException.NoCheckpointBlock()
         }
+
         val newDiffAlgo = storedPrev.height + 1 >= DIFF_CHANGE_TARGET
         var retargetInterval = INTERVAL
         var retargetTimespan = TARGET_TIMESPAN
@@ -60,8 +61,7 @@ class DogeDifficultyAdjustmentValidator(
         }
 
         if (cursor == null) {
-            // This should never happen. If it does, it means we are following an incorrect or busted chain.
-            throw BlockValidatorException.NotDifficultyTransitionEqualBits()
+            return // looks like we don't have enough saved blocks
         }
         cursor = validatorHelper.getPrevious(cursor, goBack - 1)
 

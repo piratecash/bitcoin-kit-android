@@ -271,16 +271,6 @@ class DogecoinKit : AbstractKit {
                     maxTargetBits
                 )
             )
-/*
-            blockValidatorChain.add(
-                LegacyTestNetDifficultyValidator(
-                    storage,
-                    heightInterval,
-                    targetSpacing,
-                    maxTargetBits
-                )
-            )
-*/
             blockValidatorChain.add(BitsValidator())
         }
 

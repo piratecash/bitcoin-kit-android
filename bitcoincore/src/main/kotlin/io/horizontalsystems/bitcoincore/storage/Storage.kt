@@ -103,6 +103,9 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
 
     // Block
 
+    override fun getOrphanBlocks(): List<Block> =
+        store.block.getOrphanBlocks()
+
     override fun getBlockByHeightStalePrioritized(height: Int): Block? {
         return store.block.getBlockByHeightStalePrioritized(height)
     }
@@ -121,6 +124,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         } else {
             store.block.getFirst(stale)
         }
+    }
+
+    override fun getOrphanChild(parentHash: ByteArray): Block? {
+        return store.block.getOrphanChild(parentHash)
     }
 
     override fun getBlocks(stale: Boolean): List<Block> {

@@ -29,7 +29,11 @@ class MerkleBlockExtractor(private val maxBlockSize: Int) {
             }
         }
 
-        return MerkleBlock(message.header, matchedHashes)
+        return MerkleBlock(
+            header = message.header,
+            associatedTransactionHashes = matchedHashes,
+            extraData = message.extraData
+        )
     }
 }
 

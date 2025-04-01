@@ -9,11 +9,11 @@ import java.math.BigInteger
 import kotlin.math.min
 
 class DarkGravityWaveValidator(
-        private val blockHelper: BlockValidatorHelper,
-        private val heightInterval: Long,
-        private val targetTimespan: Long,
-        private val maxTargetBits: Long,
-        private val powDGWHeight: Int
+    private val blockHelper: BlockValidatorHelper,
+    private val heightInterval: Long,
+    private val targetTimespan: Long,
+    private val maxTargetBits: Long,
+    private val powDGWHeight: Int
 ) : IBlockChainedValidator {
 
     override fun validate(block: Block, previousBlock: Block) {
@@ -21,14 +21,16 @@ class DarkGravityWaveValidator(
         var avgTargets = CompactBits.decode(previousBlock.bits)
         var prevBlock = blockHelper.getPrevious(previousBlock, 1)
 
-        for (blockCount in 2..heightInterval) {
-            val currentBlock = checkNotNull(prevBlock) {
-                throw BlockValidatorException.NoPreviousBlock()
-            }
 
-            avgTargets *= BigInteger.valueOf(blockCount)
-            avgTargets += CompactBits.decode(currentBlock.bits)
-            avgTargets /= BigInteger.valueOf(blockCount + 1)
+        for (blockCount in 2..heightInterval) {
+            if (prevBlock == null) {
+                return // not enough blocks
+            }
+            val currentBlock = prevBlock
+            avgTargets =
+                (avgTargets * BigInteger.valueOf(blockCount - 1) + CompactBits.decode(currentBlock.bits)) / BigInteger.valueOf(
+                    blockCount
+                )
 
             if (blockCount < heightInterval) {
                 prevBlock = blockHelper.getPrevious(currentBlock, 1)
@@ -45,7 +47,8 @@ class DarkGravityWaveValidator(
             actualTimeSpan = targetTimespan * 3
 
         //  Retarget
-        darkTarget = darkTarget * BigInteger.valueOf(actualTimeSpan) / BigInteger.valueOf(targetTimespan)
+        darkTarget =
+            darkTarget * BigInteger.valueOf(actualTimeSpan) / BigInteger.valueOf(targetTimespan)
 
         val compact = min(CompactBits.encode(darkTarget), maxTargetBits)
         if (compact != block.bits) {

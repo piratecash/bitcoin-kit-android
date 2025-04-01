@@ -16,7 +16,6 @@ import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelector
-import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorSingleNoChange
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BlockInfo
@@ -322,13 +321,6 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold)
         bitcoinCore.prependUnspentOutputSelector(
             UnspentOutputSelector(
-                calculator,
-                dustCalculator,
-                confirmedUnspentOutputProvider
-            )
-        )
-        bitcoinCore.prependUnspentOutputSelector(
-            UnspentOutputSelectorSingleNoChange(
                 calculator,
                 dustCalculator,
                 confirmedUnspentOutputProvider
