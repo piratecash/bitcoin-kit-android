@@ -5,7 +5,7 @@ import io.horizontalsystems.bitcoincore.network.Network
 class MainNetDash(seeds: List<String> = defaultSeeds) : Network() {
 
     companion object {
-        internal val defaultSeeds = listOf(
+        val defaultSeeds = listOf(
             "dnsseed.dash.org",
             "dnsseed.dashdot.io",
             "dnsseed.masternode.io"
