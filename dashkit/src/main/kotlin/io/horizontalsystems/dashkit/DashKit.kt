@@ -252,11 +252,11 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         if (network is MainNetDash) {
             blockValidatorChain.add(
                 DarkGravityWaveValidator(
-                    blockHelper,
-                    heightInterval,
-                    targetTimespan,
-                    maxTargetBits,
-                    68589
+                    blockHelper = blockHelper,
+                    heightInterval = heightInterval,
+                    targetTimespan = targetTimespan,
+                    maxTargetBits = maxTargetBits,
+                    powDGWHeight = 68589
                 )
             )
         } else {
