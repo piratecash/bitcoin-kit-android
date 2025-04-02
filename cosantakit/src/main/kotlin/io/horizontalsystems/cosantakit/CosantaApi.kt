@@ -36,14 +36,23 @@ class CosantaApi : IApiTransactionProvider, Api {
 
         return runBlocking {
             val allTransactions = mutableListOf<TransactionItem>()
-
+            var leftGaps = GAP_LIMIT
             val results = addresses.map { address ->
                 coroutineScope.async {
                     fetchTransactions(address, 0, 50)
                 }
-            }.awaitAll()
+            }
 
-            for (txs in results) {
+            for (txs in results.awaitAll()) {
+                if (txs.isEmpty()) {
+                    leftGaps--
+                    if (leftGaps <= 0) {
+                        logger.info("Gaps limit reached")
+                        break
+                    }
+                } else {
+                    leftGaps = GAP_LIMIT
+                }
                 allTransactions.addAll(txs)
             }
             allTransactions
@@ -81,7 +90,7 @@ class CosantaApi : IApiTransactionProvider, Api {
         logger.info("Calling empty broadcastTransaction")
     }
 
-    private suspend fun fetchTransactions(
+    private fun fetchTransactions(
         addr: String,
         from: Int,
         to: Int
