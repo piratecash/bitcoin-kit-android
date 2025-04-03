@@ -90,16 +90,19 @@ class CosantaApi : IApiTransactionProvider, Api {
         logger.info("Calling empty broadcastTransaction")
     }
 
-    private fun fetchTransactions(
+    private suspend fun fetchTransactions(
         addr: String,
         from: Int,
         to: Int
     ): List<TransactionItem> = try {
         logger.info("fetchTransactions for address: $addr")
         val rawJson = apiManager.doOkHttpGetAsString("ext/getaddresstxs/$addr/$from/$to")!!
-        json.decodeFromString<List<AddressTxDto>>(rawJson).mapNotNull {
-            fetchTransactionInfo(it.txid)
+        val results = json.decodeFromString<List<AddressTxDto>>(rawJson).map {
+            coroutineScope.async {
+                fetchTransactionInfo(it.txid)
+            }
         }
+        results.awaitAll().filterNotNull()
     } catch (ex: Exception) {
         ex.printStackTrace()
         emptyList()
