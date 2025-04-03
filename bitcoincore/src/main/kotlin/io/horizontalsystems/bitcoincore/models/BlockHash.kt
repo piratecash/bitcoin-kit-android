@@ -5,7 +5,8 @@ import androidx.room.PrimaryKey
 
 @Entity
 class BlockHash(
-        @PrimaryKey
-        val headerHash: ByteArray,
-        val height: Int,
-        val sequence: Int = 0)
+    @PrimaryKey
+    val headerHash: ByteArray,
+    val height: Int,
+    val sequence: Int = 0
+)

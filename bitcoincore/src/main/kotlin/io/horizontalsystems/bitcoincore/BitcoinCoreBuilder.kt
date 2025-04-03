@@ -5,6 +5,7 @@ import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairLastBlockProvider
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairTransactionProvider
+import io.horizontalsystems.bitcoincore.apisync.blockchair.LastBlockProvider
 import io.horizontalsystems.bitcoincore.apisync.legacy.ApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.legacy.BlockHashDiscoveryBatch
 import io.horizontalsystems.bitcoincore.apisync.legacy.BlockHashScanHelper
@@ -129,6 +130,7 @@ class BitcoinCoreBuilder {
     private var watchAddressPublicKey: WatchAddressPublicKey? = null
     private var purpose: HDWallet.Purpose? = null
     private var network: Network? = null
+    private var customLastBLockProvider: LastBlockProvider? = null
     private var paymentAddressParser: PaymentAddressParser? = null
     private var storage: IStorage? = null
     private var apiTransactionProvider: IApiTransactionProvider? = null
@@ -168,6 +170,11 @@ class BitcoinCoreBuilder {
 
     fun setNetwork(network: Network): BitcoinCoreBuilder {
         this.network = network
+        return this
+    }
+
+    fun setCustomLastBlockProvider(customLastBLockProvider: LastBlockProvider): BitcoinCoreBuilder {
+        this.customLastBLockProvider = customLastBLockProvider
         return this
     }
 
@@ -351,7 +358,7 @@ class BitcoinCoreBuilder {
         val transactionExtractor = TransactionExtractor(addressConverter, storage, pluginManager, metadataExtractor)
 
         val conflictsResolver = TransactionConflictsResolver(storage)
-        val ignorePendingIncoming = syncMode is BitcoinCore.SyncMode.Blockchair
+        val ignorePendingIncoming = false //syncMode is BitcoinCore.SyncMode.Blockchair
         val pendingTransactionProcessor = PendingTransactionProcessor(
             storage,
             transactionExtractor,
@@ -385,15 +392,15 @@ class BitcoinCoreBuilder {
 
 
         val peerGroup = PeerGroup(
-            peerHostManager,
-            network,
-            peerManager,
-            peerSize,
-            networkMessageParser,
-            networkMessageSerializer,
-            connectionManager,
-            blockSyncer.localDownloadedBestBlockHeight,
-            handleAddrMessage
+            hostManager = peerHostManager,
+            network = network,
+            peerManager = peerManager,
+            peerSize = peerSize,
+            networkMessageParser = networkMessageParser,
+            networkMessageSerializer = networkMessageSerializer,
+            connectionManager = connectionManager,
+            localDownloadedBestBlockHeight = blockSyncer.localDownloadedBestBlockHeight,
+            handleAddrMessage = handleAddrMessage
         )
         peerHostManager.listener = peerGroup
 
@@ -404,22 +411,27 @@ class BitcoinCoreBuilder {
         val initialDownload: IInitialDownload
         val merkleBlockExtractor = MerkleBlockExtractor(network.maxBlockSize)
 
-        when (val syncMode = syncMode) {
+        when (syncMode) {
             is BitcoinCore.SyncMode.Blockchair -> {
-                val blockchairApi = if (apiTransactionProvider is BlockchairTransactionProvider) {
-                    apiTransactionProvider.blockchairApi
+                val lastBlockProvider = if (customLastBLockProvider != null) {
+                    customLastBLockProvider!!
                 } else {
-                    BlockchairApi(network.blockchairChainId)
+                    val blockchairApi = if (apiTransactionProvider is BlockchairTransactionProvider) {
+                        apiTransactionProvider.blockchairApi
+                    } else {
+                        BlockchairApi(network.blockchairChainId)
+                    }
+                    BlockchairLastBlockProvider(blockchairApi)
                 }
-                val lastBlockProvider = BlockchairLastBlockProvider(blockchairApi)
+
                 apiSyncer = BlockchairApiSyncer(
-                    storage,
-                    restoreKeyConverterChain,
-                    apiTransactionProvider,
-                    lastBlockProvider,
-                    publicKeyManager,
-                    blockchain,
-                    apiSyncStateManager
+                    storage = storage,
+                    restoreKeyConverter = restoreKeyConverterChain,
+                    transactionProvider = apiTransactionProvider,
+                    lastBlockProvider = lastBlockProvider,
+                    publicKeyManager = publicKeyManager,
+                    blockchain = blockchain,
+                    apiSyncStateManager = apiSyncStateManager
                 )
                 initialDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor)
             }

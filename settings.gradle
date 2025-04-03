@@ -1,9 +1,22 @@
+pluginManagement {
+    buildscript {
+        repositories {
+            gradlePluginPortal()
+            google()
+            mavenCentral()
+        }
+    }
+}
+
 include ':app',             // Demo app
         ':bitcoincore',     // Bitcoin Core
         ':bitcoinkit',      // Bitcoin kit
+        ':dashlib',         // Dash library
         ':dashkit',         // Dash kit
+        ':cosantakit',      // Cosanta kit
         ':bitcoincashkit',  // Bitcoin Cash kit
-        ':ecashkit',  // Bitcoin Cash kit
+        ':ecashkit',        // Bitcoin Cash kit
         ':litecoinkit',     // Litecoin kit
+        ':dogecoinkit',            // Doge kit
         ':hodler',          // Hodler
         ':tools'            // Checkpoint syncer

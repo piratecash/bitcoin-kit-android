@@ -7,6 +7,7 @@
 - `bitcoincashkit` extends **bitcoincore**, makes it usable with `BitcoinCash(ABC)` network.
 - `litecoinkit` extends **bitcoincore**, makes it usable with `Litecoin` network.
 - `dashkit` extends **bitcoincore**, makes it usable with `Dash` network.
+- `dogecoinkit` extends **bitcoincore**, makes it usable with `Dogecoin` network.
 - `hodler` is a plugin for `bitcoincore`, that makes it possible to lock certain amount of coins until some time in the future. 
 
 Being an SPV client, **bitcoincore** downloads and validates all the block headers, inclusion of transactions in the blocks, integrity and immutability of transactions as described in the Bitcoin whitepaper or delegates validation to the extensions that implement the forks of Bitcoin.

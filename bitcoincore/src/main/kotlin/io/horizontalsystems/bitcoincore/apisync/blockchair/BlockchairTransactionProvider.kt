@@ -4,7 +4,7 @@ import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 
 class BlockchairTransactionProvider(
-    val blockchairApi: BlockchairApi,
+    val blockchairApi: Api,
     private val blockHashFetcher: IBlockHashFetcher
 ) : IApiTransactionProvider {
 

@@ -9,7 +9,7 @@ class BitsValidator : IBlockChainedValidator {
     }
 
     override fun validate(block: Block, previousBlock: Block) {
-        if (block.bits != previousBlock.bits) {
+        if (block.bits != previousBlock.bits && previousBlock.bits != -1L) {
             throw BlockValidatorException.NotEqualBits()
         }
     }

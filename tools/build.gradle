@@ -22,12 +22,13 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    kotlinOptions { jvmTarget = '17' }
     namespace 'io.horizontalsystems.tools'
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    implementation libs.kotlin.stdlib.jdk7
 
     implementation project(':bitcoincore')
     implementation project(':bitcoinkit')
@@ -35,4 +36,6 @@ dependencies {
     implementation project(':bitcoincashkit')
     implementation project(':litecoinkit')
     implementation project(':ecashkit')
+    implementation project(':dogecoinkit')
+    implementation project(':cosantakit')
 }

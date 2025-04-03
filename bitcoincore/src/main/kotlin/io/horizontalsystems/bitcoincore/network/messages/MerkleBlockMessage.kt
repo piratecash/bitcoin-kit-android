@@ -17,12 +17,14 @@ import io.horizontalsystems.bitcoincore.storage.BlockHeader
  *  Variable    flagsBits       Flag bits packed 8 per byte, least significant bit first
  */
 class MerkleBlockMessage(
-        var header: BlockHeader,
-        var txCount: Int,
-        var hashCount: Int,
-        var hashes: List<ByteArray>,
-        var flagsCount: Int,
-        var flags: ByteArray) : IMessage {
+    var header: BlockHeader,
+    var txCount: Int,
+    var hashCount: Int,
+    var hashes: List<ByteArray>,
+    var flagsCount: Int,
+    var flags: ByteArray,
+    val extraData: Any? = null
+) : IMessage {
 
     private val blockHash: String by lazy {
         header.hash.toReversedHex()

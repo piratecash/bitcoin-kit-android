@@ -13,7 +13,10 @@ import io.horizontalsystems.bitcoincore.network.messages.InvMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.InvMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.PingMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.PingMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.PongMessageParser
+import io.horizontalsystems.bitcoincore.network.messages.PongMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.VerAckMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.VerAckMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.VersionMessageParser
@@ -70,6 +73,8 @@ class CheckpointSyncer(
             add(VersionMessageParser())
             add(VerAckMessageParser())
             add(InvMessageParser())
+            add(PingMessageParser())
+            add(PongMessageParser())
             add(HeadersMessageParser(blockHeaderHasher))
         }
 
@@ -80,6 +85,7 @@ class CheckpointSyncer(
             add(GetHeadersMessageSerializer())
             add(HeadersMessageSerializer())
             add(PingMessageSerializer())
+            add(PongMessageSerializer())
         }
 
         val connectionManager = object : IConnectionManager {
@@ -94,7 +100,17 @@ class CheckpointSyncer(
         }
 
         val peerHostManager = PeerAddressManager(network)
-        peerGroup = PeerGroup(peerHostManager, network, peerManager, peerSize, networkMessageParser, networkMessageSerializer, connectionManager, 0, false).also {
+        peerGroup = PeerGroup(
+            hostManager = peerHostManager,
+            network = network,
+            peerManager = peerManager,
+            peerSize = peerSize,
+            networkMessageParser = networkMessageParser,
+            networkMessageSerializer = networkMessageSerializer,
+            connectionManager = connectionManager,
+            localDownloadedBestBlockHeight = 0,
+            handleAddrMessage = false
+        ).also {
             peerHostManager.listener = it
         }
 

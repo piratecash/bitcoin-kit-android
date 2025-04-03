@@ -35,49 +35,69 @@ object TransactionProcessorTest : Spek({
     beforeEachTest {
         fullTransaction = Fixtures.transactionP2PKH
         transaction = fullTransaction.header
-        processor = PendingTransactionProcessor(storage, extractor, publicKeyManager, irregularOutputFinder, blockchainDataListener, conflictsResolver)
+        processor = PendingTransactionProcessor(
+            storage,
+            extractor,
+            publicKeyManager,
+            irregularOutputFinder,
+            blockchainDataListener,
+            conflictsResolver,
+            false
+        )
     }
 
     fun transactions(): List<FullTransaction> {
 
         val tx1 = FullTransaction(
-                header = Transaction(),
-                inputs = listOf(TransactionInput(
-                        previousOutputTxHash = byteArrayOf(),
-                        previousOutputIndex = 1
-                )),
-                outputs = listOf(TransactionOutput())
+            header = Transaction(),
+            inputs = listOf(
+                TransactionInput(
+                    previousOutputTxHash = byteArrayOf(),
+                    previousOutputIndex = 1,
+                    sequence = 0
+                )
+            ),
+            outputs = listOf(TransactionOutput())
         )
         val tx2 = FullTransaction(
-                header = Transaction(),
-                inputs = listOf(TransactionInput(
-                        previousOutputTxHash = tx1.header.hash,
-                        previousOutputIndex = 0
-                )),
-                outputs = listOf(
-                        TransactionOutput().apply { index = 0 },
-                        TransactionOutput().apply { index = 1 })
+            header = Transaction(),
+            inputs = listOf(
+                TransactionInput(
+                    previousOutputTxHash = tx1.header.hash,
+                    previousOutputIndex = 0,
+                    sequence = 0
+                )
+            ),
+            outputs = listOf(
+                TransactionOutput().apply { index = 0 },
+                TransactionOutput().apply { index = 1 })
         )
         val tx3 = FullTransaction(
-                header = Transaction(),
-                inputs = listOf(TransactionInput(
-                        previousOutputTxHash = tx2.header.hash,
-                        previousOutputIndex = 0
-                )),
-                outputs = listOf(TransactionOutput().apply { index = 0 })
+            header = Transaction(),
+            inputs = listOf(
+                TransactionInput(
+                    previousOutputTxHash = tx2.header.hash,
+                    previousOutputIndex = 0,
+                    sequence = 0
+                )
+            ),
+            outputs = listOf(TransactionOutput().apply { index = 0 })
         )
         val tx4 = FullTransaction(
-                header = Transaction(),
-                inputs = listOf(
-                        TransactionInput(
-                                previousOutputTxHash = tx2.header.hash,
-                                previousOutputIndex = 0
-                        ),
-                        TransactionInput(
-                                previousOutputTxHash = tx3.header.hash,
-                                previousOutputIndex = 0
-                        )),
-                outputs = listOf(TransactionOutput().apply { index = 0 })
+            header = Transaction(),
+            inputs = listOf(
+                TransactionInput(
+                    previousOutputTxHash = tx2.header.hash,
+                    previousOutputIndex = 0,
+                    sequence = 0
+                ),
+                TransactionInput(
+                    previousOutputTxHash = tx3.header.hash,
+                    previousOutputIndex = 0,
+                    sequence = 0
+                )
+            ),
+            outputs = listOf(TransactionOutput().apply { index = 0 })
         )
 
         return listOf(tx1, tx2, tx3, tx4)
@@ -118,10 +138,20 @@ object TransactionProcessorTest : Spek({
             transactions[1].header.status = Transaction.Status.NEW
 
             try {
-                processor.processReceived(listOf(transactions[3], transactions[1], transactions[2], transactions[0]), false)
+                processor.processReceived(
+                    listOf(
+                        transactions[3],
+                        transactions[1],
+                        transactions[2],
+                        transactions[0]
+                    ), false
+                )
 
                 transactions.forEachIndexed { index, _ ->
-                    Assert.assertEquals(transactions[index].header.status, Transaction.Status.RELAYED)
+                    Assert.assertEquals(
+                        transactions[index].header.status,
+                        Transaction.Status.RELAYED
+                    )
                 }
             } catch (e: BloomFilterManager.BloomFilterExpired) {
             }
@@ -138,7 +168,14 @@ object TransactionProcessorTest : Spek({
                 transaction.header.order = 0
             }
 
-            processor.processReceived(listOf(transactions[3], transactions[1], transactions[2], transactions[0]), false)
+            processor.processReceived(
+                listOf(
+                    transactions[3],
+                    transactions[1],
+                    transactions[2],
+                    transactions[0]
+                ), false
+            )
 
             transactions.forEachIndexed { index, _ ->
                 Assert.assertEquals(transactions[index].header.status, Transaction.Status.RELAYED)

@@ -22,7 +22,7 @@ class BlockchairApiSyncer(
     private val storage: IStorage,
     private val restoreKeyConverter: IRestoreKeyConverter,
     private val transactionProvider: IApiTransactionProvider,
-    private val lastBlockProvider: BlockchairLastBlockProvider,
+    private val lastBlockProvider: LastBlockProvider,
     private val publicKeyManager: IPublicKeyManager,
     private val blockchain: Blockchain,
     private val apiSyncStateManager: ApiSyncStateManager,
@@ -63,7 +63,7 @@ class BlockchairApiSyncer(
             previousBlockHeaderHash = byteArrayOf(),
             merkleRoot = byteArrayOf(),
             timestamp = blockHeaderItem.timestamp,
-            bits = 0,
+            bits = -1,
             nonce = 0
         )
 

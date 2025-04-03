@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.models
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import io.horizontalsystems.bitcoincore.core.IStorage
@@ -37,13 +38,18 @@ class Block() {
     var height: Int = 0
     var stale = false
     var partial = false
+    var orphan = false
+
+    @Ignore
+    var merkleBlock: MerkleBlock? = null
 
     fun previousBlock(storage: IStorage): Block? {
         return storage.getBlock(hashHash = previousBlockHash)
     }
 
+    constructor(merkleBlock: MerkleBlock, previousBlock: Block) : this(merkleBlock.header, height = previousBlock.height + 1, merkleBlock)
     constructor(header: BlockHeader, previousBlock: Block) : this(header, height = previousBlock.height + 1)
-    constructor(header: BlockHeader, height: Int) : this() {
+    constructor(header: BlockHeader, height: Int, merkleBlock: MerkleBlock? = null) : this() {
         version = header.version
         previousBlockHash = header.previousBlockHeaderHash
         merkleRoot = header.merkleRoot
@@ -53,5 +59,6 @@ class Block() {
 
         headerHash = header.hash
         this.height = height
+        this.merkleBlock = merkleBlock
     }
 }

@@ -1,29 +1,53 @@
 package io.horizontalsystems.bitcoincore.storage
 
-import androidx.sqlite.db.SupportSQLiteDatabase
+import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
-import android.content.Context
-import io.horizontalsystems.bitcoincore.models.*
-import io.horizontalsystems.bitcoincore.storage.migrations.*
+import androidx.sqlite.db.SupportSQLiteDatabase
+import io.horizontalsystems.bitcoincore.models.Block
+import io.horizontalsystems.bitcoincore.models.BlockHash
+import io.horizontalsystems.bitcoincore.models.BlockHashPublicKey
+import io.horizontalsystems.bitcoincore.models.BlockchainState
+import io.horizontalsystems.bitcoincore.models.InvalidTransaction
+import io.horizontalsystems.bitcoincore.models.PeerAddress
+import io.horizontalsystems.bitcoincore.models.PublicKey
+import io.horizontalsystems.bitcoincore.models.ScriptTypeConverter
+import io.horizontalsystems.bitcoincore.models.SentTransaction
+import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
+import io.horizontalsystems.bitcoincore.models.TransactionMetadata
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.models.TransactionTypeConverter
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_10_11
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_11_12
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_12_13
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_13_14
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_14_15
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_15_16
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_16_17
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_17_18
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_18_19
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_19_20
 
-@Database(version = 19, exportSchema = false, entities = [
-    BlockchainState::class,
-    PeerAddress::class,
-    BlockHash::class,
-    BlockHashPublicKey::class,
-    Block::class,
-    SentTransaction::class,
-    Transaction::class,
-    TransactionInput::class,
-    TransactionOutput::class,
-    PublicKey::class,
-    InvalidTransaction::class,
-    TransactionMetadata::class
-])
+@Database(
+    version = 20, exportSchema = false, entities = [
+        BlockchainState::class,
+        PeerAddress::class,
+        BlockHash::class,
+        BlockHashPublicKey::class,
+        Block::class,
+        SentTransaction::class,
+        Transaction::class,
+        TransactionInput::class,
+        TransactionOutput::class,
+        PublicKey::class,
+        InvalidTransaction::class,
+        TransactionMetadata::class
+    ]
+)
 @TypeConverters(
     ScriptTypeConverter::class,
     TransactionTypeConverter::class
@@ -47,27 +71,28 @@ abstract class CoreDatabase : RoomDatabase() {
 
         fun getInstance(context: Context, dbName: String): CoreDatabase {
             return Room.databaseBuilder(context, CoreDatabase::class.java, dbName)
-                    .allowMainThreadQueries()
-                    .addMigrations(
-                            Migration_18_19,
-                            Migration_17_18,
-                            Migration_16_17,
-                            Migration_15_16,
-                            Migration_14_15,
-                            Migration_13_14,
-                            Migration_12_13,
-                            Migration_11_12,
-                            Migration_10_11,
-                            add_rawTransaction_to_Transaction,
-                            add_conflictingTxHash_to_Transaction,
-                            add_table_InvalidTransaction,
-                            update_transaction_output,
-                            update_block_timestamp,
-                            add_hasTransaction_to_Block,
-                            add_connectionTime_to_PeerAddress
-                    )
-                    .fallbackToDestructiveMigration()
-                    .build()
+                .allowMainThreadQueries()
+                .addMigrations(
+                    Migration_19_20,
+                    Migration_18_19,
+                    Migration_17_18,
+                    Migration_16_17,
+                    Migration_15_16,
+                    Migration_14_15,
+                    Migration_13_14,
+                    Migration_12_13,
+                    Migration_11_12,
+                    Migration_10_11,
+                    add_rawTransaction_to_Transaction,
+                    add_conflictingTxHash_to_Transaction,
+                    add_table_InvalidTransaction,
+                    update_transaction_output,
+                    update_block_timestamp,
+                    add_hasTransaction_to_Block,
+                    add_connectionTime_to_PeerAddress
+                )
+                .fallbackToDestructiveMigration()
+                .build()
         }
 
         private val add_rawTransaction_to_Transaction = object : Migration(9, 10) {

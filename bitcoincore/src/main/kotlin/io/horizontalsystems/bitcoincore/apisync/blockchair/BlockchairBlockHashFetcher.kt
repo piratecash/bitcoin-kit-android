@@ -6,7 +6,7 @@ interface IBlockHashFetcher {
 }
 
 class BlockchairBlockHashFetcher(
-    private val blockchairApi: BlockchairApi
+    private val blockchairApi: Api
 ) : IBlockHashFetcher {
     override fun fetch(heights: List<Int>): Map<Int, String> {
         return blockchairApi.blockHashes(heights)

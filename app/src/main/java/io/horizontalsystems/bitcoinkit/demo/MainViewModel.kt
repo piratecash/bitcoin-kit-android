@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoinkit.demo
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import cash.p.dogecoinkit.DogecoinKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
@@ -14,13 +15,15 @@ import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoinkit.BitcoinKit
-import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
+import io.horizontalsystems.cosantakit.CosantaKit
+import io.horizontalsystems.dashkit.DashKit
 import io.horizontalsystems.hodler.HodlerData
 import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
+import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.reactivex.disposables.CompositeDisposable
 
-class MainViewModel : ViewModel(), BitcoinKit.Listener {
+class MainViewModel : ViewModel(), DashKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -45,19 +48,26 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: BitcoinKit
+    private lateinit var bitcoinKit: DashKit
 
     private val walletId = "MyWallet"
-    private val networkType = BitcoinKit.NetworkType.MainNet
-    private val syncMode = BitcoinCore.SyncMode.Api()
-    private val purpose = Purpose.BIP44
+    private val networkType = DashKit.NetworkType.MainNet
+    private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         //TODO create unique seed phrase,perhaps using shared preferences?
-        val words = "used ugly meat glad balance divorce inner artwork hire invest already piano".split(" ")
+        val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = BitcoinKit(App.instance, words, passphrase, walletId, networkType, syncMode = syncMode, purpose = purpose)
+        bitcoinKit = DashKit(
+            context = App.instance,
+            words = words,
+            passphrase = passphrase,
+            walletId = walletId,
+            syncMode = syncMode,
+            networkType = networkType,
+            confirmationsThreshold = 3,
+        )
 
         bitcoinKit.listener = this
 
@@ -79,7 +89,7 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        BitcoinKit.clear(App.instance, networkType, walletId)
+        DashKit.clear(App.instance, networkType, walletId)
 
         init()
     }
@@ -94,9 +104,12 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
     }
 
     //
-    // BitcoinKit Listener implementations
+    // DashKit Listener implementations
     //
-    override fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>) {
+    override fun onTransactionsUpdate(
+        inserted: List<TransactionInfo>,
+        updated: List<TransactionInfo>
+    ) {
         setTransactionFilterType(transactionFilterType)
     }
 
@@ -154,9 +167,11 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
             address.isNullOrBlank() -> {
                 errorLiveData.value = "Send address cannot be blank"
             }
+
             amount == null -> {
                 errorLiveData.value = "Send amount cannot be blank"
             }
+
             else -> {
                 try {
                     val transaction = bitcoinKit.send(
@@ -188,13 +203,20 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
 
     fun onMaxClick() {
         try {
-            amountLiveData.value = bitcoinKit.maximumSpendableValue(address, null, feePriority.feeRate, null, getPluginData())
+            amountLiveData.value = bitcoinKit.maximumSpendableValue(
+                address,
+                null,
+                feePriority.feeRate,
+                null,
+                getPluginData()
+            )
         } catch (e: Exception) {
             amountLiveData.value = 0
             errorLiveData.value = when (e) {
 
                 is SendValueErrors.Dust,
                 is SendValueErrors.EmptyOutputs -> "You need at least ${e.message} satoshis to make an transaction"
+
                 is AddressFormatException -> "Could not Format Address"
                 else -> e.message ?: "Maximum could not be calculated"
             }
@@ -212,7 +234,14 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
     }
 
     private fun fee(value: Long, address: String? = null): BitcoinSendInfo {
-        return bitcoinKit.sendInfo(value, address, null, feeRate = feePriority.feeRate, unspentOutputs = null, pluginData = getPluginData())
+        return bitcoinKit.sendInfo(
+            value,
+            address,
+            null,
+            feeRate = feePriority.feeRate,
+            unspentOutputs = null,
+            pluginData = getPluginData()
+        )
     }
 
     private fun getPluginData(): MutableMap<Byte, IPluginData> {
@@ -230,10 +259,13 @@ class MainViewModel : ViewModel(), BitcoinKit.Listener {
     fun setTransactionFilterType(transactionFilterType: TransactionFilterType?) {
         this.transactionFilterType = transactionFilterType
 
-        bitcoinKit.transactions(type = transactionFilterType).subscribe { txList: List<TransactionInfo> ->
-            transactions.postValue(txList)
-        }.let {
-            disposables.add(it)
-        }
+        bitcoinKit.transactions(type = transactionFilterType)
+            .subscribe(/* onSuccess = */ { txList: List<TransactionInfo> ->
+                transactions.postValue(txList)
+            }, /* onError = */ { e ->
+                errorLiveData.value = e.message
+            }).let {
+                disposables.add(it)
+            }
     }
 }

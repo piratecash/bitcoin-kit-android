@@ -4,7 +4,11 @@ import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 
-class MerkleBlock(val header: BlockHeader, val associatedTransactionHashes: Map<HashBytes, Boolean>) {
+class MerkleBlock(
+    val header: BlockHeader,
+    val associatedTransactionHashes: Map<HashBytes, Boolean>,
+    val extraData: Any? = null
+) {
 
     var height: Int? = null
     var associatedTransactions = mutableListOf<FullTransaction>()
@@ -12,5 +16,4 @@ class MerkleBlock(val header: BlockHeader, val associatedTransactionHashes: Map<
 
     val complete: Boolean
         get() = associatedTransactionHashes.size == associatedTransactions.size
-
 }

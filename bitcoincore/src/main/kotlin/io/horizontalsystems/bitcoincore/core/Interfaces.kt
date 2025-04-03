@@ -60,10 +60,13 @@ interface IStorage {
 
     //  Block
 
+    fun getOrphanBlocks(): List<Block>
     fun getBlockByHeightStalePrioritized(height: Int): Block?
+
     fun getBlock(height: Int): Block?
     fun getBlock(hashHash: ByteArray): Block?
     fun getBlock(stale: Boolean, sortedHeight: String): Block?
+    fun getOrphanChild(parentHash: ByteArray): Block?
 
     fun getBlocks(stale: Boolean): List<Block>
     fun getBlocks(heightGreaterThan: Int, sortedBy: String, limit: Int): List<Block>
@@ -87,7 +90,12 @@ interface IStorage {
     //  Transaction
 
     fun getFullTransactionInfo(transactions: List<TransactionWithBlock>): List<FullTransactionInfo>
-    fun getFullTransactionInfo(fromTransaction: Transaction?, type: TransactionFilterType?, limit: Int?): List<FullTransactionInfo>
+    fun getFullTransactionInfo(
+        fromTransaction: Transaction?,
+        type: TransactionFilterType?,
+        limit: Int?
+    ): List<FullTransactionInfo>
+
     fun getFullTransactionInfo(txHash: ByteArray): FullTransactionInfo?
 
     fun getTransaction(hash: ByteArray): Transaction?
@@ -113,7 +121,11 @@ interface IStorage {
     fun getDescendantTransactionsFullInfo(txHash: ByteArray): List<FullTransactionInfo>
     fun getDescendantTransactions(txHash: ByteArray): List<Transaction>
     fun moveTransactionToInvalidTransactions(invalidTransactions: List<InvalidTransaction>)
-    fun moveInvalidTransactionToTransactions(invalidTransaction: InvalidTransaction, toTransactions: FullTransaction)
+    fun moveInvalidTransactionToTransactions(
+        invalidTransaction: InvalidTransaction,
+        toTransactions: FullTransaction
+    )
+
     fun deleteAllInvalidTransactions()
 
     //  Transaction Output
@@ -124,14 +136,21 @@ interface IStorage {
     fun getTransactionOutputs(transaction: Transaction): List<TransactionOutput>
     fun getOutputsOfPublicKey(publicKey: PublicKey): List<TransactionOutput>
     fun getMyOutputs(): List<TransactionOutput>
-    fun getOutputsForBloomFilter(blockHeight: Int, irregularScriptTypes: List<ScriptType>): List<TransactionOutput>
+    fun getOutputsForBloomFilter(
+        blockHeight: Int,
+        irregularScriptTypes: List<ScriptType>
+    ): List<TransactionOutput>
 
     // Transaction Input
 
     fun getTransactionInputs(transaction: Transaction): List<TransactionInput>
     fun getTransactionInputs(txHash: ByteArray): List<TransactionInput>
     fun getTransactionInputs(txHashes: List<ByteArray>): List<TransactionInput>
-    fun getTransactionInput(previousOutputTxHash: ByteArray, previousOutputIndex: Long): TransactionInput?
+    fun getTransactionInput(
+        previousOutputTxHash: ByteArray,
+        previousOutputIndex: Long
+    ): TransactionInput?
+
     fun getTransactionInputsByPrevOutputTxHash(txHash: ByteArray): List<TransactionInput>
 
     // PublicKey

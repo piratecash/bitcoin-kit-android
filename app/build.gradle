@@ -3,6 +3,19 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+configurations.all {
+    resolutionStrategy {
+        eachDependency { details ->
+            if (details.requested.group == 'org.bouncycastle' && details.requested.name == 'bcprov-jdk15on') {
+                details.useTarget 'org.bouncycastle:bcprov-jdk15to18:1.80'
+            }
+        }
+    }
+}
+
+def localProperties = new Properties()
+localProperties.load(new FileInputStream(rootProject.file("local.properties")))
+
 android {
     namespace 'io.horizontalsystems.bitcoinkit.demo'
     compileSdk 34
@@ -14,6 +27,7 @@ android {
         versionCode 1
         versionName "0.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "WORDS", "${localProperties['words']}"
     }
     buildTypes {
         release {
@@ -59,4 +73,6 @@ dependencies {
     implementation project(':bitcoincashkit')
     implementation project(':litecoinkit')
     implementation project(':ecashkit')
+    implementation project(':dogecoinkit')
+    implementation project(':cosantakit')
 }

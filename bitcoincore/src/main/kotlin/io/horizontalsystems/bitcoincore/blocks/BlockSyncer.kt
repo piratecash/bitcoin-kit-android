@@ -3,11 +3,14 @@ package io.horizontalsystems.bitcoincore.blocks
 import io.horizontalsystems.bitcoincore.core.IBlockSyncListener
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
 import io.horizontalsystems.bitcoincore.core.IStorage
+import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
+import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
+import java.util.logging.Logger
 
 class BlockSyncer(
     private val storage: IStorage,
@@ -17,6 +20,7 @@ class BlockSyncer(
     private val checkpoint: Checkpoint,
     private val state: State = State()
 ) {
+    private val logger = Logger.getLogger("BlockSyncer")
 
     var listener: IBlockSyncListener? = null
 
@@ -66,6 +70,17 @@ class BlockSyncer(
         return storage.getBlockHashesSortedBySequenceAndHeight(limit)
     }
 
+    fun getOrphanParents(): List<BlockHash> {
+        return storage.getOrphanBlocks()
+            .distinctBy { it.previousBlockHash.contentHashCode() }
+            .map {
+                BlockHash(
+                    headerHash = it.previousBlockHash,
+                    height = 0,
+                )
+            }
+    }
+
     fun getBlockLocatorHashes(peerLastBlockHeight: Int): List<ByteArray> {
         val result = mutableListOf<ByteArray>()
 
@@ -74,7 +89,11 @@ class BlockSyncer(
         }
 
         if (result.isEmpty()) {
-            storage.getBlocks(heightGreaterThan = checkpoint.block.height, sortedBy = "height", limit = 10).forEach {
+            storage.getBlocks(
+                heightGreaterThan = checkpoint.block.height,
+                sortedBy = "height",
+                limit = 10
+            ).forEach {
                 result.add(it.headerHash)
             }
         }
@@ -93,9 +112,10 @@ class BlockSyncer(
         var lastSequence = storage.getLastBlockHash()?.sequence ?: 0
 
         val existingHashes = storage.getBlockHashHeaderHashes()
-        val newBlockHashes = blockHashes.filter { existingHashes.none { n -> n.contentEquals(it) } }.map {
-            BlockHash(it, 0, ++lastSequence)
-        }
+        val newBlockHashes =
+            blockHashes.filter { existingHashes.none { n -> n.contentEquals(it) } }.map {
+                BlockHash(it, 0, ++lastSequence)
+            }
 
         storage.addBlockHashes(newBlockHashes)
     }
@@ -108,7 +128,11 @@ class BlockSyncer(
         }
 
         try {
-            transactionProcessor.processReceived(merkleBlock.associatedTransactions, block, state.iterationHasPartialBlocks)
+            transactionProcessor.processReceived(
+                transactions = merkleBlock.associatedTransactions,
+                block = block,
+                skipCheckBloomFilter = state.iterationHasPartialBlocks
+            )
         } catch (e: BloomFilterManager.BloomFilterExpired) {
             state.iterationHasPartialBlocks = true
         }
@@ -124,6 +148,21 @@ class BlockSyncer(
         } else {
             listener?.onCurrentBestBlockHeightUpdate(block.height, maxBlockHeight)
         }
+
+        checkParentsForOrphans(block, maxBlockHeight)
+    }
+
+    /***
+     * Check if there are any orphan blocks that have parents in the database.
+     */
+    private fun checkParentsForOrphans(block: Block, maxBlockHeight: Int) {
+        val orphan = storage.getOrphanChild(block.headerHash)
+        if (orphan != null && orphan.merkleBlock != null) {
+            orphan.merkleBlock?.let {
+                logger.info("Found orphan block ${it.blockHash.toHexString()} for parent")
+                handleMerkleBlock(it, maxBlockHeight)
+            }
+        }
     }
 
     fun shouldRequest(blockHash: ByteArray): Boolean {
@@ -131,7 +170,8 @@ class BlockSyncer(
     }
 
     private fun clearPartialBlocks() {
-        val excludedHashes = listOf(checkpoint.block.headerHash) + checkpoint.additionalBlocks.map { it.headerHash }
+        val excludedHashes =
+            listOf(checkpoint.block.headerHash) + checkpoint.additionalBlocks.map { it.headerHash }
         val toDelete = storage.getBlockHashHeaderHashes(except = excludedHashes)
 
         toDelete.chunked(sqliteMaxVariableNumber).forEach {

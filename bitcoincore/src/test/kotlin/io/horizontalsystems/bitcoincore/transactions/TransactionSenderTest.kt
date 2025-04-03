@@ -3,6 +3,7 @@ package io.horizontalsystems.bitcoincore.transactions
 import com.nhaarman.mockitokotlin2.doReturn
 import com.nhaarman.mockitokotlin2.mock
 import com.nhaarman.mockitokotlin2.whenever
+import io.horizontalsystems.bitcoincore.BitcoinCore.SendType
 import io.horizontalsystems.bitcoincore.blocks.InitialBlockDownload
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.network.peer.Peer
@@ -25,7 +26,17 @@ object TransactionSenderTest : Spek({
     val peer1 by memoized { mock<Peer> { on { ready } doReturn true } }
     val peer2 by memoized { mock<Peer> { on { ready } doReturn true } }
 
-    val transactionSender by memoized { TransactionSender(transactionSyncer, peerManager, initialBlockDownload, storage, timer) }
+    val transactionSender by memoized {
+        TransactionSender(
+            transactionSyncer,
+            peerManager,
+            initialBlockDownload,
+            storage,
+            timer,
+            SendType.P2P,
+            mock(),
+        )
+    }
 
     describe("#canSendTransaction") {
 

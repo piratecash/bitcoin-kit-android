@@ -9,11 +9,11 @@ import java.math.BigInteger
 import kotlin.math.min
 
 class DarkGravityWaveValidator(
-        private val blockHelper: BlockValidatorHelper,
-        private val heightInterval: Long,
-        private val targetTimespan: Long,
-        private val maxTargetBits: Long,
-        private val powDGWHeight: Int
+    private val blockHelper: BlockValidatorHelper,
+    private val heightInterval: Long,
+    private val targetTimespan: Long,
+    private val maxTargetBits: Long,
+    private val powDGWHeight: Int
 ) : IBlockChainedValidator {
 
     override fun validate(block: Block, previousBlock: Block) {
@@ -22,8 +22,9 @@ class DarkGravityWaveValidator(
         var prevBlock = blockHelper.getPrevious(previousBlock, 1)
 
         for (blockCount in 2..heightInterval) {
-            val currentBlock = checkNotNull(prevBlock) {
-                throw BlockValidatorException.NoPreviousBlock()
+            val currentBlock = prevBlock
+            if (currentBlock == null) {
+                return // No enough blocks to calculate the target
             }
 
             avgTargets *= BigInteger.valueOf(blockCount)
