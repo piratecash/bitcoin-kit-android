@@ -29,4 +29,6 @@ class TestNetBitcoinCash : Network() {
             "testnet-seed.deadalnix.me",            // Amaury SÉCHET
             "testnet-seeder.criptolayer.net"        // criptolayer.net
     )
+
+    override val logTag = "BCASH"
 }

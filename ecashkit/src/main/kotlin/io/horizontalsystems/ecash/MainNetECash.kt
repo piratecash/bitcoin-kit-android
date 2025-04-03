@@ -30,4 +30,6 @@ class MainNetECash : Network() {
         "seed.bchd.cash",                           // BCHD
         "x5.seeder.fabien.cash"                     // Fabien
     )
+
+    override val logTag = "ECASH"
 }

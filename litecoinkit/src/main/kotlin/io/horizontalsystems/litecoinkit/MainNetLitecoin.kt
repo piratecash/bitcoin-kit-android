@@ -26,4 +26,6 @@ class MainNetLitecoin : Network() {
             "x5.dnsseed.litecointools.com",
             "x5.dnsseed.litecoinpool.org"
     )
+
+    override val logTag = "LTC"
 }

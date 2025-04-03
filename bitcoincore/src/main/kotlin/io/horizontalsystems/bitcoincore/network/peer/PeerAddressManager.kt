@@ -13,7 +13,7 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
 
     private val state = State()
     private val logger = Logger.getLogger("PeerHostManager")
-    private val peerDiscover = PeerDiscover(this)
+    private val peerDiscover = PeerDiscover(this, network.logTag)
 
     override val hasFreshIps: Boolean
         get() {
@@ -39,7 +39,7 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
     override fun addIps(ips: List<String>) {
         storage.setPeerAddresses(ips.map { PeerAddress(it, 0) })
 
-        logger.info("Added new addresses: ${ips.size}")
+        logger.info("${network.logTag}: Added new addresses: ${ips.size}")
 
         listener?.onAddAddress()
     }
