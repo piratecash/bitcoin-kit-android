@@ -29,4 +29,5 @@ class RegTest : Network() {
             "btc03-regtest.blocksdecoded.com"
     )
 
+    override val logTag = "TST"
 }

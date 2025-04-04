@@ -242,6 +242,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             .setTransactionInfoConverter(cosantaTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
             .setCustomLastBlockProvider(CosantaLastBlockProvider(CosantaApi()))
+            .setRequestUnknownBlocks(true)
             .build()
             .addMessageParser(CosantaCoinMerkleBlockMessage(CosantaBlockHeaderParser()))
 

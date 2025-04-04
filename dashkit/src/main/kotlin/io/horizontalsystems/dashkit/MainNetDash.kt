@@ -30,4 +30,6 @@ class MainNetDash(seeds: List<String> = defaultSeeds) : Network() {
     override val dustRelayTxFee = 1000 // https://github.com/dashpay/dash/blob/master/src/policy/policy.h#L36
 
     override var dnsSeeds = seeds
+
+    override val logTag = "DASH"
 }

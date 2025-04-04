@@ -16,7 +16,9 @@ import java.util.logging.Logger
 class BlockDownload(
     private var blockSyncer: BlockSyncer,
     private val peerManager: PeerManager,
-    private val merkleBlockExtractor: MerkleBlockExtractor
+    private val merkleBlockExtractor: MerkleBlockExtractor,
+    private val requestUnknownBlocks: Boolean,
+    private val tag: String
 ) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler {
 
     override var listener: IBlockSyncListener? = null
@@ -43,8 +45,10 @@ class BlockDownload(
         if (peer.synced && inventoryItems.any { it.type == InventoryItem.MSG_BLOCK }) {
             peer.synced = false
             syncedPeers.remove(peer)
-            blockSyncer.addBlockHashes(inventoryItems.filter { it.type == InventoryItem.MSG_BLOCK }
-                .map { it.hash })
+            if (requestUnknownBlocks) {
+                blockSyncer.addBlockHashes(inventoryItems.filter { it.type == InventoryItem.MSG_BLOCK }
+                    .map { it.hash })
+            }
 
             assignNextSyncPeer()
         }
@@ -134,7 +138,7 @@ class BlockDownload(
                     syncPeer = nonSyncedPeer
                     blockSyncer.downloadStarted()
 
-                    logger.info("Start syncing peer ${nonSyncedPeer.host}")
+                    logger.info("$tag: Start syncing peer ${nonSyncedPeer.host}")
 
                     downloadBlockchain()
                 }
@@ -157,7 +161,7 @@ class BlockDownload(
             // Need to request all blocks to resolve orphaned blocks
             (blockSyncer.getOrphanParents()).let {
                 if (!it.isEmpty()) {
-                    logger.info("Requesting orphan parents (${it.size} [${it[0].headerHash.toHexString()}, ...]")
+                    logger.info("$tag: Requesting orphan parents (${it.size} [${it[0].headerHash.toHexString()}, ...]")
                     peer.addTask(
                         GetMerkleBlocksTask(
                             hashes = it,
@@ -193,7 +197,7 @@ class BlockDownload(
 
                 blockSyncer.downloadCompleted()
                 peer.sendMempoolMessage()
-                logger.info("Peer synced ${peer.host}")
+                logger.info("$tag: Peer synced ${peer.host}")
                 syncPeer = null
                 assignNextSyncPeer()
                 peerSyncListeners.forEach { it.onPeerSynced(peer) }

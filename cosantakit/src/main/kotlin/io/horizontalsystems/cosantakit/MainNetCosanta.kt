@@ -28,4 +28,6 @@ class MainNetCosanta : Network() {
         "dns.cosa.is",
         "65.109.95.133",
     )
+
+    override val logTag = "COSA"
 }

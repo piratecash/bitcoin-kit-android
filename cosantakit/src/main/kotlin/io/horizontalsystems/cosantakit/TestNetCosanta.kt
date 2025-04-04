@@ -28,4 +28,6 @@ class TestNetCosanta : Network() {
         "m1.cosanta.net",
         "m2.cosanta.net"
     )
+
+    override val logTag = "COSA"
 }

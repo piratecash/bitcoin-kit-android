@@ -50,7 +50,7 @@ class PeerConnection(
             val inputStream = socket.getInputStream()
             val bitcoinInput = BitcoinInput(inputStream)
 
-            logger.info("Socket $host connected.")
+            logger.info("${network.logTag}: Socket $host connected.")
 
             listener.socketConnected(socket.inetAddress)
 
@@ -65,11 +65,11 @@ class PeerConnection(
                 while (isRunning && inputStream.available() > 0) {
                     try {
                         val parsedMsg = networkMessageParser.parseMessage(bitcoinInput)
-                        logger.info("<= $parsedMsg")
+                        logger.info("${network.logTag}: <= $parsedMsg")
                         listener.onMessage(parsedMsg)
                     } catch (ex : Exception) {
                         ex.printStackTrace()
-                        logger.warning("Failed to parse message: ${ex.message}")
+                        logger.warning("${network.logTag}: Failed to parse message: ${ex.message}")
                     }
                 }
             }
@@ -97,7 +97,7 @@ class PeerConnection(
         sendingExecutor.execute {
             if (isRunning) {
                 try {
-                    logger.info("=> $message")
+                    logger.info("${network.logTag}: => $message")
                     outputStream?.write(networkMessageSerializer.serialize(message))
                 } catch (e: Exception) {
                     close(e)

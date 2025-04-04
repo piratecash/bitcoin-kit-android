@@ -26,4 +26,6 @@ class TestNet : Network() {
         "x5.seed.testnet.bitcoin.sprovoost.nl",
         "testnet-seed.bluematt.me"
     )
+
+    override val logTag = "BTC"
 }

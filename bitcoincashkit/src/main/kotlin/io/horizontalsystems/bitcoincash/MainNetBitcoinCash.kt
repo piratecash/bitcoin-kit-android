@@ -35,4 +35,6 @@ class MainNetBitcoinCash(coinType: CoinType = CoinType.Type145) : Network() {
         Type0(0),
         Type145(145)
     }
+
+    override val logTag = "BCASH"
 }
