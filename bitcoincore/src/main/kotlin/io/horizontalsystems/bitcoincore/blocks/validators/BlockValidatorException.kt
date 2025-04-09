@@ -12,7 +12,7 @@ open class BlockValidatorException(msg: String) : RuntimeException(msg) {
     class WrongPreviousHeader : BlockValidatorException("Wrong Previous Header Hash")
     class NotEqualBits : BlockValidatorException("Not Equal Bits")
     class NotDifficultyTransitionEqualBits(msg: String? = null) :
-        BlockValidatorException("Not Difficulty Transition Equal Bits: msg")
+        BlockValidatorException("Not Difficulty Transition Equal Bits: $msg")
 
     class InvalidProofOfWork : BlockValidatorException("Invalid Prove of Work")
     class WrongBlockHash(expected: ByteArray, actual: ByteArray) :

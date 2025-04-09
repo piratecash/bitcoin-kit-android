@@ -59,10 +59,8 @@ internal class X11HasherExt : IHasher {
 
     override fun hash(data: ByteArray): ByteArray {
         var hash = data
-        println("X11HasherExt, size: ${data.size}")
 
         algorithms.forEach {
-            println("Apply: ${it.javaClass}")
             hash = it.digest(hash)
         }
         hash = gost512(hash)
