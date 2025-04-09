@@ -25,4 +25,6 @@ class TestNetDash : Network() {
             "testnet-seed.dashdot.io",
             "test.dnsseed.masternode.io"
     )
+
+    override val logTag = "DASH"
 }

@@ -146,6 +146,7 @@ class BitcoinCoreBuilder {
     private var peerSize = 10
     private val plugins = mutableListOf<IPlugin>()
     private var handleAddrMessage = true
+    private var requestUnknownBlocks = false
     private var sendType: BitcoinCore.SendType = BitcoinCore.SendType.P2P
 
     fun setContext(context: Context): BitcoinCoreBuilder {
@@ -234,6 +235,11 @@ class BitcoinCoreBuilder {
 
     fun setHandleAddrMessage(handle: Boolean): BitcoinCoreBuilder {
         handleAddrMessage = handle
+        return this
+    }
+
+    fun setRequestUnknownBlocks(handle: Boolean): BitcoinCoreBuilder {
+        requestUnknownBlocks = handle
         return this
     }
 
@@ -433,7 +439,7 @@ class BitcoinCoreBuilder {
                     blockchain = blockchain,
                     apiSyncStateManager = apiSyncStateManager
                 )
-                initialDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor)
+                initialDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, requestUnknownBlocks, network.logTag)
             }
 
             else -> {

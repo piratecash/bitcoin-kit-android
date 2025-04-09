@@ -6,14 +6,11 @@ import io.horizontalsystems.bitcoincore.crypto.CompactBits
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
 import io.horizontalsystems.bitcoincore.models.Block
 import java.math.BigInteger
-import java.util.logging.Logger
 
 class DogeDifficultyAdjustmentValidator(
     private val validatorHelper: BlockValidatorHelper,
     private val maxTargetBits: Long
 ) : IBlockChainedValidator {
-
-    private val logger = Logger.getLogger("DogeDifficultyAdjustmentValidator")
 
     private companion object {
         const val DIFF_CHANGE_TARGET = 145000
@@ -67,13 +64,7 @@ class DogeDifficultyAdjustmentValidator(
 
         //We used checkpoints...
         if (cursor == null) {
-            logger.info("Difficulty transition: Hit checkpoint!")
             return
-        }
-
-        val elapsed = System.currentTimeMillis() - now
-        if (elapsed > 50) {
-            logger.info("Difficulty transition traversal took ${elapsed}ms")
         }
 
         val blockIntervalAgo = cursor
@@ -108,7 +99,6 @@ class DogeDifficultyAdjustmentValidator(
             .divide(BigInteger.valueOf(targetTimespan.toLong()))
 
         if (newDifficulty > CompactBits.decode(maxTargetBits)) {
-            logger.info("Difficulty hit proof of work limit: ${newDifficulty.toString(16)}")
             newDifficulty = CompactBits.decode(maxTargetBits)
         }
 

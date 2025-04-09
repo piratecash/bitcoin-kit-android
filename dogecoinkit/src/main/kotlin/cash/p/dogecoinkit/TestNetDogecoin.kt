@@ -24,4 +24,6 @@ class TestNetDogecoin : Network() {
         "jrn.me.uk",
         "testseed.jrn.me.uk"
     )
+
+    override val logTag = "DOGE"
 }

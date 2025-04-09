@@ -33,4 +33,6 @@ class MainNetDogecoin : Network() {
         "47.130.57.2",
         "144.6.50.249"
     )
+
+    override val logTag = "DOGE"
 }
