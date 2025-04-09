@@ -10,7 +10,7 @@ open class BlockValidatorException(msg: String) : RuntimeException(msg) {
         BlockValidatorException("No PreviousBlock: ${block?.toHexString()}")
 
     class WrongPreviousHeader : BlockValidatorException("Wrong Previous Header Hash")
-    class NotEqualBits : BlockValidatorException("Not Equal Bits")
+    class NotEqualBits(msg: String? = null) : BlockValidatorException("Not Equal Bits: $msg")
     class NotDifficultyTransitionEqualBits(msg: String? = null) :
         BlockValidatorException("Not Difficulty Transition Equal Bits: $msg")
 
