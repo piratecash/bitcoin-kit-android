@@ -13,52 +13,20 @@ class DogeDifficultyAdjustmentValidator(
 ) : IBlockChainedValidator {
 
     private companion object {
-        const val DIFF_CHANGE_TARGET = 145000
-        const val MIN_DIFF_BLOCK_HEIGHT = 157500  // Minimum difficulty blocks only allowed after this height
-        const val TARGET_TIMESPAN = (4 * 60 * 60)  // 4h per difficulty cycle, on average.
-        const val TARGET_TIMESPAN_NEW = 60  // 60s per difficulty cycle, on average. Kicks in after block 145k.
-        const val TARGET_SPACING = 60  // 1 minute per block.
-        const val INTERVAL = TARGET_TIMESPAN / TARGET_SPACING;
-        const val INTERVAL_NEW = TARGET_TIMESPAN_NEW / TARGET_SPACING;
+        const val DIFF_CHANGE_TARGET = 145000    // Block height at which Digishield activates
+        const val MIN_DIFF_BLOCK_HEIGHT = 157500 // Height at which min difficulty blocks are allowed
+        const val TARGET_TIMESPAN = 4 * 60 * 60  // 4 hours (pre-Digishield)
+        const val TARGET_TIMESPAN_NEW = 60       // 60 seconds (Digishield)
+        const val TARGET_SPACING = 60            // 1 minute target block time
     }
 
     override fun isBlockValidatable(block: Block, previousBlock: Block): Boolean {
         return true
     }
 
-    /**
-     * Check if minimum difficulty is allowed for a block
-     * This is the general minimum difficulty check that applies regardless of algorithm
-     */
-    private fun allowMinDifficultyForBlock(previousBlock: Block, block: Block): Boolean {
-        // Minimum difficulty blocks are only allowed after height 157500
-        if (previousBlock.height < MIN_DIFF_BLOCK_HEIGHT) {
-            return false
-        }
-
-        // Allow minimum difficulty if block time is more than 2*TARGET_SPACING
-        return block.timestamp > previousBlock.timestamp + TARGET_SPACING * 2
-    }
-
-    /**
-     * Check if minimum difficulty is allowed for DigiShield blocks
-     * This specifically checks for DigiShield-specific conditions
-     */
-    private fun allowDigishieldMinDifficultyForBlock(previousBlock: Block, block: Block): Boolean {
-        // First, check general minimum difficulty conditions
-        if (!allowMinDifficultyForBlock(previousBlock, block)) {
-            return false
-        }
-
-        // Additionally check if we're using DigiShield algorithm (after block 145000)
-        // This should almost always be true for modern Dogecoin blocks
-        return previousBlock.height >= DIFF_CHANGE_TARGET
-    }
-
     override fun validate(block: Block, previousBlock: Block) {
-        // Check for min difficulty blocks first
-        if (allowDigishieldMinDifficultyForBlock(previousBlock, block)) {
-            // For min difficulty blocks, verify bits equals maxTargetBits
+        // Check if this is a minimum difficulty block
+        if (isMinDifficultyAllowed(previousBlock, block)) {
             if (block.bits != maxTargetBits) {
                 throw BlockValidatorException.NotEqualBits(
                     "1: ${block.bits} != $maxTargetBits"
@@ -67,111 +35,113 @@ class DogeDifficultyAdjustmentValidator(
             return
         }
 
-        val storedPrev = checkNotNull(validatorHelper.getPrevious(block, 1)) {
-            BlockValidatorException.NoCheckpointBlock()
-        }
+        // Check if we're using the new difficulty protocol (Digishield)
+        val newDifficultyProtocol = previousBlock.height + 1 >= DIFF_CHANGE_TARGET
 
-        val newDiffAlgo = storedPrev.height + 1 >= DIFF_CHANGE_TARGET
-        var retargetInterval = INTERVAL
-        var retargetTimespan = TARGET_TIMESPAN
+        // Calculate the difficulty adjustment interval
+        val difficultyAdjustmentInterval = if (newDifficultyProtocol) 1 else TARGET_TIMESPAN / TARGET_SPACING
 
-        if (newDiffAlgo) {
-            retargetInterval = INTERVAL_NEW
-            retargetTimespan = TARGET_TIMESPAN_NEW
-        }
-
-        // If we're not at a difficulty adjustment interval,
-        // just check that difficulty remains the same
-        if ((storedPrev.height + 1) % retargetInterval != 0) {
-            // For non-retargeting blocks, we still need to check if minimum difficulty is allowed
-            // This is relevant for testnet, even with DigiShield algorithm
-            if (allowMinDifficultyForBlock(previousBlock, block)) {
-                if (block.bits != maxTargetBits) {
-                    throw BlockValidatorException.NotEqualBits(
-                        "2: ${block.bits} != $maxTargetBits"
-                    )
-                }
-                return
-            }
-
-            // Otherwise, check that bits remain the same
+        // If we're not at a difficulty adjustment interval, bits should match the previous block
+        if ((previousBlock.height + 1) % difficultyAdjustmentInterval != 0) {
             if (block.bits != previousBlock.bits) {
-                throw BlockValidatorException.NotDifficultyTransitionEqualBits(
-                    "${block.bits} != ${previousBlock.bits}"
+                throw BlockValidatorException.NotEqualBits(
+                    "2: ${block.bits} != ${previousBlock.bits}"
                 )
             }
             return
         }
 
-        // At a difficulty adjustment interval - calculate the new difficulty
+        // We're at a difficulty adjustment interval - calculate new difficulty
 
-        // We need to find a block far back in the chain
-        val now = System.currentTimeMillis()
-
-        var cursor: Block? = validatorHelper.getPrevious(previousBlock, 1)
-        var goBack = retargetInterval - 1
-        if (cursor != null && cursor.height + 1 != retargetInterval) {
-            goBack = retargetInterval
+        // Determine how many blocks to go back
+        val blocksToGoBack = if (difficultyAdjustmentInterval > 1 &&
+            previousBlock.height + 1 != difficultyAdjustmentInterval) {
+            difficultyAdjustmentInterval
+        } else {
+            difficultyAdjustmentInterval - 1
         }
 
-        if (cursor == null) {
-            return // looks like we don't have enough saved blocks
+        // Find the block at the beginning of the adjustment period
+        val firstBlock = getAdjustmentBlock(previousBlock, blocksToGoBack)
+            ?: return // Not enough blocks, skip validation
+
+        // Calculate new target based on time difference
+        val newBits = calculateNextWorkRequired(previousBlock, firstBlock, newDifficultyProtocol)
+
+        // Check if the block's bits match our calculation
+        if (newBits != block.bits) {
+            throw BlockValidatorException.NotEqualBits(
+                "3: ${block.bits} != $newBits"
+            )
         }
-        cursor = validatorHelper.getPrevious(cursor, goBack - 1)
+    }
 
-        // We used checkpoints...
-        if (cursor == null) {
-            return
+    private fun getAdjustmentBlock(previousBlock: Block, blocksToGoBack: Int): Block? {
+        var cursor = validatorHelper.getPrevious(previousBlock, 1) ?: return null
+
+        if (blocksToGoBack > 1) {
+            cursor = validatorHelper.getPrevious(cursor, blocksToGoBack - 1) ?: return null
         }
 
-        val blockIntervalAgo = cursor
-        var timespan = (previousBlock.timestamp - blockIntervalAgo.timestamp).toInt()
-        val targetTimespan = retargetTimespan
+        return cursor
+    }
 
-        // Apply appropriate timespan limits based on algorithm
-        if (newDiffAlgo) {
-            // DigiShield implementation - amplitude filter
-            timespan = retargetTimespan + (timespan - retargetTimespan) / 8
+    private fun isMinDifficultyAllowed(previousBlock: Block, block: Block): Boolean {
+        // Only allowed after a certain height
+        if (previousBlock.height < MIN_DIFF_BLOCK_HEIGHT) {
+            return false
+        }
 
-            // DigiShield specific limits
-            timespan = timespan.coerceIn(
-                retargetTimespan - retargetTimespan / 4,
-                retargetTimespan + retargetTimespan / 2
+        // Allow minimum difficulty if block time is more than 2*TARGET_SPACING
+        return block.timestamp > previousBlock.timestamp + TARGET_SPACING * 2
+    }
+
+    private fun calculateNextWorkRequired(
+        previousBlock: Block,
+        firstBlock: Block,
+        isDigishield: Boolean
+    ): Long {
+        // Get the actual time span between blocks
+        var actualTimespan = (previousBlock.timestamp - firstBlock.timestamp).toInt()
+        val targetTimespan = if (isDigishield) TARGET_TIMESPAN_NEW else TARGET_TIMESPAN
+
+        // Apply different timespan adjustments based on algorithm
+        if (isDigishield) {
+            // DigiShield: amplitude filter then clamp
+            actualTimespan = targetTimespan + (actualTimespan - targetTimespan) / 8
+            actualTimespan = actualTimespan.coerceIn(
+                targetTimespan - targetTimespan / 4,
+                targetTimespan + targetTimespan / 2
             )
         } else {
-            // Limit the adjustment step for original algorithm based on height
-            timespan = when {
-                storedPrev.height + 1 > 10000 -> timespan.coerceIn(
+            // Original algorithm: height-dependent clamping
+            actualTimespan = when {
+                previousBlock.height + 1 > 10000 -> actualTimespan.coerceIn(
                     targetTimespan / 4,
                     targetTimespan * 4
                 )
-                storedPrev.height + 1 > 5000 -> timespan.coerceIn(
+                previousBlock.height + 1 > 5000 -> actualTimespan.coerceIn(
                     targetTimespan / 8,
                     targetTimespan * 4
                 )
-                else -> timespan.coerceIn(targetTimespan / 16, targetTimespan * 4)
+                else -> actualTimespan.coerceIn(
+                    targetTimespan / 16,
+                    targetTimespan * 4
+                )
             }
         }
 
-        // Calculate new target based on timespan
-        var newDifficulty = CompactBits.decode(previousBlock.bits)
-        newDifficulty = newDifficulty.multiply(BigInteger.valueOf(timespan.toLong()))
+        // Calculate new target
+        var newTarget = CompactBits.decode(previousBlock.bits)
+        newTarget = newTarget.multiply(BigInteger.valueOf(actualTimespan.toLong()))
             .divide(BigInteger.valueOf(targetTimespan.toLong()))
 
-        // Cap at proof of work limit
+        // Make sure new target doesn't exceed maximum
         val maxTarget = CompactBits.decode(maxTargetBits)
-        if (newDifficulty > maxTarget) {
-            newDifficulty = maxTarget
+        if (newTarget > maxTarget) {
+            newTarget = maxTarget
         }
 
-        // Encode the calculated difficulty to bits format
-        val newTargetBits = CompactBits.encode(newDifficulty)
-
-        // Compare the calculated bits with the received bits
-        if (newTargetBits != block.bits) {
-            throw BlockValidatorException.NotDifficultyTransitionEqualBits(
-                "3: $newTargetBits != Actual: ${block.bits}"
-            )
-        }
+        return CompactBits.encode(newTarget)
     }
 }
