@@ -45,7 +45,7 @@ class DogeDifficultyAdjustmentValidator(
 
         if ((storedPrev.height + 1) % retargetInterval != 0) {
             if (block.bits != previousBlock.bits) {
-                throw BlockValidatorException.NotDifficultyTransitionEqualBits()
+                throw BlockValidatorException.NotDifficultyTransitionEqualBits("${block.bits} != ${previousBlock.bits}")
             }
             return
         }
@@ -112,15 +112,12 @@ class DogeDifficultyAdjustmentValidator(
             newDifficulty = CompactBits.decode(maxTargetBits)
         }
 
-        val accuracyBytes = (block.bits ushr 24) - 3
-        val receivedDifficulty = CompactBits.decode(block.bits)
+        // Fix: Encode the calculated difficulty to bits format
+        val newTargetBits = CompactBits.encode(newDifficulty)
 
-        // The calculated difficulty is to a higher precision than received, so reduce here.
-        val mask = BigInteger.valueOf(0xFFFFFFL).shiftLeft(accuracyBytes.toInt() * 8)
-        newDifficulty = newDifficulty.and(mask)
-
-        if (newDifficulty != receivedDifficulty) {
-            throw BlockValidatorException.NotDifficultyTransitionEqualBits()
+        // Compare the calculated bits with the received bits directly
+        if (newTargetBits != block.bits) {
+            throw BlockValidatorException.NotDifficultyTransitionEqualBits("last check: $newTargetBits != ${block.bits}")
         }
     }
 }
