@@ -8,7 +8,7 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 import java.util.logging.Logger
 
-class PeerDiscover(private val peerAddressManager: IPeerAddressManager) {
+class PeerDiscover(private val peerAddressManager: IPeerAddressManager, private val tag: String) {
 
     private val logger = Logger.getLogger("PeerDiscover")
 
@@ -24,10 +24,10 @@ class PeerDiscover(private val peerAddressManager: IPeerAddressManager) {
                         .filter { it !is Inet6Address }
                         .map { it.hostAddress }
 
-                    logger.info("Fetched ${ips.size} peer addresses from host: $host")
+                    logger.info("$tag: Fetched ${ips.size} peer addresses from host: $host")
                     peerAddressManager.addIps(ips)
                 } catch (e: UnknownHostException) {
-                    logger.warning("Cannot look up host: $host")
+                    logger.warning("$tag: Cannot look up host: $host")
                 }
             }
         }

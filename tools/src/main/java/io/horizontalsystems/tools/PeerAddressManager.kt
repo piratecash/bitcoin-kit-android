@@ -10,7 +10,7 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerDiscover
 class PeerAddressManager(private val network: Network) : IPeerAddressManager {
 
     private val state = State()
-    private val peerDiscover = PeerDiscover(this)
+    private val peerDiscover = PeerDiscover(this, network.logTag)
 
     override var listener: IPeerAddressManagerListener? = null
 

@@ -29,6 +29,7 @@ abstract class Network {
     abstract var addressVersion: Int
     abstract var addressSegwitHrp: String
     abstract var addressScriptVersion: Int
+    abstract val logTag: String
 
     open val bip44Checkpoint = Checkpoint("${javaClass.simpleName}-bip44.checkpoint")
     open val lastCheckpoint = Checkpoint("${javaClass.simpleName}.checkpoint")

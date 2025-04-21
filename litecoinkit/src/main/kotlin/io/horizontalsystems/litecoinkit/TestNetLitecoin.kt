@@ -25,4 +25,6 @@ class TestNetLitecoin : Network() {
             "seed-b.litecoin.loshan.co.uk",
             "dnsseed-testnet.thrasher.io"
     )
+
+    override val logTag = "LTC"
 }

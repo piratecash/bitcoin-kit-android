@@ -31,4 +31,6 @@ class MainNet : Network() {
         "x5.dnsseed.emzy.de",                  // Stephan Oeste
         "x5.seed.bitcoin.wiz.biz"              // Jason Maurice
     )
+
+    override val logTag = "BTC"
 }
