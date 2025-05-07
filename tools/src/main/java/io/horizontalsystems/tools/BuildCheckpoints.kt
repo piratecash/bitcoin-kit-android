@@ -17,6 +17,7 @@ import io.horizontalsystems.dashkit.TestNetDash
 import io.horizontalsystems.ecash.MainNetECash
 import io.horizontalsystems.litecoinkit.MainNetLitecoin
 import io.horizontalsystems.litecoinkit.TestNetLitecoin
+import io.horizontalsystems.piratecashkit.MainNetPirateCash
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -66,8 +67,16 @@ class BuildCheckpoints : CheckpointSyncer.Listener {
         ))*/
 
         // Cosanta
-        it.add(CheckpointSyncer(
+        /*it.add(CheckpointSyncer(
             network = MainNetCosanta(),
+            checkpointInterval = 2,
+            blocksToKeep = 20,
+            listener = this
+        ))*/
+
+        // Pirate Cash
+        it.add(CheckpointSyncer(
+            network = MainNetPirateCash(),
             checkpointInterval = 2,
             blocksToKeep = 20,
             listener = this
@@ -147,6 +156,8 @@ class BuildCheckpoints : CheckpointSyncer.Listener {
             is MainNetECash -> "ecashkit"
             is TestNetCosanta,
             is MainNetCosanta -> "cosantakit"
+            is MainNetPirateCash,
+            is MainNetPirateCash -> "piratecashkit"
             else -> throw Exception("Invalid network: ${network.javaClass.name}")
         }
     }

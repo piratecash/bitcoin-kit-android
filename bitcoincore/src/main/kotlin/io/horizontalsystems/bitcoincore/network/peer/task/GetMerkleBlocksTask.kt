@@ -24,7 +24,7 @@ class GetMerkleBlocksTask(
         fun handleMerkleBlock(merkleBlock: MerkleBlock)
     }
 
-    private var blockHashes = hashes.toMutableList()
+    private val blockHashes = hashes.toMutableList()
     private var pendingMerkleBlocks = mutableListOf<MerkleBlock>()
 
     // Following fields used to calculate peer speed
