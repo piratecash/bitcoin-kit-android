@@ -18,6 +18,7 @@ import io.horizontalsystems.ecash.MainNetECash
 import io.horizontalsystems.litecoinkit.MainNetLitecoin
 import io.horizontalsystems.litecoinkit.TestNetLitecoin
 import io.horizontalsystems.piratecashkit.MainNetPirateCash
+import io.horizontalsystems.piratecashkit.TestNetPirateCash
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -157,7 +158,7 @@ class BuildCheckpoints : CheckpointSyncer.Listener {
             is TestNetCosanta,
             is MainNetCosanta -> "cosantakit"
             is MainNetPirateCash,
-            is MainNetPirateCash -> "piratecashkit"
+            is TestNetPirateCash -> "piratecashkit"
             else -> throw Exception("Invalid network: ${network.javaClass.name}")
         }
     }

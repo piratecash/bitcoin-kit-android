@@ -3,9 +3,8 @@ package io.horizontalsystems.piratecashkit.validators
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.blocks.validators.IBlockChainedValidator
 import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
+import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 import io.horizontalsystems.bitcoincore.models.Block
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class PirateCashProofOfStakeValidator : IBlockChainedValidator {
 
@@ -58,18 +57,6 @@ class PirateCashProofOfStakeValidator : IBlockChainedValidator {
             throw BlockValidatorException.WrongPreviousHeader()
         }
 
-        // 4. Check bits (difficulty)
-        // For PoS we verify that bits match expected values
-        if (block.bits != calculateExpectedBits(previousBlock)) {
-            throw BlockValidatorException.NotEqualBits(
-                "Expected: ${
-                    calculateExpectedBits(
-                        previousBlock
-                    )
-                }, Actual: ${block.bits}"
-            )
-        }
-
         // 5. Check block hash
         val calculatedHash = calculateBlockHash(block)
         if (!calculatedHash.contentEquals(block.headerHash)) {
@@ -78,44 +65,6 @@ class PirateCashProofOfStakeValidator : IBlockChainedValidator {
                 actual = calculatedHash
             )
         }
-
-        // 6. PoS specific checks
-        validatePoSBlock(block, previousBlock)
-    }
-
-    // Validate PoS block
-    private fun validatePoSBlock(block: Block, previousBlock: Block) {
-        val blockHeader = block.merkleBlock?.header ?: return
-
-        // Check if block signature exists
-        if (blockHeader.posBlockSig == null || blockHeader.posBlockSig!!.isEmpty()) {
-            throw BlockValidatorException("Missing PoS signature")
-        }
-
-        // Check if stake information exists
-        if (blockHeader.posStakeHash == null || blockHeader.posStakeHash!!.isEmpty()) {
-            throw BlockValidatorException("Missing stake information")
-        }
-
-        // Check block timestamp
-        if (block.timestamp <= previousBlock.timestamp) {
-            throw BlockValidatorException("Block timestamp violation")
-        }
-
-        // Client wallets typically don't verify stake kernel hash or stake modifier
-        // as it requires access to the full chain and is computationally expensive
-        // Such checks are performed by network nodes, and the wallet usually trusts this validation
-    }
-
-    // Calculate expected difficulty for current block
-    private fun calculateExpectedBits(previousBlock: Block): Long {
-        // For PoS systems, difficulty may change with each block
-        // This is a simplified implementation - in a real system the algorithm would be more complex
-
-        // PirateCash uses DarkGravityWave or similar algorithm
-        // For mobile wallets, typically just accepting difficulty from block header
-
-        return previousBlock.bits // Simplified: return previous difficulty
     }
 
     // Calculate block hash
@@ -130,17 +79,15 @@ class PirateCashProofOfStakeValidator : IBlockChainedValidator {
 
     // Get block header bytes for hashing
     private fun getBlockHeaderBytes(block: Block): ByteArray {
-        // Serialize block header
-        val buffer = ByteBuffer.allocate(80)
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
-
-        buffer.putInt(block.version)
-        buffer.put(block.previousBlockHash)
-        buffer.put(block.merkleRoot)
-        buffer.putInt(block.timestamp.toInt())
-        buffer.putInt(block.bits.toInt())
-        buffer.putInt(block.nonce.toInt())
-
-        return buffer.array()
+        return BitcoinOutput()
+            .writeInt(block.version)
+            .write(block.previousBlockHash)
+            .write(block.merkleRoot)
+            .writeUnsignedInt(block.timestamp)
+            .writeUnsignedInt(block.bits)
+            .writeUnsignedInt(block.nonce)
+            .write(block.merkleBlock?.header?.posStakeHash!!)
+            .writeInt(block.merkleBlock?.header?.posStakeN!!)
+            .toByteArray()
     }
 }
