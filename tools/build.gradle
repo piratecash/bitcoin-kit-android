@@ -38,4 +38,5 @@ dependencies {
     implementation project(':ecashkit')
     implementation project(':dogecoinkit')
     implementation project(':cosantakit')
+    implementation project(':piratecashkit')
 }

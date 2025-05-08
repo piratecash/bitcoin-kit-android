@@ -19,7 +19,6 @@ import io.horizontalsystems.bitcoincore.storage.BlockHeader
  */
 
 @Entity(indices = [Index("height")])
-
 class Block() {
 
     //  Header

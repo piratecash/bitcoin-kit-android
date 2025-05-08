@@ -15,7 +15,7 @@ class Checkpoint(fileName: String) {
     val additionalBlocks: List<Block>
 
     init {
-        val stream = javaClass.classLoader?.getResourceAsStream(fileName)
+        val stream = javaClass.classLoader?.getResourceAsStream(fileName) ?: throw IllegalStateException("Checkpoint file not found $fileName")
         val inputStreamReader: Reader = InputStreamReader(stream)
         val reader = BufferedReader(inputStreamReader)
         val checkpoints = reader.readLines()

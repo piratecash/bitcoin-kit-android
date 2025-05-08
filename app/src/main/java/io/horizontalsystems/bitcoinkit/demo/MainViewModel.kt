@@ -2,7 +2,6 @@ package io.horizontalsystems.bitcoinkit.demo
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import cash.p.dogecoinkit.DogecoinKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
@@ -14,16 +13,15 @@ import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
-import io.horizontalsystems.bitcoinkit.BitcoinKit
 import io.horizontalsystems.cosantakit.CosantaKit
 import io.horizontalsystems.dashkit.DashKit
 import io.horizontalsystems.hodler.HodlerData
 import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
-import io.horizontalsystems.litecoinkit.LitecoinKit
+import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
 
-class MainViewModel : ViewModel(), CosantaKit.Listener {
+class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -48,18 +46,17 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: CosantaKit
+    private lateinit var bitcoinKit: PirateCashKit
 
     private val walletId = "MyWallet"
-    private val networkType = CosantaKit.NetworkType.MainNet
+    private val networkType = PirateCashKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
-        //TODO create unique seed phrase,perhaps using shared preferences?
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = CosantaKit(
+        bitcoinKit = PirateCashKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -89,7 +86,7 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        CosantaKit.clear(App.instance, networkType, walletId)
+        PirateCashKit.clear(App.instance, networkType, walletId)
 
         init()
     }
@@ -104,7 +101,7 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
     }
 
     //
-    // CosantaKit Listener implementations
+    // PirateCashKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,

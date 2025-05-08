@@ -114,7 +114,7 @@ class BlockSyncer(
         val existingHashes = storage.getBlockHashHeaderHashes()
         val newBlockHashes =
             blockHashes.filter { existingHashes.none { n -> n.contentEquals(it) } }.map {
-                BlockHash(it, 0, ++lastSequence)
+                BlockHash(headerHash = it, height = 0, sequence = ++lastSequence)
             }
 
         storage.addBlockHashes(newBlockHashes)

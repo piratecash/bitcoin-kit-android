@@ -13,12 +13,10 @@ internal class CosantaBlockHeaderParser {
     fun parse(input: BitcoinInputMarkable): BlockHeader {
         input.mark()
         val payloadPos = input.readBytes(80 + 32 + 4)
-        val hashPos = hasherDoubleSha256.hash(payloadPos)
         input.reset()
 
         input.mark()
         val payloadNoPos = input.readBytes(80)
-        val hashNoPos = hasherX11Ext.hash(payloadNoPos)
         input.reset()
 
         val version = input.readInt()
@@ -46,7 +44,11 @@ internal class CosantaBlockHeaderParser {
             timestamp = timestamp,
             bits = bits,
             nonce = nonce,
-            hash = if(proofOfStake) hashPos else hashNoPos,
+            hash = if(proofOfStake) {
+                hasherDoubleSha256.hash(payloadPos)
+            } else{
+                hasherX11Ext.hash(payloadNoPos)
+            },
             posBlockSig = posBlockSig,
             posStakeHash = posStakeHash,
             posStakeN = posStakeN
