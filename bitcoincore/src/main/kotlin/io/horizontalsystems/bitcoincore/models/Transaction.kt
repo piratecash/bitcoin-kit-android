@@ -26,7 +26,6 @@ import java.util.*
                 onDelete = ForeignKey.CASCADE,
                 deferred = true)
         ])
-
 open class Transaction() {
 
     var uid: String = UUID.randomUUID().toString()
