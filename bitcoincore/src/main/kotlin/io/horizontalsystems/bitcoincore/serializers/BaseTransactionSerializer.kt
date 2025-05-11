@@ -11,9 +11,10 @@ import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.transactions.scripts.Sighash
 import io.horizontalsystems.bitcoincore.utils.HashUtils
+import kotlin.collections.forEach
 
-object TransactionSerializer {
-    fun deserialize(input: BitcoinInputMarkable): FullTransaction {
+open class BaseTransactionSerializer {
+    open fun deserialize(input: BitcoinInputMarkable): FullTransaction {
         val transaction = Transaction()
         val inputs = mutableListOf<TransactionInput>()
         val outputs = mutableListOf<TransactionOutput>()
@@ -53,7 +54,7 @@ object TransactionSerializer {
         return FullTransaction(transaction, inputs, outputs)
     }
 
-    fun serialize(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
+    open fun serialize(transaction: FullTransaction, withWitness: Boolean): ByteArray {
         val header = transaction.header
         val buffer = BitcoinOutput()
         buffer.writeInt(header.version)
@@ -80,12 +81,12 @@ object TransactionSerializer {
         return buffer.toByteArray()
     }
 
-    fun serializeForSignature(
+    open fun serializeForSignature(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,
         inputIndex: Int,
-        isWitness: Boolean = false
+        isWitness: Boolean
     ): ByteArray {
         val buffer = BitcoinOutput().writeInt(transaction.version)
         if (isWitness) {
@@ -141,7 +142,7 @@ object TransactionSerializer {
         return buffer.toByteArray()
     }
 
-    fun serializeForTaprootSignature(
+    open fun serializeForTaprootSignature(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,

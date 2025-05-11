@@ -4,7 +4,7 @@ import io.horizontalsystems.bitcoincore.core.IPrivateWallet
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.network.Network
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
@@ -23,7 +23,7 @@ class EcdsaInputSigner(
             throw Error.NoPrivateKey()
         }
 
-        val txContent = TransactionSerializer.serializeForSignature(
+        val txContent = TransactionSerializerProvider.serializeForSignature(
             transaction = transaction,
             inputsToSign = inputsToSign,
             outputs = outputs,

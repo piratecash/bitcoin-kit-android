@@ -56,9 +56,9 @@ dependencies {
     implementation 'com.eclipsesource.minimal-json:minimal-json:0.9.5'
 
     // Room
-    implementation "androidx.room:room-runtime:$room_version"
-    implementation "androidx.room:room-rxjava2:$room_version"
-    ksp "androidx.room:room-compiler:$room_version"
+    implementation libs.room.runtime
+    implementation libs.room.rxjava2
+    ksp libs.room.compiler
 
     api project(':bitcoincore')
     implementation project(':dashlib')

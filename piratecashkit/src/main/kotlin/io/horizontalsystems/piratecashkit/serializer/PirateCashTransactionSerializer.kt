@@ -1,29 +1,30 @@
-package io.horizontalsystems.piratecashkit.models
+package io.horizontalsystems.piratecashkit.serializer
 
-import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.InputSerializer
 import io.horizontalsystems.bitcoincore.serializers.OutputSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
+import io.horizontalsystems.piratecashkit.models.SpecialTransaction
 
-internal object PirateCashTransactionSerializer {
-    private val hasherDoubleSha256 = DoubleSha256Hasher()
+internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
 
-    fun deserialize(input: BitcoinInputMarkable): FullTransaction {
+    override fun deserialize(input: BitcoinInputMarkable): FullTransaction {
         val transaction = Transaction()
         val inputs = mutableListOf<TransactionInput>()
         val outputs = mutableListOf<TransactionOutput>()
 
         val ver32bit = input.readInt()
         transaction.version = ver32bit and 0xFFFF
-        val type =(ver32bit shr 16) and 0xFFFF
+        val type = (ver32bit shr 16) and 0xFFFF
 
+        var nTime: Long = 0
         if (transaction.version == 1 || transaction.version == 2) {
-            var nTime = input.readUnsignedInt()
+            nTime = input.readUnsignedInt()
         }
 
         //  inputs
@@ -40,22 +41,51 @@ internal object PirateCashTransactionSerializer {
 
         transaction.lockTime = input.readUnsignedInt()
 
-        if (type != 0) {
+        var vExtraPayload: ByteArray
+        if (transaction.version == 3 && type != 0) {
             val payloadSize = input.readVarInt()
-            val vExtraPayload = input.readBytes(payloadSize.toInt())
+            vExtraPayload = input.readBytes(payloadSize.toInt())
+        } else {
+            vExtraPayload = byteArrayOf()
         }
-        val fullTransaction = FullTransaction(header = transaction, inputs = inputs, outputs = outputs)
-        transaction.hash = hasherDoubleSha256.hash(serialize(fullTransaction, type.toInt(), byteArrayOf()))
+
+        val fullTransaction = SpecialTransaction(
+            header = transaction,
+            inputs = inputs,
+            outputs = outputs,
+            extraPayload = vExtraPayload,
+            nTime = nTime,
+            type = type.toInt()
+        )
 
         return fullTransaction
     }
 
-    fun serialize(transaction: FullTransaction, type: Int, extraPayload: ByteArray): ByteArray {
+    override fun serialize(
+        transaction: FullTransaction,
+        withWitness: Boolean
+    ): ByteArray {
+        var type = 0
+        var nTime = 0L
+        var extraPayload: ByteArray? = null
+
+        if (transaction is SpecialTransaction) {
+            type = transaction.type
+            nTime = transaction.nTime
+            extraPayload = transaction.extraPayload
+        } else {
+            nTime = transaction.header.timestamp
+        }
+
         val header = transaction.header
         val buffer = BitcoinOutput()
 
         val ver32bit = header.version or (type shl 16)
         buffer.writeInt(ver32bit)
+
+        if (header.version == 1 || header.version == 2) {
+            buffer.writeUnsignedInt(nTime)
+        }
 
         // inputs
         buffer.writeVarInt(transaction.inputs.size.toLong())
@@ -66,10 +96,11 @@ internal object PirateCashTransactionSerializer {
         transaction.outputs.forEach { buffer.write(OutputSerializer.serialize(it)) }
 
         buffer.writeUnsignedInt(header.lockTime)
-        if(type != 0) {
-            buffer.writeVarInt(extraPayload.size.toLong())
+        if (header.version == 3 && type != 0) {
+            buffer.writeVarInt(extraPayload?.size?.toLong() ?: 0)
             buffer.write(extraPayload)
         }
         return buffer.toByteArray()
+
     }
 }

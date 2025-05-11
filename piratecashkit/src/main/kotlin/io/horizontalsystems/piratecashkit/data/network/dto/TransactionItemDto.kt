@@ -25,7 +25,6 @@ internal class TxDto(
     @SerialName("tx_type") val txType: String? = null,
     @SerialName("op_return") val opReturn: String? = null,
     @SerialName("algo") val algo: String? = null,
-    @SerialName("__v") val version: Int
 )
 
 @Serializable

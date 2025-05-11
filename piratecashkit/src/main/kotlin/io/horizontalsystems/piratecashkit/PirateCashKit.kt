@@ -63,6 +63,7 @@ import io.horizontalsystems.piratecashkit.messages.TransactionLockVoteMessagePar
 import io.horizontalsystems.piratecashkit.messages.TransactionMessageParser
 import io.horizontalsystems.piratecashkit.models.InstantTransactionState
 import io.horizontalsystems.piratecashkit.models.PirateCashTransactionInfo
+import io.horizontalsystems.piratecashkit.serializer.PirateCashTransactionSerializer
 import io.horizontalsystems.piratecashkit.storage.PirateCashKitDatabase
 import io.horizontalsystems.piratecashkit.storage.PirateCashStorage
 import io.horizontalsystems.piratecashkit.tasks.PeerTaskFactory
@@ -244,6 +245,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .setBlockValidator(blockValidatorSet)
             .setCustomLastBlockProvider(PirateCashLastBlockProvider(PirateCashApi()))
             .setRequestUnknownBlocks(true)
+            .setTransactionSerializer(PirateCashTransactionSerializer())
             .build()
             .addMessageParser(PirateCashCoinMerkleBlockMessage(PirateCashBlockHeaderParser()))
 

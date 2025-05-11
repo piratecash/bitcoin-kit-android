@@ -32,7 +32,6 @@ import io.horizontalsystems.bitcoincore.storage.WitnessConverter
     )
     ]
 )
-
 class TransactionInput(
     val previousOutputTxHash: ByteArray,
     val previousOutputIndex: Long,

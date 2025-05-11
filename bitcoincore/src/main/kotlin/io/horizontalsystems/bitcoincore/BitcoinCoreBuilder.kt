@@ -86,8 +86,9 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerAddressManager
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.PendingTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.SendTransactionsOnPeersSynced
@@ -255,6 +256,11 @@ class BitcoinCoreBuilder {
 
     fun setApiSyncStateManager(apiSyncStateManager: ApiSyncStateManager): BitcoinCoreBuilder {
         this.apiSyncStateManager = apiSyncStateManager
+        return this
+    }
+
+    fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer): BitcoinCoreBuilder {
+        TransactionSerializerProvider.setTransactionSerializer(transactionSerializer)
         return this
     }
 
@@ -501,13 +507,12 @@ class BitcoinCoreBuilder {
             )
             val transactionSendTimer = TransactionSendTimer(60)
             val transactionSenderInstance = TransactionSender(
-                pendingTransactionSyncer,
-                peerManager,
-                initialDownload,
-                storage,
-                transactionSendTimer,
-                sendType,
-                TransactionSerializer
+                transactionSyncer = pendingTransactionSyncer,
+                peerManager = peerManager,
+                initialBlockDownload = initialDownload,
+                storage = storage,
+                timer = transactionSendTimer,
+                sendType = sendType,
             )
 
             dustCalculator = dustCalculatorInstance

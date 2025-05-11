@@ -78,7 +78,6 @@ class PirateCashApi : IApiTransactionProvider, Api {
 
     private fun getBlock(blockHash: String): BlockHeaderItem? = try {
         val rawJson = apiManager.doOkHttpGetAsString("api/getblock?hash=$blockHash")!!
-        logger.info("getBlock for blockHash: $rawJson")
         json.decodeFromString<BlockDto>(rawJson).toBlockHeaderItem()
     } catch (ex: Exception) {
         ex.printStackTrace()
