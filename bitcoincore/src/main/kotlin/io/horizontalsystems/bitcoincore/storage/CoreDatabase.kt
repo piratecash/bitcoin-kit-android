@@ -34,7 +34,7 @@ import io.horizontalsystems.bitcoincore.storage.migrations.Migration_19_20
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_20_21
 
 @Database(
-    version = 21, exportSchema = false, entities = [
+    version = 22, exportSchema = false, entities = [
         BlockchainState::class,
         PeerAddress::class,
         BlockHash::class,
