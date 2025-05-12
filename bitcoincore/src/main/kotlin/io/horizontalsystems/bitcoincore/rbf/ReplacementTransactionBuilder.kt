@@ -309,7 +309,7 @@ class ReplacementTransactionBuilder(
 
         checkNotNull(mutableTransaction) { throw BuildError.UnableToReplace }
 
-        val fullTransaction = mutableTransaction.build()
+        val fullTransaction = mutableTransaction.build(transactionSerializer)
         metadataExtractor.extract(fullTransaction)
         val metadata = fullTransaction.metadata
 

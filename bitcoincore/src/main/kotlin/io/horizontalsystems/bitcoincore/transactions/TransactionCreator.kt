@@ -3,6 +3,7 @@ package io.horizontalsystems.bitcoincore.transactions
 import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.transactions.builder.MutableTransaction
@@ -14,7 +15,8 @@ class TransactionCreator(
     private val processor: PendingTransactionProcessor,
     private val transactionSender: TransactionSender,
     private val transactionSigner: TransactionSigner,
-    private val bloomFilterManager: BloomFilterManager
+    private val bloomFilterManager: BloomFilterManager,
+    private val transactionSerializer: BaseTransactionSerializer,
 ) {
 
     @Throws
@@ -61,7 +63,7 @@ class TransactionCreator(
     fun create(mutableTransaction: MutableTransaction): FullTransaction {
         transactionSigner.sign(mutableTransaction)
 
-        val fullTransaction = mutableTransaction.build()
+        val fullTransaction = mutableTransaction.build(transactionSerializer)
         processAndSend(fullTransaction)
 
         return fullTransaction

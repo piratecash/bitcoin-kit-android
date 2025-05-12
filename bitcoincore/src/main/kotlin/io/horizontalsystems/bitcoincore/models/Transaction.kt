@@ -46,8 +46,8 @@ open class Transaction() {
     var rawTransaction: String? = null
 
     var extraPayload: ByteArray = byteArrayOf()
-    var nTime: Long = 0
-    var type: Int = -1
+    var nTime: Long = timestamp
+    var type: Int = 0
 
     constructor(version: Int = 0, lockTime: Long = 0) : this() {
         this.version = version

@@ -47,10 +47,10 @@ class MutableTransaction(isOutgoing: Boolean = true) {
         return pluginData
     }
 
-    fun build(): FullTransaction {
+    fun build(transactionSerializer: BaseTransactionSerializer): FullTransaction {
         return FullTransaction(
             header = transaction, inputs = inputsToSign.map { it.input }, outputs = outputs,
-            transactionSerializer = BaseTransactionSerializer()
+            transactionSerializer = transactionSerializer
         )
     }
 

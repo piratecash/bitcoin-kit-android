@@ -39,7 +39,7 @@ internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
 
         transaction.lockTime = input.readUnsignedInt()
 
-        if (transaction.version == 3 &&  transaction.type != null && transaction.type != 0) {
+        if (transaction.version == 3 && transaction.type != 0) {
             val payloadSize = input.readVarInt()
             transaction.extraPayload = input.readBytes(payloadSize.toInt())
         }
@@ -82,10 +82,9 @@ internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
 
         buffer.writeUnsignedInt(header.lockTime)
         if (header.version == 3 && type != 0) {
-            buffer.writeVarInt(extraPayload?.size?.toLong() ?: 0)
+            buffer.writeVarInt(extraPayload.size.toLong())
             buffer.write(extraPayload)
         }
         return buffer.toByteArray()
-
     }
 }
