@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.room.*
 import io.horizontalsystems.dashkit.models.*
 
-@Database(version = 4, exportSchema = false, entities = [
+@Database(version = 5, exportSchema = false, entities = [
     Masternode::class,
     Quorum::class,
     MasternodeListState::class,
