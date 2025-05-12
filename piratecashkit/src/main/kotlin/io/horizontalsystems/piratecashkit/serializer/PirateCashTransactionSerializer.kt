@@ -9,7 +9,6 @@ import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.InputSerializer
 import io.horizontalsystems.bitcoincore.serializers.OutputSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
-import io.horizontalsystems.piratecashkit.models.SpecialTransaction
 
 internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
 
@@ -20,11 +19,10 @@ internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
 
         val ver32bit = input.readInt()
         transaction.version = ver32bit and 0xFFFF
-        val type = (ver32bit shr 16) and 0xFFFF
+        transaction.type = (ver32bit shr 16) and 0xFFFF
 
-        var nTime: Long = 0
         if (transaction.version == 1 || transaction.version == 2) {
-            nTime = input.readUnsignedInt()
+            transaction.nTime = input.readUnsignedInt()
         }
 
         //  inputs
@@ -41,21 +39,15 @@ internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
 
         transaction.lockTime = input.readUnsignedInt()
 
-        var vExtraPayload: ByteArray
-        if (transaction.version == 3 && type != 0) {
+        if (transaction.version == 3 &&  transaction.type != null && transaction.type != 0) {
             val payloadSize = input.readVarInt()
-            vExtraPayload = input.readBytes(payloadSize.toInt())
-        } else {
-            vExtraPayload = byteArrayOf()
+            transaction.extraPayload = input.readBytes(payloadSize.toInt())
         }
 
-        val fullTransaction = SpecialTransaction(
+        val fullTransaction = FullTransaction(
             header = transaction,
             inputs = inputs,
             outputs = outputs,
-            extraPayload = vExtraPayload,
-            nTime = nTime,
-            type = type.toInt(),
             transactionSerializer = this
         )
 
@@ -66,17 +58,9 @@ internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
         transaction: FullTransaction,
         withWitness: Boolean
     ): ByteArray {
-        var type = 0
-        var nTime = 0L
-        var extraPayload: ByteArray? = null
-
-        if (transaction is SpecialTransaction) {
-            type = transaction.type
-            nTime = transaction.nTime
-            extraPayload = transaction.extraPayload
-        } else {
-            nTime = transaction.header.timestamp
-        }
+        var type = transaction.header.type
+        var nTime = transaction.header.nTime
+        var extraPayload = transaction.header.extraPayload
 
         val header = transaction.header
         val buffer = BitcoinOutput()

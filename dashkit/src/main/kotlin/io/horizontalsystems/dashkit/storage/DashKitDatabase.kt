@@ -1,8 +1,18 @@
 package io.horizontalsystems.dashkit.storage
 
 import android.content.Context
-import androidx.room.*
-import io.horizontalsystems.dashkit.models.*
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import io.horizontalsystems.dashkit.models.InstantTransactionHash
+import io.horizontalsystems.dashkit.models.InstantTransactionInput
+import io.horizontalsystems.dashkit.models.Masternode
+import io.horizontalsystems.dashkit.models.MasternodeListState
+import io.horizontalsystems.dashkit.models.Quorum
 
 @Database(version = 5, exportSchema = false, entities = [
     Masternode::class,

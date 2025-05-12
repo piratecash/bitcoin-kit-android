@@ -45,6 +45,10 @@ open class Transaction() {
     var conflictingTxHash: ByteArray? = null
     var rawTransaction: String? = null
 
+    var extraPayload: ByteArray = byteArrayOf()
+    var nTime: Long = 0
+    var type: Int = -1
+
     constructor(version: Int = 0, lockTime: Long = 0) : this() {
         this.version = version
         this.lockTime = lockTime

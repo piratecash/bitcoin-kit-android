@@ -8,7 +8,7 @@ import io.horizontalsystems.piratecashkit.models.Masternode
 import io.horizontalsystems.piratecashkit.models.MasternodeListState
 import io.horizontalsystems.piratecashkit.models.Quorum
 
-@Database(version = 7, exportSchema = false, entities = [
+@Database(version = 8, exportSchema = false, entities = [
     Masternode::class,
     Quorum::class,
     MasternodeListState::class,
