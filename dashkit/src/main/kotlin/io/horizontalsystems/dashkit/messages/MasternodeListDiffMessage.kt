@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.IMessageParser
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.dashkit.models.CoinbaseTransaction
 import io.horizontalsystems.dashkit.models.Masternode
 import io.horizontalsystems.dashkit.models.Quorum
@@ -28,7 +29,7 @@ class MasternodeListDiffMessage(
 
 }
 
-class MasternodeListDiffMessageParser : IMessageParser {
+class MasternodeListDiffMessageParser(private val transactionSerializer: BaseTransactionSerializer) : IMessageParser {
     override val command: String = "mnlistdiff"
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
@@ -42,7 +43,7 @@ class MasternodeListDiffMessageParser : IMessageParser {
         }
         val merkleFlagsCount = input.readVarInt()
         val merkleFlags = input.readBytes(merkleFlagsCount.toInt())
-        val cbTx = CoinbaseTransaction(input)
+        val cbTx = CoinbaseTransaction(input, transactionSerializer)
         val version = input.readUnsignedShort()
         val deletedMNsCount = input.readVarInt()
         val deletedMNs = mutableListOf<ByteArray>()

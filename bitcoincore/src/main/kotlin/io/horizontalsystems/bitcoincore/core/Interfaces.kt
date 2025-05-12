@@ -20,6 +20,7 @@ import io.horizontalsystems.bitcoincore.network.peer.IInventoryItemsHandler
 import io.horizontalsystems.bitcoincore.network.peer.IPeerTaskHandler
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 import io.horizontalsystems.bitcoincore.storage.PublicKeyWithUsedState
@@ -30,6 +31,8 @@ import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.hdwalletkit.HDKey
 
 interface IStorage {
+
+    fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer)
 
     //  BlockchainState
 

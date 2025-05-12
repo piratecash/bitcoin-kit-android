@@ -196,6 +196,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             getDatabaseName(networkType, walletId, syncMode)
         )
 
+        val transactionSerializer = PirateCashTransactionSerializer()
         val coreStorage = Storage(coreDatabase)
         pirateCashStorage = PirateCashStorage(pirateCashDatabase, coreStorage)
 
@@ -245,7 +246,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .setBlockValidator(blockValidatorSet)
             .setCustomLastBlockProvider(PirateCashLastBlockProvider(PirateCashApi()))
             .setRequestUnknownBlocks(true)
-            .setTransactionSerializer(PirateCashTransactionSerializer())
+            .setTransactionSerializer(transactionSerializer)
             .build()
             .addMessageParser(PirateCashCoinMerkleBlockMessage(PirateCashBlockHeaderParser()))
 
@@ -254,10 +255,10 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         //  extending bitcoinCore
 
         bitcoinCore.addMessageParser(MasternodeListDiffMessageParser())
-            .addMessageParser(TransactionLockMessageParser())
+            .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
-            .addMessageParser(TransactionMessageParser())
+            .addMessageParser(TransactionMessageParser(transactionSerializer))
 
         bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())
 

@@ -23,6 +23,7 @@ import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
@@ -249,9 +250,10 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         bitcoinCore.listener = this
 
         //  extending bitcoinCore
+        val transactionSerializer = BaseTransactionSerializer()
 
         bitcoinCore.addMessageParser(MasternodeListDiffMessageParser())
-            .addMessageParser(TransactionLockMessageParser())
+            .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
             .addMessageParser(TransactionMessageParser())

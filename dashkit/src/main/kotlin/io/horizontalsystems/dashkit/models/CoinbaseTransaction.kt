@@ -1,10 +1,10 @@
 package io.horizontalsystems.dashkit.models
 
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 
-class CoinbaseTransaction(input: BitcoinInputMarkable) {
-    val transaction = TransactionSerializerProvider.deserialize(input)
+class CoinbaseTransaction(input: BitcoinInputMarkable, transactionSerializer: BaseTransactionSerializer) {
+    val transaction = transactionSerializer.deserialize(input)
     val coinbaseTransactionSize: Long
     val version: Int
     val height: Long

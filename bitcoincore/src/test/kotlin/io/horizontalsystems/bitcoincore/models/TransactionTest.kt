@@ -4,7 +4,7 @@ import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 import org.junit.Assert.assertEquals
@@ -22,7 +22,7 @@ object TransactionTest : Spek({
     describe("constructor") {
 
         it("init") {
-            fullTransaction = TransactionSerializerProvider.deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
+            fullTransaction = BaseTransactionSerializer().deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
             transaction = fullTransaction.header
 
             assertEquals(fullTransaction.inputs.size, 1)
@@ -41,7 +41,7 @@ object TransactionTest : Spek({
             )
 
             txRaw = "0100000000010115e180dc28a2327e687facc33f10f2a20da717e5548406f7ae8b4c811072f8560100000000ffffffff0100b4f505000000001976a9141d7cd6c75c2e86f4cbf98eaed221b30bd9a0b92888ac0248${witness[0]}21${witness[1]}00000000"
-            fullTransaction = TransactionSerializerProvider.deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
+            fullTransaction = BaseTransactionSerializer().deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
             transaction = fullTransaction.header
 
             val inputs = fullTransaction.inputs
@@ -55,7 +55,7 @@ object TransactionTest : Spek({
 
         it("toByteArray_witness") {
             txRaw = "0100000000010115e180dc28a2327e687facc33f10f2a20da717e5548406f7ae8b4c811072f8560100000000ffffffff0100b4f505000000001976a9141d7cd6c75c2e86f4cbf98eaed221b30bd9a0b92888ac02483045022100df7b7e5cda14ddf91290e02ea10786e03eb11ee36ec02dd862fe9a326bbcb7fd02203f5b4496b667e6e281cc654a2da9e4f08660c620a1051337fa8965f727eb19190121038262a6c6cec93c2d3ecd6c6072efea86d02ff8e3328bbd0242b20af3425990ac00000000"
-            fullTransaction = TransactionSerializerProvider.deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
+            fullTransaction = BaseTransactionSerializer().deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
             transaction = fullTransaction.header
 
             assertEquals(fullTransaction.inputs.size, 1)
@@ -63,7 +63,7 @@ object TransactionTest : Spek({
 
             assertEquals(transaction.segwit, true)
 
-            assertEquals(txRaw, TransactionSerializerProvider.serialize(fullTransaction).toHexString())
+            assertEquals(txRaw, BaseTransactionSerializer().serialize(fullTransaction).toHexString())
         }
 
         it("withoutWitness") {
@@ -72,12 +72,12 @@ object TransactionTest : Spek({
 
             txRaw = "01000000000101dbf198515cebea6e248a212c63299e63a2a35a2def0a42e43e0106c2efff12860100000000ffffffff02e6988102000000001976a914d1b4380d709e9ea54943a083b1208d6d991893d988ac58271101000000001600149063d7cc1cf2d55f6c0076e65587c755dbe96ed702483045022100fa18145855d55b221c0df4cd72b12dcb26f451aa4b8ca2148ef535d3e374baff02205b13c14fbd8665be6a6da4fb65b46a737679e988956ec353a7c7e40cbe43f7a40121038d0705f4511adf850b16baf4f689d3d92fe63cc9a5f6d5d00d2e4ed699e511f800000000"
 
-            fullTransaction = TransactionSerializerProvider.deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
+            fullTransaction = BaseTransactionSerializer().deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
             transaction = fullTransaction.header
 
             assertEquals(txHash, transaction.hash.toReversedHex())
 
-            val bytes = HashUtils.doubleSha256(TransactionSerializerProvider.serialize(fullTransaction, withWitness = true))
+            val bytes = HashUtils.doubleSha256(BaseTransactionSerializer().serialize(fullTransaction, withWitness = true))
 
             assertEquals(txWitnessHash, bytes.toReversedHex())
         }
@@ -89,9 +89,9 @@ object TransactionTest : Spek({
 
             txRaw = "01000000000101dbf198515cebea6e248a212c63299e63a2a35a2def0a42e43e0106c2efff12860100000000ffffffff02e6988102000000001976a914d1b4380d709e9ea54943a083b1208d6d991893d988ac58271101000000001600149063d7cc1cf2d55f6c0076e65587c755dbe96ed702483045022100fa18145855d55b221c0df4cd72b12dcb26f451aa4b8ca2148ef535d3e374baff02205b13c14fbd8665be6a6da4fb65b46a737679e988956ec353a7c7e40cbe43f7a40121038d0705f4511adf850b16baf4f689d3d92fe63cc9a5f6d5d00d2e4ed699e511f800000000"
 
-            fullTransaction = TransactionSerializerProvider.deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
+            fullTransaction = BaseTransactionSerializer().deserialize(BitcoinInputMarkable(txRaw.hexToByteArray()))
 
-            val bytes = HashUtils.doubleSha256(TransactionSerializerProvider.serialize(fullTransaction, true))
+            val bytes = HashUtils.doubleSha256(BaseTransactionSerializer().serialize(fullTransaction, true))
 
             assertEquals(txWitnessHash, bytes.toReversedHex())
         }

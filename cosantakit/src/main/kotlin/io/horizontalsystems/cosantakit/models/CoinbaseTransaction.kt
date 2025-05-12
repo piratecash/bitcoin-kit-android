@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.InputSerializer
 import io.horizontalsystems.bitcoincore.serializers.OutputSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -38,7 +39,7 @@ internal object CoinbaseTransaction {
             vExtraPayload = input.readBytes(payloadSize.toInt())
         }
 
-        return FullTransaction(transaction, inputs, outputs)
+        return FullTransaction(transaction, inputs, outputs, BaseTransactionSerializer())
     }
 
 }

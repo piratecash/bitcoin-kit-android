@@ -11,9 +11,9 @@ import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.transactions.scripts.Sighash
 import io.horizontalsystems.bitcoincore.utils.HashUtils
-import kotlin.collections.forEach
 
 open class BaseTransactionSerializer {
+
     open fun deserialize(input: BitcoinInputMarkable): FullTransaction {
         val transaction = Transaction()
         val inputs = mutableListOf<TransactionInput>()
@@ -51,10 +51,10 @@ open class BaseTransactionSerializer {
 
         transaction.lockTime = input.readUnsignedInt()
 
-        return FullTransaction(transaction, inputs, outputs)
+        return FullTransaction(transaction, inputs, outputs, this)
     }
 
-    open fun serialize(transaction: FullTransaction, withWitness: Boolean): ByteArray {
+    open fun serialize(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
         val header = transaction.header
         val buffer = BitcoinOutput()
         buffer.writeInt(header.version)
@@ -86,7 +86,7 @@ open class BaseTransactionSerializer {
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,
         inputIndex: Int,
-        isWitness: Boolean
+        isWitness: Boolean = false
     ): ByteArray {
         val buffer = BitcoinOutput().writeInt(transaction.version)
         if (isWitness) {
@@ -102,16 +102,19 @@ open class BaseTransactionSerializer {
             buffer.write(HashUtils.doubleSha256(sequences.toByteArray())) // hash sequence
 
             val inputToSign = inputsToSign[inputIndex]
-            val previousOutput = checkNotNull(inputToSign.previousOutput) { throw Exception("no previous output") }
+            val previousOutput =
+                checkNotNull(inputToSign.previousOutput) { throw Exception("no previous output") }
 
             buffer.write(InputSerializer.serializeOutpoint(inputToSign))
 
             when (previousOutput.scriptType) {
                 ScriptType.P2SH -> {
-                    val script = previousOutput.redeemScript ?: throw Exception("no previous output script")
+                    val script =
+                        previousOutput.redeemScript ?: throw Exception("no previous output script")
                     buffer.writeVarInt(script.size.toLong())
                     buffer.write(script)
                 }
+
                 else -> {
                     buffer.write(OpCodes.push(OpCodes.p2pkhStart + OpCodes.push(inputToSign.previousOutputPublicKey.publicKeyHash) + OpCodes.p2pkhEnd))
                 }

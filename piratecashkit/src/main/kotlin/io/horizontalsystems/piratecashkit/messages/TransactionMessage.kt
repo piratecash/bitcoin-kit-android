@@ -4,14 +4,14 @@ import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.IMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.TransactionMessage
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 
-internal class TransactionMessageParser : IMessageParser {
+internal class TransactionMessageParser(private val transactionSerializer: BaseTransactionSerializer) : IMessageParser {
     override val command: String = "tx"
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
 
-        var transaction = TransactionSerializerProvider.deserialize(input)
+        var transaction = transactionSerializer.deserialize(input)
         return TransactionMessage(transaction, input.count)
     }
 

@@ -86,9 +86,8 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerAddressManager
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
-import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.PendingTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.SendTransactionsOnPeersSynced
@@ -149,6 +148,7 @@ class BitcoinCoreBuilder {
     private var handleAddrMessage = true
     private var requestUnknownBlocks = false
     private var sendType: BitcoinCore.SendType = BitcoinCore.SendType.P2P
+    private var transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
 
     fun setContext(context: Context): BitcoinCoreBuilder {
         this.context = context
@@ -260,7 +260,7 @@ class BitcoinCoreBuilder {
     }
 
     fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer): BitcoinCoreBuilder {
-        TransactionSerializerProvider.setTransactionSerializer(transactionSerializer)
+        this.transactionSerializer = transactionSerializer
         return this
     }
 
@@ -279,6 +279,8 @@ class BitcoinCoreBuilder {
         val transactionInfoConverter = this.transactionInfoConverter ?: TransactionInfoConverter()
 
         val restoreKeyConverterChain = RestoreKeyConverterChain()
+
+        storage.setTransactionSerializer(transactionSerializer)
 
         val pluginManager = PluginManager()
         plugins.forEach { pluginManager.addPlugin(it) }
@@ -480,8 +482,8 @@ class BitcoinCoreBuilder {
         var replacementTransactionBuilder: ReplacementTransactionBuilder? = null
 
         if (privateWallet != null) {
-            val ecdsaInputSigner = EcdsaInputSigner(privateWallet, network)
-            val schnorrInputSigner = SchnorrInputSigner(privateWallet)
+            val ecdsaInputSigner = EcdsaInputSigner(privateWallet, transactionSerializer, network)
+            val schnorrInputSigner = SchnorrInputSigner(privateWallet, transactionSerializer)
             val transactionSizeCalculatorInstance = TransactionSizeCalculator()
             val dustCalculatorInstance = DustCalculator(network.dustRelayTxFee, transactionSizeCalculatorInstance)
             val recipientSetter = RecipientSetter(addressConverter, pluginManager)
@@ -513,6 +515,7 @@ class BitcoinCoreBuilder {
                 storage = storage,
                 timer = transactionSendTimer,
                 sendType = sendType,
+                transactionSerializer = transactionSerializer
             )
 
             dustCalculator = dustCalculatorInstance
@@ -523,7 +526,16 @@ class BitcoinCoreBuilder {
             val signer = TransactionSigner(ecdsaInputSigner, schnorrInputSigner)
             transactionCreator = TransactionCreator(transactionBuilder, pendingTransactionProcessor, transactionSenderInstance, signer, bloomFilterManager)
             replacementTransactionBuilder = ReplacementTransactionBuilder(
-                storage, transactionSizeCalculator, dustCalculator, metadataExtractor, pluginManager, unspentOutputProvider, publicKeyManager, conflictsResolver, lockTimeSetter
+                storage = storage,
+                sizeCalculator = transactionSizeCalculator,
+                dustCalculator = dustCalculator,
+                metadataExtractor = metadataExtractor,
+                pluginManager = pluginManager,
+                unspentOutputProvider = unspentOutputProvider,
+                publicKeyManager = publicKeyManager,
+                conflictsResolver = conflictsResolver,
+                lockTimeSetter = lockTimeSetter,
+                transactionSerializer = transactionSerializer
             )
         }
 
@@ -577,7 +589,7 @@ class BitcoinCoreBuilder {
             .addMessageParser(GetDataMessageParser())
             .addMessageParser(PingMessageParser())
             .addMessageParser(PongMessageParser())
-            .addMessageParser(TransactionMessageParser())
+            .addMessageParser(TransactionMessageParser(transactionSerializer))
             .addMessageParser(VerAckMessageParser())
             .addMessageParser(VersionMessageParser())
             .addMessageParser(RejectMessageParser())
@@ -589,7 +601,7 @@ class BitcoinCoreBuilder {
             .addMessageSerializer(MempoolMessageSerializer())
             .addMessageSerializer(PingMessageSerializer())
             .addMessageSerializer(PongMessageSerializer())
-            .addMessageSerializer(TransactionMessageSerializer())
+            .addMessageSerializer(TransactionMessageSerializer(transactionSerializer))
             .addMessageSerializer(VerAckMessageSerializer())
             .addMessageSerializer(VersionMessageSerializer())
 

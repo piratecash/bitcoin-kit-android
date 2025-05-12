@@ -13,6 +13,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.models.TransactionType
 import io.horizontalsystems.bitcoincore.models.rbfEnabled
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.bitcoincore.storage.InputWithPreviousOutput
@@ -34,7 +35,8 @@ class ReplacementTransactionBuilder(
     private val unspentOutputProvider: UnspentOutputProvider,
     private val publicKeyManager: IPublicKeyManager,
     private val conflictsResolver: TransactionConflictsResolver,
-    private val lockTimeSetter: LockTimeSetter
+    private val lockTimeSetter: LockTimeSetter,
+    private val transactionSerializer: BaseTransactionSerializer,
 ) {
 
     private fun replacementTransaction(
@@ -320,7 +322,8 @@ class ReplacementTransactionBuilder(
                     InputWithPreviousOutput(it.input, it.previousOutput)
                 },
                 outputs = mutableTransaction.outputs,
-                metadata = metadata
+                metadata = metadata,
+                transactionSerializer
             ),
             descendantTransactions.map { it.metadata.transactionHash.toReversedHex() }
         )

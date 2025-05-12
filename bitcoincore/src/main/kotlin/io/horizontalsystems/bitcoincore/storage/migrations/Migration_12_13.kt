@@ -3,7 +3,12 @@ package io.horizontalsystems.bitcoincore.storage.migrations
 import android.database.Cursor
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import io.horizontalsystems.bitcoincore.models.*
+import io.horizontalsystems.bitcoincore.models.ScriptTypeConverter
+import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
+import io.horizontalsystems.bitcoincore.models.TransactionMetadata
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.WitnessConverter
 import io.horizontalsystems.bitcoincore.transactions.extractors.ITransactionOutputProvider
@@ -57,14 +62,20 @@ object Migration_12_13 : Migration(12, 13) {
             }
 
             val fullTransaction =
-                FullTransaction(transaction, transactionInputs, transactionOutputs)
+                FullTransaction(
+                    transaction, transactionInputs, transactionOutputs,
+                    BaseTransactionSerializer()
+                )
             metadataExtractor.extract(fullTransaction)
 
             insertTransactionMetadata(database, fullTransaction.metadata)
         }
     }
 
-    private fun insertTransactionMetadata(database: SupportSQLiteDatabase, metadata: TransactionMetadata) {
+    private fun insertTransactionMetadata(
+        database: SupportSQLiteDatabase,
+        metadata: TransactionMetadata
+    ) {
         database.execSQL(
             "INSERT OR REPLACE INTO `TransactionMetadata` (transactionHash,amount,type,fee) VALUES(?, ?, ?, ?)",
             arrayOf(metadata.transactionHash, metadata.amount, metadata.type.value, metadata.fee)
@@ -155,7 +166,8 @@ object Migration_12_13 : Migration(12, 13) {
                 _item.transactionHash = _cursor.getBlob(_cursorIndexOfTransactionHash)
                 _item.lockingScriptPayload = _cursor.getBlob(_cursorIndexOfKeyHash)
                 _item.address = _cursor.getString(_cursorIndexOfAddress)
-                _item.witness = __witnessConverter.toWitness(_cursor.getString(_cursorIndexOfWitness))
+                _item.witness =
+                    __witnessConverter.toWitness(_cursor.getString(_cursorIndexOfWitness))
                 _result.add(_item)
             }
             _result

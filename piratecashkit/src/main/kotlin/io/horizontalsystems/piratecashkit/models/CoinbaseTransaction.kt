@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.InputSerializer
 import io.horizontalsystems.bitcoincore.serializers.OutputSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
+import io.horizontalsystems.piratecashkit.serializer.PirateCashTransactionSerializer
 
 internal object CoinbaseTransaction {
     fun deserialize(input: BitcoinInputMarkable): FullTransaction {
@@ -38,7 +39,7 @@ internal object CoinbaseTransaction {
             vExtraPayload = input.readBytes(payloadSize.toInt())
         }
 
-        return FullTransaction(transaction, inputs, outputs)
+        return FullTransaction(transaction, inputs, outputs, PirateCashTransactionSerializer())
     }
 
 }

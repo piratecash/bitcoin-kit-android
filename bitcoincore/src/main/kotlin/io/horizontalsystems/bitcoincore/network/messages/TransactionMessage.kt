@@ -2,7 +2,7 @@ package io.horizontalsystems.bitcoincore.network.messages
 
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializerProvider
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 
 class TransactionMessage(var transaction: FullTransaction, val size: Int) : IMessage {
@@ -11,16 +11,16 @@ class TransactionMessage(var transaction: FullTransaction, val size: Int) : IMes
     }
 }
 
-class TransactionMessageParser : IMessageParser {
+class TransactionMessageParser(private val transactionSerializer: BaseTransactionSerializer) : IMessageParser {
     override val command: String = "tx"
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
-        val transaction = TransactionSerializerProvider.deserialize(input)
+        val transaction = transactionSerializer.deserialize(input)
         return TransactionMessage(transaction, input.count)
     }
 }
 
-class TransactionMessageSerializer : IMessageSerializer {
+class TransactionMessageSerializer(private val transactionSerializer: BaseTransactionSerializer) : IMessageSerializer {
     override val command: String = "tx"
 
     override fun serialize(message: IMessage): ByteArray? {
@@ -28,6 +28,6 @@ class TransactionMessageSerializer : IMessageSerializer {
             return null
         }
 
-        return TransactionSerializerProvider.serialize(message.transaction)
+        return transactionSerializer.serialize(message.transaction)
     }
 }

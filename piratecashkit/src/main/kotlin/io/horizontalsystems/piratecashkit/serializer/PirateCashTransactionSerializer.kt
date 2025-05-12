@@ -55,7 +55,8 @@ internal class PirateCashTransactionSerializer : BaseTransactionSerializer() {
             outputs = outputs,
             extraPayload = vExtraPayload,
             nTime = nTime,
-            type = type.toInt()
+            type = type.toInt(),
+            transactionSerializer = this
         )
 
         return fullTransaction
