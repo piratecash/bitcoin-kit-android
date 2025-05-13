@@ -6,6 +6,7 @@ import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.InputSerializer
 import io.horizontalsystems.bitcoincore.serializers.OutputSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -40,7 +41,8 @@ internal object CosantaTransactionSerializer {
             val payloadSize = input.readVarInt()
             val vExtraPayload = input.readBytes(payloadSize.toInt())
         }
-        val fullTransaction = FullTransaction(header = transaction, inputs = inputs, outputs = outputs)
+        val fullTransaction = FullTransaction(header = transaction, inputs = inputs, outputs = outputs,
+            BaseTransactionSerializer())
         transaction.hash = hasherDoubleSha256.hash(serialize(fullTransaction, type.toInt(), byteArrayOf()))
 
         return fullTransaction

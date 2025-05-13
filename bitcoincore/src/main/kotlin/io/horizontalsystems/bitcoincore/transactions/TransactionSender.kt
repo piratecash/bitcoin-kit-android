@@ -12,7 +12,7 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,8 +24,8 @@ class TransactionSender(
     private val initialBlockDownload: IInitialDownload,
     private val storage: IStorage,
     private val timer: TransactionSendTimer,
+    private val transactionSerializer: BaseTransactionSerializer,
     private val sendType: BitcoinCore.SendType,
-    private val transactionSerializer: TransactionSerializer,
     private val maxRetriesCount: Int = 3,
     private val retriesPeriod: Int = 60
 ) : IPeerTaskHandler, TransactionSendTimer.Listener {

@@ -12,8 +12,9 @@ import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.transactions.scripts.Sighash
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 
-object TransactionSerializer {
-    fun deserialize(input: BitcoinInputMarkable): FullTransaction {
+open class BaseTransactionSerializer {
+
+    open fun deserialize(input: BitcoinInputMarkable): FullTransaction {
         val transaction = Transaction()
         val inputs = mutableListOf<TransactionInput>()
         val outputs = mutableListOf<TransactionOutput>()
@@ -50,10 +51,10 @@ object TransactionSerializer {
 
         transaction.lockTime = input.readUnsignedInt()
 
-        return FullTransaction(transaction, inputs, outputs)
+        return FullTransaction(transaction, inputs, outputs, this)
     }
 
-    fun serialize(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
+    open fun serialize(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
         val header = transaction.header
         val buffer = BitcoinOutput()
         buffer.writeInt(header.version)
@@ -80,7 +81,7 @@ object TransactionSerializer {
         return buffer.toByteArray()
     }
 
-    fun serializeForSignature(
+    open fun serializeForSignature(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,
@@ -101,16 +102,19 @@ object TransactionSerializer {
             buffer.write(HashUtils.doubleSha256(sequences.toByteArray())) // hash sequence
 
             val inputToSign = inputsToSign[inputIndex]
-            val previousOutput = checkNotNull(inputToSign.previousOutput) { throw Exception("no previous output") }
+            val previousOutput =
+                checkNotNull(inputToSign.previousOutput) { throw Exception("no previous output") }
 
             buffer.write(InputSerializer.serializeOutpoint(inputToSign))
 
             when (previousOutput.scriptType) {
                 ScriptType.P2SH -> {
-                    val script = previousOutput.redeemScript ?: throw Exception("no previous output script")
+                    val script =
+                        previousOutput.redeemScript ?: throw Exception("no previous output script")
                     buffer.writeVarInt(script.size.toLong())
                     buffer.write(script)
                 }
+
                 else -> {
                     buffer.write(OpCodes.push(OpCodes.p2pkhStart + OpCodes.push(inputToSign.previousOutputPublicKey.publicKeyHash) + OpCodes.p2pkhEnd))
                 }
@@ -141,7 +145,7 @@ object TransactionSerializer {
         return buffer.toByteArray()
     }
 
-    fun serializeForTaprootSignature(
+    open fun serializeForTaprootSignature(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,

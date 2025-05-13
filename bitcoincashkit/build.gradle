@@ -52,9 +52,9 @@ dependencies {
     implementation 'androidx.annotation:annotation:1.1.0'
 
     // Room
-    implementation 'androidx.room:room-runtime:2.6.1'
-    implementation 'androidx.room:room-rxjava2:2.6.1'
-    ksp 'androidx.room:room-compiler:2.6.1'
+    implementation libs.room.runtime
+    implementation libs.room.rxjava2
+    ksp libs.room.compiler
 
     api project(':bitcoincore')
 

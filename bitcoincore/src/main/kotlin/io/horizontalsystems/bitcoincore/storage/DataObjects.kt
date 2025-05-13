@@ -8,7 +8,7 @@ import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionMetadata
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 
 class BlockHeader(
@@ -28,7 +28,8 @@ open class FullTransaction(
     val header: Transaction,
     val inputs: List<TransactionInput>,
     val outputs: List<TransactionOutput>,
-    val forceHashUpdate: Boolean = true
+    transactionSerializer: BaseTransactionSerializer,
+    forceHashUpdate: Boolean = true
 ) {
 
     lateinit var metadata: TransactionMetadata
@@ -37,7 +38,7 @@ open class FullTransaction(
         if (forceHashUpdate) {
             setHash(
                 HashUtils.doubleSha256(
-                    TransactionSerializer.serialize(
+                    transactionSerializer.serialize(
                         this,
                         withWitness = false
                     )
@@ -118,16 +119,17 @@ class FullTransactionInfo(
     val header: Transaction,
     val inputs: List<InputWithPreviousOutput>,
     val outputs: List<TransactionOutput>,
-    val metadata: TransactionMetadata
+    val metadata: TransactionMetadata,
+    val transactionSerializer: BaseTransactionSerializer,
 ) {
 
     val rawTransaction: String
         get() {
-            return TransactionSerializer.serialize(fullTransaction).toHexString()
+            return transactionSerializer.serialize(fullTransaction).toHexString()
         }
 
     val fullTransaction: FullTransaction
-        get() = FullTransaction(header, inputs.map { it.input }, outputs)
+        get() = FullTransaction(header, inputs.map { it.input }, outputs, transactionSerializer)
 
 }
 

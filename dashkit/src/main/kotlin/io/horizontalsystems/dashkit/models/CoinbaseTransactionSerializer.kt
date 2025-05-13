@@ -1,14 +1,14 @@
 package io.horizontalsystems.dashkit.models
 
 import io.horizontalsystems.bitcoincore.io.BitcoinOutput
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 
-class CoinbaseTransactionSerializer {
+class CoinbaseTransactionSerializer(private val transactionSerializer: BaseTransactionSerializer) {
 
     fun serialize(coinbaseTransaction: CoinbaseTransaction): ByteArray {
         val output = BitcoinOutput()
 
-        output.write(TransactionSerializer.serialize(coinbaseTransaction.transaction))
+        output.write(transactionSerializer.serialize(coinbaseTransaction.transaction))
         output.writeVarInt(coinbaseTransaction.coinbaseTransactionSize)
         output.writeUnsignedShort(coinbaseTransaction.version)
         output.writeUnsignedInt(coinbaseTransaction.height)

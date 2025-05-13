@@ -26,7 +26,6 @@ import java.util.*
                 onDelete = ForeignKey.CASCADE,
                 deferred = true)
         ])
-
 open class Transaction() {
 
     var uid: String = UUID.randomUUID().toString()
@@ -45,6 +44,10 @@ open class Transaction() {
     var serializedTxInfo: String = ""
     var conflictingTxHash: ByteArray? = null
     var rawTransaction: String? = null
+
+    var extraPayload: ByteArray = byteArrayOf()
+    var nTime: Long = timestamp
+    var type: Int = 0
 
     constructor(version: Int = 0, lockTime: Long = 0) : this() {
         this.version = version

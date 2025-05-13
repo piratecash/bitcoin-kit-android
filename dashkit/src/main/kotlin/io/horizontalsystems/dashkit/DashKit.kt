@@ -30,6 +30,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
@@ -307,19 +308,20 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         bitcoinCore.listener = this
 
         //  extending bitcoinCore
+        val transactionSerializer = BaseTransactionSerializer()
 
-        bitcoinCore.addMessageParser(MasternodeListDiffMessageParser())
-            .addMessageParser(TransactionLockMessageParser())
+        bitcoinCore.addMessageParser(MasternodeListDiffMessageParser(transactionSerializer))
+            .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
-            .addMessageParser(TransactionMessageParser())
+            .addMessageParser(TransactionMessageParser(transactionSerializer))
 
         val merkleRootHasher = MerkleRootHasher()
         val merkleRootCreator = MerkleRootCreator(merkleRootHasher)
         val masternodeListMerkleRootCalculator =
             MasternodeListMerkleRootCalculator(merkleRootCreator)
         val masternodeCbTxHasher =
-            MasternodeCbTxHasher(CoinbaseTransactionSerializer(), merkleRootHasher)
+            MasternodeCbTxHasher(CoinbaseTransactionSerializer(transactionSerializer), merkleRootHasher)
 
         val quorumListManager = QuorumListManager(
             dashStorage,

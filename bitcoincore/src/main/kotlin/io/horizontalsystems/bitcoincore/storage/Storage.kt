@@ -17,10 +17,17 @@ import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionMetadata
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import kotlin.math.max
 
 open class Storage(protected open val store: CoreDatabase) : IStorage {
+
+    private var transactionSerializer: BaseTransactionSerializer? = null
+
+    override fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer) {
+        this.transactionSerializer = transactionSerializer
+    }
 
     override fun downloadedTransactionsBestBlockHeight(): Int {
         val maxDownloadedHeight = store.block.getLastBlockWithTransactions()?.height ?: 0
@@ -212,6 +219,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         val inputs = store.input.getInputsWithPrevouts(txHashes)
         val outputs = store.output.getTransactionsOutputs(txHashes)
         val metadata = store.transactionMetadata.getTransactionMetadata(txHashes)
+        val transactionSerializer = requireNotNull(transactionSerializer)
 
         return transactions.map { tx ->
             FullTransactionInfo(
@@ -223,7 +231,8 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
                 ) else tx.transaction,
                 inputs.filter { it.input.transactionHash.contentEquals(tx.transaction.hash) },
                 outputs.filter { it.transactionHash.contentEquals(tx.transaction.hash) },
-                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) }
+                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) },
+                transactionSerializer
             )
         }
     }
@@ -262,13 +271,15 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
             val inputs = store.input.getInputsWithPrevouts(listOf(txHash))
             val outputs = store.output.getTransactionsOutputs(listOf(txHash))
             val metadata = store.transactionMetadata.getTransactionMetadata(listOf(txHash))
+            val transactionSerializer = requireNotNull(transactionSerializer)
 
             FullTransactionInfo(
                 tx.block,
                 tx.transaction,
                 inputs.filter { it.input.transactionHash.contentEquals(tx.transaction.hash) },
                 outputs.filter { it.transactionHash.contentEquals(tx.transaction.hash) },
-                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) }
+                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) },
+                transactionSerializer
             )
         }
     }
@@ -286,11 +297,12 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         val inputsByTransaction = store.input.getTransactionInputs(hashes).groupBy { it.transactionHash.toHexString() }
         val outputsByTransaction = store.output.getTransactionsOutputs(hashes).groupBy { it.transactionHash.toHexString() }
         val metadataByTransaction = store.transactionMetadata.getTransactionMetadata(hashes).associateBy { it.transactionHash.toHexString() }
+        val transactionSerializer = requireNotNull(transactionSerializer)
 
         return transactions.map { transaction ->
             val inputs = inputsByTransaction[transaction.hash.toHexString()] ?: listOf()
             val outputs = outputsByTransaction[transaction.hash.toHexString()] ?: listOf()
-            FullTransaction(transaction, inputs, outputs, false).apply {
+            FullTransaction(transaction, inputs, outputs, transactionSerializer, false).apply {
                 metadata = metadataByTransaction[transaction.hash.toHexString()] ?: TransactionMetadata(transaction.hash)
             }
         }
@@ -376,7 +388,8 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     private fun convertToFullTransaction(transaction: Transaction): FullTransaction {
-        return FullTransaction(header = transaction, inputs = getTransactionInputs(transaction), outputs = getTransactionOutputs(transaction))
+        val transactionSerializer = requireNotNull(transactionSerializer)
+        return FullTransaction(header = transaction, inputs = getTransactionInputs(transaction), outputs = getTransactionOutputs(transaction), transactionSerializer)
     }
 
     private fun addWithoutTransaction(transaction: FullTransaction) {

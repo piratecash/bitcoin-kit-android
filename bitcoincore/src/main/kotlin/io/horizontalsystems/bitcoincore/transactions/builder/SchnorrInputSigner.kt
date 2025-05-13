@@ -3,12 +3,13 @@ package io.horizontalsystems.bitcoincore.transactions.builder
 import io.horizontalsystems.bitcoincore.core.IPrivateWallet
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
-import io.horizontalsystems.bitcoincore.serializers.TransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.hdwalletkit.Utils
 
 class SchnorrInputSigner(
-    private val hdWallet: IPrivateWallet
+    private val hdWallet: IPrivateWallet,
+    private val transactionSerializer: BaseTransactionSerializer,
 ) {
     fun sigScriptData(
         transaction: Transaction,
@@ -21,7 +22,7 @@ class SchnorrInputSigner(
         val tweakedPrivateKey = checkNotNull(hdWallet.privateKey(publicKey.account, publicKey.index, publicKey.external).tweakedOutputKey) {
             throw Error.NoPrivateKey()
         }
-        val serializedTransaction = TransactionSerializer.serializeForTaprootSignature(transaction, inputsToSign, outputs, index)
+        val serializedTransaction = transactionSerializer.serializeForTaprootSignature(transaction, inputsToSign, outputs, index)
 
         val signatureHash = Utils.taggedHash("TapSighash", serializedTransaction)
         val signature = tweakedPrivateKey.signSchnorr(signatureHash)
