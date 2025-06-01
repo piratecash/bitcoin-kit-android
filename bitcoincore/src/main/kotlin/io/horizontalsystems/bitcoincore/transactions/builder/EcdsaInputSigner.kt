@@ -14,7 +14,7 @@ class EcdsaInputSigner(
     private val network: Network
 ): IInputSigner {
 
-    override suspend fun sigScriptData(transaction: Transaction, inputsToSign: List<InputToSign>, outputs: List<TransactionOutput>, index: Int): List<ByteArray> {
+    override suspend fun sigScriptEcdsaData(transaction: Transaction, inputsToSign: List<InputToSign>, outputs: List<TransactionOutput>, index: Int): List<ByteArray> {
 
         val input = inputsToSign[index]
         val prevOutput = input.previousOutput

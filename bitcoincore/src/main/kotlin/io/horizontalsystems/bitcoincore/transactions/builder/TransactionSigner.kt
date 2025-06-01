@@ -26,7 +26,7 @@ class TransactionSigner(
             throw TransactionBuilder.BuilderException.NotSupportedScriptType()
         }
 
-        val witnessData = schnorrInputSigner.sigScriptData(
+        val witnessData = schnorrInputSigner.sigScriptSchnorrData(
             mutableTransaction.transaction,
             mutableTransaction.inputsToSign,
             mutableTransaction.outputs,
@@ -41,7 +41,7 @@ class TransactionSigner(
         val inputToSign = mutableTransaction.inputsToSign[index]
         val previousOutput = inputToSign.previousOutput
         val publicKey = inputToSign.previousOutputPublicKey
-        val sigScriptData = ecdsaInputSigner.sigScriptData(
+        val sigScriptData = ecdsaInputSigner.sigScriptEcdsaData(
             mutableTransaction.transaction,
             mutableTransaction.inputsToSign,
             mutableTransaction.outputs,

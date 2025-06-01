@@ -5,7 +5,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 
 interface IInputSigner {
-    suspend fun sigScriptData(
+    suspend fun sigScriptEcdsaData(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,

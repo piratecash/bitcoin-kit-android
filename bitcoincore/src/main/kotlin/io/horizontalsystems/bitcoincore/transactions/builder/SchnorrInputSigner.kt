@@ -11,7 +11,7 @@ class SchnorrInputSigner(
     private val hdWallet: IPrivateWallet,
     private val transactionSerializer: BaseTransactionSerializer,
 ): ISchnorrInputSigner {
-    override suspend fun sigScriptData(
+    override suspend fun sigScriptSchnorrData(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,
