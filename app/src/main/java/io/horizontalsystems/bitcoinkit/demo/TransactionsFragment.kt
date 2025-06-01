@@ -54,7 +54,7 @@ class TransactionsFragment : Fragment(), ViewHolderTransaction.Listener {
                         .create()
 
                 dialog.show()
-                Log.d("Transaction", transactionHex)
+                Log.d("Transaction", transactionHex ?: "null")
             }
         })
     }

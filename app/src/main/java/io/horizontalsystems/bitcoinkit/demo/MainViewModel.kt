@@ -34,10 +34,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     val transactions = MutableLiveData<List<TransactionInfo>>()
     val balance = MutableLiveData<BalanceInfo>()
-    val lastBlock = MutableLiveData<BlockInfo>()
+    val lastBlock = MutableLiveData<BlockInfo?>()
     val state = MutableLiveData<KitState>()
     val status = MutableLiveData<State>()
-    val transactionRaw = MutableLiveData<String>()
+    val transactionRaw = MutableLiveData<String?>()
     val statusInfo = MutableLiveData<Map<String, Any>>()
     lateinit var networkName: String
     private val disposables = CompositeDisposable()
