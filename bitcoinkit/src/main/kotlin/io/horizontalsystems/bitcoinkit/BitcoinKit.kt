@@ -120,6 +120,8 @@ class BitcoinKit : AbstractKit {
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
+     * @param iInputSigner Optional input signer for transaction signing.
+     * @param iSchnorrInputSigner Optional Schnorr input signer for transaction signing.
      */
     constructor(
         context: Context,
@@ -130,8 +132,8 @@ class BitcoinKit : AbstractKit {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        iInputSigner: IInputSigner?,
-        iSchnorrInputSigner: ISchnorrInputSigner?
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) {
         network = network(networkType)
 
