@@ -10,8 +10,8 @@ import io.horizontalsystems.hdwalletkit.Utils
 class SchnorrInputSigner(
     private val hdWallet: IPrivateWallet,
     private val transactionSerializer: BaseTransactionSerializer,
-) {
-    fun sigScriptData(
+): ISchnorrInputSigner {
+    override suspend fun sigScriptData(
         transaction: Transaction,
         inputsToSign: List<InputToSign>,
         outputs: List<TransactionOutput>,

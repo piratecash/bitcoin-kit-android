@@ -100,6 +100,8 @@ import io.horizontalsystems.bitcoincore.transactions.TransactionSender
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.TransactionSyncer
 import io.horizontalsystems.bitcoincore.transactions.builder.EcdsaInputSigner
+import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
+import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
 import io.horizontalsystems.bitcoincore.transactions.builder.InputSetter
 import io.horizontalsystems.bitcoincore.transactions.builder.LockTimeSetter
 import io.horizontalsystems.bitcoincore.transactions.builder.OutputSetter
@@ -150,6 +152,10 @@ class BitcoinCoreBuilder {
     private var sendType: BitcoinCore.SendType = BitcoinCore.SendType.P2P
     private var transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
 
+    // parameters for signing
+    private var iInputSigner: IInputSigner? = null
+    private var iSchnorrInputSigner: ISchnorrInputSigner? = null
+
     fun setContext(context: Context): BitcoinCoreBuilder {
         this.context = context
         return this
@@ -172,6 +178,12 @@ class BitcoinCoreBuilder {
 
     fun setNetwork(network: Network): BitcoinCoreBuilder {
         this.network = network
+        return this
+    }
+
+    fun setSigners(iInputSigner: IInputSigner, iSchnorrInputSigner: ISchnorrInputSigner): BitcoinCoreBuilder {
+        this.iInputSigner = iInputSigner
+        this.iSchnorrInputSigner = iSchnorrInputSigner
         return this
     }
 
@@ -517,9 +529,12 @@ class BitcoinCoreBuilder {
         var transactionCreator: TransactionCreator? = null
         var replacementTransactionBuilder: ReplacementTransactionBuilder? = null
 
-        if (privateWallet != null) {
-            val ecdsaInputSigner = EcdsaInputSigner(privateWallet, transactionSerializer, network)
-            val schnorrInputSigner = SchnorrInputSigner(privateWallet, transactionSerializer)
+        if (privateWallet != null && iInputSigner == null && iSchnorrInputSigner == null) {
+            iInputSigner = EcdsaInputSigner(privateWallet, transactionSerializer, network)
+            iSchnorrInputSigner = SchnorrInputSigner(privateWallet, transactionSerializer)
+        }
+
+        if (iInputSigner != null && iSchnorrInputSigner != null) {
             val transactionSizeCalculatorInstance = TransactionSizeCalculator()
             val dustCalculatorInstance =
                 DustCalculator(network.dustRelayTxFee, transactionSizeCalculatorInstance)
@@ -561,7 +576,7 @@ class BitcoinCoreBuilder {
             transactionSender = transactionSenderInstance
 
             transactionSendTimer.listener = transactionSender
-            val signer = TransactionSigner(ecdsaInputSigner, schnorrInputSigner)
+            val signer = TransactionSigner(iInputSigner!!, iSchnorrInputSigner!!)
             transactionCreator = TransactionCreator(
                 builder = transactionBuilder,
                 processor = pendingTransactionProcessor,

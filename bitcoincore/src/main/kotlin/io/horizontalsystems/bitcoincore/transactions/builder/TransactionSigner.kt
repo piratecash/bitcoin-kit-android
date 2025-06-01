@@ -4,11 +4,11 @@ import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
 class TransactionSigner(
-    private val ecdsaInputSigner: EcdsaInputSigner,
-    private val schnorrInputSigner: SchnorrInputSigner
+    private val ecdsaInputSigner: IInputSigner,
+    private val schnorrInputSigner: ISchnorrInputSigner
 ) {
 
-    fun sign(mutableTransaction: MutableTransaction) {
+    suspend fun sign(mutableTransaction: MutableTransaction) {
         mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
             if (inputToSign.previousOutput.scriptType == ScriptType.P2TR) {
                 schnorrSign(index, mutableTransaction)
@@ -18,7 +18,7 @@ class TransactionSigner(
         }
     }
 
-    private fun schnorrSign(index: Int, mutableTransaction: MutableTransaction) {
+    private suspend fun schnorrSign(index: Int, mutableTransaction: MutableTransaction) {
         val inputToSign = mutableTransaction.inputsToSign[index]
         val previousOutput = inputToSign.previousOutput
 
@@ -37,7 +37,7 @@ class TransactionSigner(
         inputToSign.input.witness = witnessData
     }
 
-    private fun ecdsaSign(index: Int, mutableTransaction: MutableTransaction) {
+    private suspend fun ecdsaSign(index: Int, mutableTransaction: MutableTransaction) {
         val inputToSign = mutableTransaction.inputsToSign[index]
         val previousOutput = inputToSign.previousOutput
         val publicKey = inputToSign.previousOutputPublicKey
