@@ -3,6 +3,7 @@ package io.horizontalsystems.bitcoincore.transactions.builder
 import io.horizontalsystems.bitcoincore.core.IPrivateWallet
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.hdwalletkit.Utils
@@ -12,6 +13,7 @@ class SchnorrInputSigner(
     private val transactionSerializer: BaseTransactionSerializer,
 ): ISchnorrInputSigner {
 
+    override fun setNetwork(network: Network) = Unit
     override fun setTransactionSerializer(serializer: BaseTransactionSerializer) = Unit
 
     override suspend fun sigScriptSchnorrData(

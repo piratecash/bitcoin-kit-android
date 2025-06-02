@@ -15,6 +15,7 @@ class EcdsaInputSigner(
 ): IInputSigner {
 
     override fun setTransactionSerializer(serializer: BaseTransactionSerializer) = Unit
+    override fun setNetwork(network: Network) = Unit
 
     override suspend fun sigScriptEcdsaData(transaction: Transaction, inputsToSign: List<InputToSign>, outputs: List<TransactionOutput>, index: Int): List<ByteArray> {
 
