@@ -533,9 +533,14 @@ class BitcoinCoreBuilder {
             iInputSigner = EcdsaInputSigner(privateWallet, transactionSerializer, network)
             iSchnorrInputSigner = SchnorrInputSigner(privateWallet, transactionSerializer)
         }
-
-        iInputSigner?.setTransactionSerializer(transactionSerializer)
-        iSchnorrInputSigner?.setTransactionSerializer(transactionSerializer)
+        iInputSigner?.apply {
+            setNetwork(network)
+            setTransactionSerializer(transactionSerializer)
+        }
+        iSchnorrInputSigner?.apply {
+            setNetwork(network)
+            setTransactionSerializer(transactionSerializer)
+        }
 
         if (iInputSigner != null && iSchnorrInputSigner != null) {
             val transactionSizeCalculatorInstance = TransactionSizeCalculator()
