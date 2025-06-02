@@ -534,6 +534,9 @@ class BitcoinCoreBuilder {
             iSchnorrInputSigner = SchnorrInputSigner(privateWallet, transactionSerializer)
         }
 
+        iInputSigner?.setTransactionSerializer(transactionSerializer)
+        iSchnorrInputSigner?.setTransactionSerializer(transactionSerializer)
+
         if (iInputSigner != null && iSchnorrInputSigner != null) {
             val transactionSizeCalculatorInstance = TransactionSizeCalculator()
             val dustCalculatorInstance =
