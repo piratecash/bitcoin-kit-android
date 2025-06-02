@@ -26,6 +26,8 @@ import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
+import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
+import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.MerkleBranch
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
@@ -137,7 +139,9 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) : this(
         context = context,
         extendedKey = null,
@@ -146,7 +150,9 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         networkType = networkType,
         peerSize = peerSize,
         syncMode = syncMode,
-        confirmationsThreshold = confirmationsThreshold
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner
     )
 
     constructor(
@@ -156,7 +162,9 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) : this(
         context = context,
         extendedKey = extendedKey,
@@ -165,7 +173,9 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         networkType = networkType,
         peerSize = peerSize,
         syncMode = syncMode,
-        confirmationsThreshold = confirmationsThreshold
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner
     )
 
     /**
@@ -187,7 +197,9 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         networkType: NetworkType,
         peerSize: Int,
         syncMode: SyncMode,
-        confirmationsThreshold: Int
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?
     ) {
         val coreDatabase =
             CoreDatabase.getInstance(context, getDatabaseNameCore(networkType, walletId, syncMode))
@@ -247,6 +259,11 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .setCustomLastBlockProvider(PirateCashLastBlockProvider(PirateCashApi()))
             .setRequestUnknownBlocks(true)
             .setTransactionSerializer(transactionSerializer)
+            .apply {
+                if(iInputSigner != null && iSchnorrInputSigner != null) {
+                    setSigners(iInputSigner, iSchnorrInputSigner)
+                }
+            }
             .build()
             .addMessageParser(PirateCashCoinMerkleBlockMessage(PirateCashBlockHeaderParser()))
 
