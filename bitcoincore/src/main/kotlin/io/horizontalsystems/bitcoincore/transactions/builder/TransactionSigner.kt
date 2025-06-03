@@ -46,7 +46,7 @@ class TransactionSigner(
         mutableTransaction: MutableTransaction,
         schnorrInputSigner: ISchnorrInputBatchSigner
     ) {
-        val dataToSign = schnorrInputSigner.prepareDataForSigning(mutableTransaction)
+        val dataToSign = schnorrInputSigner.prepareDataForSchnorrSigning(mutableTransaction)
         val signatures = schnorrInputSigner.sigScriptSchnorrData(dataToSign)
         mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
             val inputToSign = mutableTransaction.inputsToSign[index]
@@ -67,7 +67,7 @@ class TransactionSigner(
         mutableTransaction: MutableTransaction,
         iInputBatchSigner: IInputBatchSigner
     ) {
-        val dataToSign = iInputBatchSigner.prepareDataForSigning(mutableTransaction)
+        val dataToSign = iInputBatchSigner.prepareDataForEcdsaSigning(mutableTransaction)
         val signatures = iInputBatchSigner.sigScriptEcdsaData(dataToSign)
         mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
             val inputToSign = mutableTransaction.inputsToSign[index]
