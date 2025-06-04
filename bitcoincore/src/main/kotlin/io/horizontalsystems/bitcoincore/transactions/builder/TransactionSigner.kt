@@ -36,7 +36,7 @@ class TransactionSigner(
         } else {
             batchEcdsaSign(
                 mutableTransaction,
-                ecdsaInputSigner as? IInputBatchSigner ?: return false
+                ecdsaInputSigner as? IEcdsaInputBatchSigner ?: return false
             )
         }
         return false
@@ -65,10 +65,10 @@ class TransactionSigner(
 
     private suspend fun batchEcdsaSign(
         mutableTransaction: MutableTransaction,
-        iInputBatchSigner: IInputBatchSigner
+        iEcdsaInputBatchSigner: IEcdsaInputBatchSigner
     ) {
-        val dataToSign = iInputBatchSigner.prepareDataForEcdsaSigning(mutableTransaction)
-        val signatures = iInputBatchSigner.sigScriptEcdsaData(dataToSign)
+        val dataToSign = iEcdsaInputBatchSigner.prepareDataForEcdsaSigning(mutableTransaction)
+        val signatures = iEcdsaInputBatchSigner.sigScriptEcdsaData(dataToSign)
         mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
             val inputToSign = mutableTransaction.inputsToSign[index]
             val previousOutput = inputToSign.previousOutput
