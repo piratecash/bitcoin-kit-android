@@ -12,7 +12,7 @@ class TransactionSigner(
 ) {
     suspend fun sign(mutableTransaction: MutableTransaction) {
         // Bunch sign added to support Tangem sdk
-        if (isAllOutputsOneType(mutableTransaction)) {
+        if (mutableTransaction.inputsToSign.size > 1 && isAllOutputsOneType(mutableTransaction)) {
             if (batchSign(mutableTransaction)) return
         }
 
@@ -42,6 +42,10 @@ class TransactionSigner(
         return false
     }
 
+    /**
+     * Signs all inputs in the transaction using batch signing if possible.
+     * Returns true if batch signing was successful, false otherwise.
+     */
     private suspend fun batchSchnorrSign(
         mutableTransaction: MutableTransaction,
         schnorrInputSigner: ISchnorrInputBatchSigner
