@@ -1,7 +1,9 @@
 package io.horizontalsystems.bitcoincore.transactions.builder
 
-interface ISchnorrInputBatchSigner {
-    suspend fun prepareDataForSchnorrSigning(mutableTransaction: MutableTransaction): List<ByteArray>
+import io.horizontalsystems.bitcoincore.transactions.model.DataToSign
 
-    suspend fun sigScriptSchnorrData(data: List<ByteArray>): List<ByteArray>
+interface ISchnorrInputBatchSigner {
+    suspend fun prepareDataForSchnorrSigning(mutableTransaction: MutableTransaction): List<DataToSign>
+
+    suspend fun sigScriptSchnorrData(data: List<DataToSign>): List<ByteArray>
 }
