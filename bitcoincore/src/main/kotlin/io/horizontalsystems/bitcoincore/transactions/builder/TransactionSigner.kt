@@ -39,7 +39,7 @@ class TransactionSigner(
                 ecdsaInputSigner as? IEcdsaInputBatchSigner ?: return false
             )
         }
-        return false
+        return true
     }
 
     /**
