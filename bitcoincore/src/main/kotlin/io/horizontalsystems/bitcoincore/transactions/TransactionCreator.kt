@@ -20,7 +20,7 @@ class TransactionCreator(
 ) {
 
     @Throws
-    fun create(
+    suspend fun create(
         toAddress: String,
         memo: String?,
         value: Long,
@@ -47,7 +47,7 @@ class TransactionCreator(
     }
 
     @Throws
-    fun create(
+    suspend fun create(
         unspentOutput: UnspentOutput,
         toAddress: String,
         memo: String?,
@@ -60,7 +60,7 @@ class TransactionCreator(
         return create(mutableTransaction)
     }
 
-    fun create(mutableTransaction: MutableTransaction): FullTransaction {
+    suspend fun create(mutableTransaction: MutableTransaction): FullTransaction {
         transactionSigner.sign(mutableTransaction)
 
         val fullTransaction = mutableTransaction.build(transactionSerializer)

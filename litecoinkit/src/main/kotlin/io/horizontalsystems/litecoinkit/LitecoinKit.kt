@@ -27,6 +27,8 @@ import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
+import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
+import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
 import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
@@ -95,7 +97,9 @@ class LitecoinKit : AbstractKit {
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) {
         network = network(networkType)
 
@@ -108,7 +112,9 @@ class LitecoinKit : AbstractKit {
             syncMode = syncMode,
             purpose = purpose,
             peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold
+            confirmationsThreshold = confirmationsThreshold,
+            iInputSigner = iInputSigner,
+            iSchnorrInputSigner = iSchnorrInputSigner
         )
     }
 
@@ -129,7 +135,9 @@ class LitecoinKit : AbstractKit {
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) {
         network = network(networkType)
 
@@ -146,7 +154,9 @@ class LitecoinKit : AbstractKit {
             syncMode = syncMode,
             purpose = purpose,
             peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold
+            confirmationsThreshold = confirmationsThreshold,
+            iInputSigner = iInputSigner,
+            iSchnorrInputSigner = iSchnorrInputSigner
         )
     }
 
@@ -159,7 +169,9 @@ class LitecoinKit : AbstractKit {
         syncMode: SyncMode,
         purpose: Purpose,
         peerSize: Int,
-        confirmationsThreshold: Int
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?
     ): BitcoinCore {
         val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
         val storage = Storage(database)
@@ -188,6 +200,11 @@ class LitecoinKit : AbstractKit {
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
+            .apply {
+                if(iInputSigner != null && iSchnorrInputSigner != null) {
+                    setSigners(iInputSigner, iSchnorrInputSigner)
+                }
+            }
             .build()
 
         //  extending bitcoinCore

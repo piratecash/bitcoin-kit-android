@@ -1,14 +1,21 @@
 package io.horizontalsystems.bitcoincore.transactions.builder
 
+import io.horizontalsystems.bitcoincore.models.PublicKey
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
+import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
 class TransactionSigner(
-    private val ecdsaInputSigner: EcdsaInputSigner,
-    private val schnorrInputSigner: SchnorrInputSigner
+    private val ecdsaInputSigner: IInputSigner,
+    private val schnorrInputSigner: ISchnorrInputSigner
 ) {
+    suspend fun sign(mutableTransaction: MutableTransaction) {
+        // Bunch sign added to support Tangem sdk
+        if (mutableTransaction.inputsToSign.size > 1 && isAllOutputsOneType(mutableTransaction)) {
+            if (batchSign(mutableTransaction)) return
+        }
 
-    fun sign(mutableTransaction: MutableTransaction) {
         mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
             if (inputToSign.previousOutput.scriptType == ScriptType.P2TR) {
                 schnorrSign(index, mutableTransaction)
@@ -18,36 +25,72 @@ class TransactionSigner(
         }
     }
 
-    private fun schnorrSign(index: Int, mutableTransaction: MutableTransaction) {
-        val inputToSign = mutableTransaction.inputsToSign[index]
-        val previousOutput = inputToSign.previousOutput
-
-        if (previousOutput.scriptType != ScriptType.P2TR) {
-            throw TransactionBuilder.BuilderException.NotSupportedScriptType()
+    private suspend fun batchSign(mutableTransaction: MutableTransaction): Boolean {
+        val scriptType =
+            mutableTransaction.inputsToSign.firstOrNull()?.previousOutput?.scriptType ?: false
+        if (scriptType == ScriptType.P2TR) {
+            batchSchnorrSign(
+                mutableTransaction,
+                schnorrInputSigner as? ISchnorrInputBatchSigner ?: return false
+            )
+        } else {
+            batchEcdsaSign(
+                mutableTransaction,
+                ecdsaInputSigner as? IEcdsaInputBatchSigner ?: return false
+            )
         }
-
-        val witnessData = schnorrInputSigner.sigScriptData(
-            mutableTransaction.transaction,
-            mutableTransaction.inputsToSign,
-            mutableTransaction.outputs,
-            index
-        )
-
-        mutableTransaction.transaction.segwit = true
-        inputToSign.input.witness = witnessData
+        return true
     }
 
-    private fun ecdsaSign(index: Int, mutableTransaction: MutableTransaction) {
-        val inputToSign = mutableTransaction.inputsToSign[index]
-        val previousOutput = inputToSign.previousOutput
-        val publicKey = inputToSign.previousOutputPublicKey
-        val sigScriptData = ecdsaInputSigner.sigScriptData(
-            mutableTransaction.transaction,
-            mutableTransaction.inputsToSign,
-            mutableTransaction.outputs,
-            index
-        )
+    /**
+     * Signs all inputs in the transaction using batch signing if possible.
+     * Returns true if batch signing was successful, false otherwise.
+     */
+    private suspend fun batchSchnorrSign(
+        mutableTransaction: MutableTransaction,
+        schnorrInputSigner: ISchnorrInputBatchSigner
+    ) {
+        val dataToSign = schnorrInputSigner.prepareDataForSchnorrSigning(mutableTransaction)
+        val signatures = schnorrInputSigner.sigScriptSchnorrData(dataToSign)
+        mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
+            val inputToSign = mutableTransaction.inputsToSign[index]
+            val previousOutput = inputToSign.previousOutput
 
+            if (previousOutput.scriptType != ScriptType.P2TR) {
+                throw TransactionBuilder.BuilderException.NotSupportedScriptType()
+            }
+
+            mutableTransaction.transaction.segwit = true
+            signatures.getOrNull(index)?.let { witnessData ->
+                inputToSign.input.witness = listOf(witnessData)
+            }
+        }
+    }
+
+    private suspend fun batchEcdsaSign(
+        mutableTransaction: MutableTransaction,
+        iEcdsaInputBatchSigner: IEcdsaInputBatchSigner
+    ) {
+        val dataToSign = iEcdsaInputBatchSigner.prepareDataForEcdsaSigning(mutableTransaction)
+        val signatures = iEcdsaInputBatchSigner.sigScriptEcdsaData(dataToSign)
+        mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
+            val inputToSign = mutableTransaction.inputsToSign[index]
+            val previousOutput = inputToSign.previousOutput
+            val publicKey = inputToSign.previousOutputPublicKey
+            val sigScriptData = signatures.getOrNull(index) ?: throw IllegalStateException(
+                "Signature data for input at index $index is null"
+            )
+            signOutput(previousOutput, inputToSign, sigScriptData, mutableTransaction, publicKey)
+        }
+    }
+
+    private fun signOutput(
+        previousOutput: TransactionOutput,
+        inputToSign: InputToSign,
+        sigScriptData: List<ByteArray>,
+        mutableTransaction: MutableTransaction,
+        publicKey: PublicKey
+    ) {
         when (previousOutput.scriptType) {
             ScriptType.P2PKH -> {
                 inputToSign.input.sigScript = signatureScript(sigScriptData)
@@ -81,6 +124,47 @@ class TransactionSigner(
 
             else -> throw TransactionBuilder.BuilderException.NotSupportedScriptType()
         }
+    }
+
+    private fun isAllOutputsOneType(mutableTransaction: MutableTransaction) =
+        mutableTransaction.inputsToSign.map { it.previousOutput.scriptType }.distinct().size == 1
+
+    private suspend fun schnorrSign(index: Int, mutableTransaction: MutableTransaction) {
+        val inputToSign = mutableTransaction.inputsToSign[index]
+        val previousOutput = inputToSign.previousOutput
+
+        if (previousOutput.scriptType != ScriptType.P2TR) {
+            throw TransactionBuilder.BuilderException.NotSupportedScriptType()
+        }
+
+        val witnessData = schnorrInputSigner.sigScriptSchnorrData(
+            mutableTransaction.transaction,
+            mutableTransaction.inputsToSign,
+            mutableTransaction.outputs,
+            index
+        )
+
+        mutableTransaction.transaction.segwit = true
+        inputToSign.input.witness = witnessData
+    }
+
+    private suspend fun ecdsaSign(index: Int, mutableTransaction: MutableTransaction) {
+        val inputToSign = mutableTransaction.inputsToSign[index]
+        val previousOutput = inputToSign.previousOutput
+        val publicKey = inputToSign.previousOutputPublicKey
+        val sigScriptData = ecdsaInputSigner.sigScriptEcdsaData(
+            mutableTransaction.transaction,
+            mutableTransaction.inputsToSign,
+            mutableTransaction.outputs,
+            index
+        )
+        signOutput(
+            previousOutput = previousOutput,
+            inputToSign = inputToSign,
+            sigScriptData = sigScriptData,
+            mutableTransaction = mutableTransaction,
+            publicKey = publicKey
+        )
     }
 
     private fun signatureScript(params: List<ByteArray>): ByteArray {

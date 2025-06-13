@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoinkit.demo
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
@@ -20,6 +21,7 @@ import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
 import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
+import kotlinx.coroutines.launch
 
 class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
@@ -32,10 +34,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     val transactions = MutableLiveData<List<TransactionInfo>>()
     val balance = MutableLiveData<BalanceInfo>()
-    val lastBlock = MutableLiveData<BlockInfo>()
+    val lastBlock = MutableLiveData<BlockInfo?>()
     val state = MutableLiveData<KitState>()
     val status = MutableLiveData<State>()
-    val transactionRaw = MutableLiveData<String>()
+    val transactionRaw = MutableLiveData<String?>()
     val statusInfo = MutableLiveData<Map<String, Any>>()
     lateinit var networkName: String
     private val disposables = CompositeDisposable()
@@ -126,10 +128,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
     }
 
     val receiveAddressLiveData = MutableLiveData<String>()
-    val feeLiveData = MutableLiveData<Long>()
-    val errorLiveData = MutableLiveData<String>()
-    val addressLiveData = MutableLiveData<String>()
-    val amountLiveData = MutableLiveData<Long>()
+    val feeLiveData = MutableLiveData<Long?>()
+    val errorLiveData = MutableLiveData<String?>()
+    val addressLiveData = MutableLiveData<String?>()
+    val amountLiveData = MutableLiveData<Long?>()
 
     var amount: Long? = null
         set(value) {
@@ -170,29 +172,33 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             }
 
             else -> {
-                try {
-                    val transaction = bitcoinKit.send(
-                        address!!,
-                        null,
-                        amount!!,
-                        feeRate = feePriority.feeRate,
-                        sortType = TransactionDataSortType.Shuffle,
-                        pluginData = getPluginData(),
-                        rbfEnabled = true
-                    )
+                viewModelScope.launch {
+                    try {
+                        val transaction = bitcoinKit.send(
+                            address!!,
+                            null,
+                            amount!!,
+                            feeRate = feePriority.feeRate,
+                            sortType = TransactionDataSortType.Shuffle,
+                            pluginData = getPluginData(),
+                            rbfEnabled = true
+                        )
 
-                    amountLiveData.value = null
-                    feeLiveData.value = null
-                    addressLiveData.value = null
-                    errorLiveData.value = "Transaction sent ${transaction.header.serializedTxInfo}"
-                } catch (e: Exception) {
-                    errorLiveData.value = when (e) {
-                        is SendValueErrors.InsufficientUnspentOutputs,
-                        is SendValueErrors.EmptyOutputs -> "Insufficient balance"
-                        is AddressFormatException -> "Could not Format Address"
-                        else -> e.message ?: "Failed to send transaction (${e.javaClass.name})"
+                        amountLiveData.value = null
+                        feeLiveData.value = null
+                        addressLiveData.value = null
+                        errorLiveData.value =
+                            "Transaction sent ${transaction.header.serializedTxInfo}"
+                    } catch (e: Exception) {
+                        errorLiveData.value = when (e) {
+                            is SendValueErrors.InsufficientUnspentOutputs,
+                            is SendValueErrors.EmptyOutputs -> "Insufficient balance"
+
+                            is AddressFormatException -> "Could not Format Address"
+                            else -> e.message ?: "Failed to send transaction (${e.javaClass.name})"
+                        }
+
                     }
-
                 }
             }
         }

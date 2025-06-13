@@ -34,6 +34,8 @@ import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
+import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
+import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.MerkleBranch
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
@@ -164,7 +166,9 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        initWithEmptySeeds: Boolean = false
+        initWithEmptySeeds: Boolean = false,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) : this(
         context = context,
         extendedKey = null,
@@ -174,7 +178,9 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         peerSize = peerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
-        initWithEmptySeeds = initWithEmptySeeds
+        initWithEmptySeeds = initWithEmptySeeds,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner
     )
 
     constructor(
@@ -185,7 +191,9 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        initWithEmptySeeds: Boolean = false
+        initWithEmptySeeds: Boolean = false,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) : this(
         context = context,
         extendedKey = extendedKey,
@@ -195,7 +203,9 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         peerSize = peerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
-        initWithEmptySeeds = initWithEmptySeeds
+        initWithEmptySeeds = initWithEmptySeeds,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner
     )
 
     /**
@@ -218,7 +228,9 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         peerSize: Int,
         syncMode: SyncMode,
         confirmationsThreshold: Int,
-        initWithEmptySeeds: Boolean
+        initWithEmptySeeds: Boolean,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?
     ) {
         val coreDatabase =
             CoreDatabase.getInstance(context, getDatabaseNameCore(networkType, walletId, syncMode))
@@ -303,6 +315,11 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .setApiSyncStateManager(apiSyncStateManager)
             .setTransactionInfoConverter(dashTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
+            .apply {
+                if(iInputSigner != null && iSchnorrInputSigner != null) {
+                    setSigners(iInputSigner, iSchnorrInputSigner)
+                }
+            }
             .build()
 
         bitcoinCore.listener = this

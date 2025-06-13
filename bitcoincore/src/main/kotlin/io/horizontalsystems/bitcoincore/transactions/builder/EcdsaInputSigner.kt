@@ -12,9 +12,12 @@ class EcdsaInputSigner(
     private val hdWallet: IPrivateWallet,
     private val transactionSerializer: BaseTransactionSerializer,
     private val network: Network
-) {
+): IInputSigner {
 
-    fun sigScriptData(transaction: Transaction, inputsToSign: List<InputToSign>, outputs: List<TransactionOutput>, index: Int): List<ByteArray> {
+    override fun setTransactionSerializer(serializer: BaseTransactionSerializer) = Unit
+    override fun setNetwork(network: Network) = Unit
+
+    override suspend fun sigScriptEcdsaData(transaction: Transaction, inputsToSign: List<InputToSign>, outputs: List<TransactionOutput>, index: Int): List<ByteArray> {
 
         val input = inputsToSign[index]
         val prevOutput = input.previousOutput

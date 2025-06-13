@@ -209,7 +209,7 @@ class BitcoinCore(
         ) ?: throw CoreError.ReadOnlyCore
     }
 
-    fun send(
+    suspend fun send(
         address: String,
         memo: String?,
         value: Long,
@@ -238,7 +238,7 @@ class BitcoinCore(
         ) ?: throw CoreError.ReadOnlyCore
     }
 
-    fun send(
+    suspend fun send(
         hash: ByteArray,
         memo: String?,
         scriptType: ScriptType,
@@ -268,7 +268,7 @@ class BitcoinCore(
         ) ?: throw CoreError.ReadOnlyCore
     }
 
-    fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
+    suspend fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
         return transactionCreator?.create(unspentOutput, address, memo, feeRate, sortType, rbfEnabled) ?: throw CoreError.ReadOnlyCore
     }
 
@@ -467,7 +467,7 @@ class BitcoinCore(
         return ReplacementTransaction(mutableTransaction, info, descendantTransactionHashes)
     }
 
-    fun send(replacementTransaction: ReplacementTransaction): FullTransaction {
+    suspend fun send(replacementTransaction: ReplacementTransaction): FullTransaction {
         val transactionCreator = this.transactionCreator ?: throw CoreError.ReadOnlyCore
 
         return transactionCreator.create(replacementTransaction.mutableTransaction)

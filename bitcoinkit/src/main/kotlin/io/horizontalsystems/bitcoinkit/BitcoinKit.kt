@@ -23,13 +23,13 @@ import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
+import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
+import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
 import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.IAddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
-import io.horizontalsystems.bitcoinkit.BitcoinKit.Listener
-import io.horizontalsystems.bitcoinkit.BitcoinKit.NetworkType
 import io.horizontalsystems.hdwalletkit.*
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hodler.HodlerPlugin
@@ -108,7 +108,7 @@ class BitcoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold)
+    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold, null, null)
 
     /**
      * @constructor Creates and initializes the BitcoinKit
@@ -120,6 +120,8 @@ class BitcoinKit : AbstractKit {
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
+     * @param iInputSigner Optional input signer for transaction signing.
+     * @param iSchnorrInputSigner Optional Schnorr input signer for transaction signing.
      */
     constructor(
         context: Context,
@@ -129,7 +131,9 @@ class BitcoinKit : AbstractKit {
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) {
         network = network(networkType)
 
@@ -143,7 +147,9 @@ class BitcoinKit : AbstractKit {
             syncMode = syncMode,
             purpose = purpose,
             peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold
+            confirmationsThreshold = confirmationsThreshold,
+            iInputSigner = iInputSigner,
+            iSchnorrInputSigner = iSchnorrInputSigner
         )
     }
 
@@ -183,7 +189,9 @@ class BitcoinKit : AbstractKit {
             walletId = walletId,
             syncMode = syncMode,
             peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold
+            confirmationsThreshold = confirmationsThreshold,
+            iInputSigner = null,
+            iSchnorrInputSigner = null
         )
     }
 
@@ -197,7 +205,9 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         syncMode: SyncMode,
         peerSize: Int,
-        confirmationsThreshold: Int
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?
     ): BitcoinCore {
         val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
         val storage = Storage(database)
@@ -228,6 +238,11 @@ class BitcoinKit : AbstractKit {
             .setBlockValidator(blockValidatorSet)
             .setHandleAddrMessage(false)
             .addPlugin(hodlerPlugin)
+            .apply {
+                if(iInputSigner != null && iSchnorrInputSigner != null) {
+                    setSigners(iInputSigner, iSchnorrInputSigner)
+                }
+            }
             .build()
 
         //  extending bitcoinCore

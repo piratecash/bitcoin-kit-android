@@ -88,7 +88,7 @@ abstract class AbstractKit {
         )
     }
 
-    fun send(
+    suspend fun send(
         address: String,
         memo: String?,
         value: Long,
@@ -102,7 +102,7 @@ abstract class AbstractKit {
         return bitcoinCore.send(address, memo, value, senderPay, feeRate, sortType, unspentOutputs, pluginData, rbfEnabled)
     }
 
-    fun send(
+    suspend fun send(
         address: String,
         memo: String?,
         value: Long,
@@ -115,7 +115,7 @@ abstract class AbstractKit {
         return bitcoinCore.send(address, memo, value, senderPay, feeRate, sortType, null, pluginData, rbfEnabled)
     }
 
-    fun send(
+    suspend fun send(
         hash: ByteArray,
         memo: String?,
         scriptType: ScriptType,
@@ -129,7 +129,7 @@ abstract class AbstractKit {
         return bitcoinCore.send(hash, memo, scriptType, value, senderPay, feeRate, sortType, unspentOutputs, rbfEnabled)
     }
 
-    fun send(
+    suspend fun send(
         hash: ByteArray,
         memo: String?,
         scriptType: ScriptType,
@@ -142,7 +142,7 @@ abstract class AbstractKit {
         return bitcoinCore.send(hash, memo, scriptType, value, senderPay, feeRate, sortType, null, rbfEnabled)
     }
 
-    fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
+    suspend fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
         return bitcoinCore.redeem(unspentOutput, address, memo, feeRate, sortType, rbfEnabled)
     }
 
@@ -208,7 +208,7 @@ abstract class AbstractKit {
         return bitcoinCore.replacementTransaction(transactionHash, minFee, ReplacementType.Cancel(address, publicKey))
     }
 
-    fun send(replacementTransaction: ReplacementTransaction): FullTransaction {
+    suspend fun send(replacementTransaction: ReplacementTransaction): FullTransaction {
         return bitcoinCore.send(replacementTransaction)
     }
 
