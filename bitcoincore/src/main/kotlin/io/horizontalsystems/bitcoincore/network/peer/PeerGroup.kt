@@ -191,6 +191,13 @@ class PeerGroup(
             peerManager.add(peer)
             peer.start(peerThreadPool)
         }
+
+        // If there are not enough addresses to reach the required number of peers, request them from already connected peers
+        if (peerManager.peersCount > 0 && !hostManager.hasFreshIps && peerManager.peersCount < peerCountToHold) {
+            peerManager.connected().forEach { peer ->
+                peer.sendGetAddrMessage()
+            }
+        }
     }
 
     //

@@ -66,6 +66,10 @@ class Peer(
         peerConnection.sendMessage(MempoolMessage())
     }
 
+    fun sendGetAddrMessage() {
+        peerConnection.sendMessage(GetAddrMessage())
+    }
+
     override fun equals(other: Any?): Boolean {
         if (other is Peer) {
             return host == other.host
