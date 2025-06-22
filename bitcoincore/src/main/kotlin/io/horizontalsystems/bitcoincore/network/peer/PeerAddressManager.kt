@@ -44,6 +44,9 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
         listener?.onAddAddress()
     }
 
+    override fun addUnreachedHosts(host: String)
+        = storage.addUnreachedHosts(host)
+
     override fun markFailed(ip: String) {
         state.remove(ip)
 

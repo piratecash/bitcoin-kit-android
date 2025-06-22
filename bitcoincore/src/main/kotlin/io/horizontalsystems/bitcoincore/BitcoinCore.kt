@@ -337,6 +337,9 @@ class BitcoinCore(
 
         statusInfo["Synced Until"] = lastBlockInfo?.timestamp?.let { Date(it * 1000) } ?: "N/A"
         statusInfo["Syncing Peer"] = initialDownload.syncPeer?.host ?: "N/A"
+        statusInfo["Unreached Hosts"] = storage.getUnreachedHostCount()
+        statusInfo["Total discovered Peers"] = storage.getDiscoveredPeersCount().toString()
+        statusInfo["Connected Peers"] = peerManager.connected().size.toString()
         statusInfo["Derivation"] = purpose.description
         statusInfo["Sync State"] = syncState.toString()
         statusInfo["Last Block Height"] = lastBlockInfo?.height ?: "N/A"

@@ -29,6 +29,7 @@ class PeerDiscover(private val peerAddressManager: IPeerAddressManager, private 
                         logger.info("$tag: Fetched ${ips.size} peer addresses from host: $host")
                         peerAddressManager.addIps(ips)
                     } catch (e: UnknownHostException) {
+                        peerAddressManager.addUnreachedHosts(host)
                         logger.warning("$tag: Cannot look up host: $host")
                     }
                 }
