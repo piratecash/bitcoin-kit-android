@@ -414,6 +414,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
                             coreStorage.setPeerAddresses(ips.map { PeerAddress(it, 0) })
                         }
                     } else {
+                        coreStorage.addUnreachedHosts(host)
                         logger.warning("Cannot look up host: $host")
                     }
                 }
