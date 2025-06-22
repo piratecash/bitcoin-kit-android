@@ -6,11 +6,13 @@ import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerDiscover
+import java.util.concurrent.ConcurrentHashMap
 
 class PeerAddressManager(private val network: Network) : IPeerAddressManager {
 
     private val state = State()
     private val peerDiscover = PeerDiscover(this, network.logTag)
+    private val unreachedHosts = ConcurrentHashMap.newKeySet<String>()
 
     override var listener: IPeerAddressManagerListener? = null
 
@@ -38,6 +40,10 @@ class PeerAddressManager(private val network: Network) : IPeerAddressManager {
     override fun addIps(ips: List<String>) {
         state.setPeerAddresses(ips.map { PeerAddress(it, 0) })
         listener?.onAddAddress()
+    }
+
+    override fun addUnreachedHosts(host: String) {
+        unreachedHosts.add(host)
     }
 
     override fun markFailed(ip: String) {
