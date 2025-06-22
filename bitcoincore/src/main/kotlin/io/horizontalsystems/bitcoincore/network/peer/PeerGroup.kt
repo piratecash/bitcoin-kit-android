@@ -81,6 +81,10 @@ class PeerGroup(
         peerGroupListeners.add(listener)
     }
 
+    fun addPeers(peers: List<String>) {
+        hostManager.addIps(peers)
+    }
+
     //
     // PeerListener implementations
     //

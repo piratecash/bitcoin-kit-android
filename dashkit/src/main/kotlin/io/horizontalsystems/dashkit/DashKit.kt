@@ -25,7 +25,6 @@ import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.Checkpoint
-import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
@@ -79,7 +78,8 @@ import io.reactivex.Single
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -87,6 +87,7 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
 import java.util.logging.Logger
+import kotlin.collections.flatten
 
 class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     enum class NetworkType {
@@ -115,7 +116,6 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
 
     private val mutex = Mutex()
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val logger = Logger.getLogger("DashKit Custom")
 
     constructor(
         context: Context,
@@ -407,18 +407,17 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     fun addPeers(dnsList: List<String>) {
         coroutineScope.launch {
             dnsList.map { host ->
-                launch {
-                    val ips = getIpByUrl(host)
-                    if (ips != null) {
-                        mutex.withLock {
-                            coreStorage.setPeerAddresses(ips.map { PeerAddress(it, 0) })
-                        }
-                    } else {
+                async {
+                    getIpByUrl(host) ?: run {
                         coreStorage.addUnreachedHosts(host)
-                        logger.warning("Cannot look up host: $host")
+                        null
                     }
                 }
-            }.joinAll()
+            }.awaitAll().filterNotNull().flatten().run {
+                mutex.withLock {
+                    bitcoinCore.peerGroup.addPeers(this)
+                }
+            }
         }
     }
 
@@ -566,7 +565,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
                             )
                         )
                     )
-                } catch (ex: Exception) {
+                } catch (_: Exception) {
                     continue
                 }
             }
