@@ -292,6 +292,50 @@ class BitcoinKit : AbstractKit {
         NetworkType.RegTest -> RegTest()
     }
 
+    private fun addressConverter(purpose: Purpose, network: Network): AddressConverterChain {
+        val addressConverter = AddressConverterChain()
+        when (purpose) {
+            Purpose.BIP44,
+            Purpose.BIP49,
+                -> {
+                addressConverter.prependConverter(Base58AddressConverter(network.addressVersion, network.addressScriptVersion))
+            }
+            Purpose.BIP84,
+            Purpose.BIP86,
+                -> {
+                addressConverter.prependConverter(SegwitAddressConverter(network.addressSegwitHrp))
+            }
+        }
+
+        return addressConverter
+    }
+
+    fun firstAddress(
+        seed: ByteArray,
+        purpose: Purpose,
+        networkType: NetworkType,
+    ): Address {
+        return BitcoinCore.firstAddress(
+            seed,
+            purpose,
+            network(networkType),
+            addressConverter(purpose, network(networkType))
+        )
+    }
+
+    fun firstAddress(
+        extendedKey: HDExtendedKey,
+        purpose: Purpose,
+        networkType: NetworkType,
+    ): Address {
+        return BitcoinCore.firstAddress(
+            extendedKey,
+            purpose,
+            network(networkType),
+            addressConverter(purpose, network(networkType))
+        )
+    }
+
     private fun hodlerPlugin(
         storage: Storage,
         syncMode: SyncMode,
