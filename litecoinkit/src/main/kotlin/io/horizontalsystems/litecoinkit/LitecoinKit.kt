@@ -313,6 +313,58 @@ class LitecoinKit : AbstractKit {
                     }
             }
         }
+
+        private fun network(networkType: NetworkType) = when (networkType) {
+            NetworkType.MainNet -> MainNetLitecoin()
+            NetworkType.TestNet -> TestNetLitecoin()
+        }
+
+        private fun addressConverter(purpose: Purpose, network: Network): AddressConverterChain {
+            val addressConverter = AddressConverterChain()
+            when (purpose) {
+                Purpose.BIP44,
+                Purpose.BIP49 -> {
+                    addressConverter.prependConverter(
+                        Base58AddressConverter(network.addressVersion, network.addressScriptVersion)
+                    )
+                }
+
+                Purpose.BIP84,
+                Purpose.BIP86 -> {
+                    addressConverter.prependConverter(
+                        SegwitAddressConverter(network.addressSegwitHrp)
+                    )
+                }
+            }
+
+            return addressConverter
+        }
+
+        fun firstAddress(
+            seed: ByteArray,
+            purpose: Purpose,
+            networkType: NetworkType = NetworkType.MainNet,
+        ): Address {
+            return BitcoinCore.firstAddress(
+                seed,
+                purpose,
+                network(networkType),
+                addressConverter(purpose, network(networkType))
+            )
+        }
+
+        fun firstAddress(
+            extendedKey: HDExtendedKey,
+            purpose: Purpose,
+            networkType: NetworkType = NetworkType.MainNet,
+        ): Address {
+            return BitcoinCore.firstAddress(
+                extendedKey,
+                purpose,
+                network(networkType),
+                addressConverter(purpose, network(networkType))
+            )
+        }
     }
 
 }
