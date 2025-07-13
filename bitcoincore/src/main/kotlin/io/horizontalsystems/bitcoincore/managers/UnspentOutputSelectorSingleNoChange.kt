@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.managers
 
 import io.horizontalsystems.bitcoincore.DustCalculator
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
@@ -18,15 +19,18 @@ class UnspentOutputSelectorSingleNoChange(
         outputScriptType: ScriptType,
         changeType: ScriptType,
         senderPay: Boolean,
-        pluginDataOutputSize: Int
+        pluginDataOutputSize: Int,
+        dustThreshold: Int?,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters
     ): SelectedUnspentOutputInfo {
-        val dust = dustCalculator.dust(outputScriptType)
+        val dust = dustCalculator.dust(outputScriptType, dustThreshold)
         if (value <= dust) {
             throw SendValueErrors.Dust
         }
 
         val sortedOutputs =
-            unspentOutputProvider.getSpendableUtxo().sortedWith(compareByDescending<UnspentOutput> {
+            unspentOutputProvider.getSpendableUtxo(filters).sortedWith(compareByDescending<UnspentOutput> {
                 it.output.failedToSpend
             }.thenBy {
                 it.output.value
@@ -48,7 +52,9 @@ class UnspentOutputSelectorSingleNoChange(
             outputsLimit = null,
             outputScriptType = outputScriptType,
             changeType = changeType,
-            pluginDataOutputSize = pluginDataOutputSize
+            pluginDataOutputSize = pluginDataOutputSize,
+            dustThreshold = dustThreshold,
+            changeToFirstInput = changeToFirstInput,
         )
         val queue = UnspentOutputQueue(params, calculator, dustCalculator)
 

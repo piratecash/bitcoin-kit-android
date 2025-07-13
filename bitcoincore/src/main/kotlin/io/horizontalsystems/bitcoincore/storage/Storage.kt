@@ -331,6 +331,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.transaction.getByHash(output.transactionHash)
     }
 
+    override fun getTransactionOutputsCount(hash: ByteArray): Int {
+        return store.output.getCountByHash(hash)
+    }
+
     override fun addTransaction(transaction: FullTransaction) {
         store.runInTransaction {
             addWithoutTransaction(transaction)

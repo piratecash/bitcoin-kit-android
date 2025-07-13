@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.managers
 
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
 interface IUnspentOutputSelector {
@@ -11,7 +12,10 @@ interface IUnspentOutputSelector {
         outputScriptType: ScriptType = ScriptType.P2PKH,
         changeType: ScriptType = ScriptType.P2PKH,
         senderPay: Boolean,
-        pluginDataOutputSize: Int
+        pluginDataOutputSize: Int,
+        dustThreshold: Int?,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters
     ): SelectedUnspentOutputInfo
 }
 
@@ -32,8 +36,9 @@ sealed class SendValueErrors : Exception() {
 class UnspentOutputSelectorChain(private val unspentOutputProvider: IUnspentOutputProvider) : IUnspentOutputSelector {
     private val concreteSelectors = mutableListOf<IUnspentOutputSelector>()
 
-    val all: List<UnspentOutput>
-        get() = unspentOutputProvider.getSpendableUtxo()
+    fun getAllSpendable(filters: UtxoFilters): List<UnspentOutput> {
+        return unspentOutputProvider.getSpendableUtxo(filters)
+    }
 
     override fun select(
         value: Long,
@@ -42,7 +47,10 @@ class UnspentOutputSelectorChain(private val unspentOutputProvider: IUnspentOutp
         outputScriptType: ScriptType,
         changeType: ScriptType,
         senderPay: Boolean,
-        pluginDataOutputSize: Int
+        pluginDataOutputSize: Int,
+        dustThreshold: Int?,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters
     ): SelectedUnspentOutputInfo {
         var lastError: SendValueErrors? = null
 
@@ -55,7 +63,10 @@ class UnspentOutputSelectorChain(private val unspentOutputProvider: IUnspentOutp
                     outputScriptType,
                     changeType,
                     senderPay,
-                    pluginDataOutputSize
+                    pluginDataOutputSize,
+                    dustThreshold,
+                    changeToFirstInput,
+                    filters
                 )
             } catch (e: SendValueErrors) {
                 lastError = e

@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.storage
 
 import androidx.room.Embedded
+import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.PublicKey
@@ -9,6 +10,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionMetadata
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
+import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 
 class BlockHeader(
@@ -81,6 +83,33 @@ class PublicKeyWithUsedState(
     val used: Boolean
         get() = usedCount > 0
 }
+
+data class UtxoFilters(
+    val scriptTypes: List<ScriptType>? = null,
+    val maxOutputsCountForInputs: Int? = null
+) {
+    fun isEmpty() = scriptTypes == null && maxOutputsCountForInputs == null
+
+    fun filterUtxo(utxo: UnspentOutput, storage: IStorage): Boolean {
+        if (
+            scriptTypes != null &&
+            !scriptTypes.contains(utxo.output.scriptType)
+        ) {
+            return false
+        }
+
+        if (
+            maxOutputsCountForInputs != null &&
+            storage.getTransactionOutputsCount(utxo.transaction.hash) > maxOutputsCountForInputs
+        ) {
+            return false
+        }
+
+
+        return true
+    }
+}
+
 
 class InputWithPreviousOutput(
     val input: TransactionInput,

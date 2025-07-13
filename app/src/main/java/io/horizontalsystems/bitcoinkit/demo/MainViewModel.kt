@@ -14,6 +14,7 @@ import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.cosantakit.CosantaKit
 import io.horizontalsystems.dashkit.DashKit
 import io.horizontalsystems.hodler.HodlerData
@@ -181,7 +182,10 @@ class MainViewModel : ViewModel(), DashKit.Listener {
                             feeRate = feePriority.feeRate,
                             sortType = TransactionDataSortType.Shuffle,
                             pluginData = getPluginData(),
-                            rbfEnabled = true
+                            rbfEnabled = true,
+                            dustThreshold = null,
+                            changeToFirstInput = false,
+                            filters = UtxoFilters()
                         )
 
                         amountLiveData.value = null
@@ -211,7 +215,10 @@ class MainViewModel : ViewModel(), DashKit.Listener {
                 null,
                 feePriority.feeRate,
                 null,
-                getPluginData()
+                getPluginData(),
+                null,
+                false,
+                UtxoFilters()
             )
         } catch (e: Exception) {
             amountLiveData.value = 0
@@ -219,7 +226,6 @@ class MainViewModel : ViewModel(), DashKit.Listener {
 
                 is SendValueErrors.Dust,
                 is SendValueErrors.EmptyOutputs -> "You need at least ${e.message} satoshis to make an transaction"
-
                 is AddressFormatException -> "Could not Format Address"
                 else -> e.message ?: "Maximum could not be calculated"
             }
@@ -243,7 +249,10 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             null,
             feeRate = feePriority.feeRate,
             unspentOutputs = null,
-            pluginData = getPluginData()
+            pluginData = getPluginData(),
+            dustThreshold = null,
+            changeToFirstInput = false,
+            filters = UtxoFilters()
         )
     }
 

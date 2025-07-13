@@ -110,6 +110,7 @@ interface IStorage {
     fun getFullTransactions(transactions: List<Transaction>): List<FullTransaction>
     fun getValidOrInvalidTransaction(uid: String): Transaction?
     fun getTransactionOfOutput(output: TransactionOutput): Transaction?
+    fun getTransactionOutputsCount(hash: ByteArray): Int
     fun addTransaction(transaction: FullTransaction)
     fun updateTransaction(transaction: Transaction)
     fun updateTransaction(transaction: FullTransaction)

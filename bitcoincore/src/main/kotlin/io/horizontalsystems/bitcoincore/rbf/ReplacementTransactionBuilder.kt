@@ -18,6 +18,7 @@ import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.bitcoincore.storage.InputWithPreviousOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.TransactionConflictsResolver
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.builder.LockTimeSetter
@@ -35,8 +36,8 @@ class ReplacementTransactionBuilder(
     private val unspentOutputProvider: UnspentOutputProvider,
     private val publicKeyManager: IPublicKeyManager,
     private val conflictsResolver: TransactionConflictsResolver,
-    private val lockTimeSetter: LockTimeSetter,
     private val transactionSerializer: BaseTransactionSerializer,
+    private val lockTimeSetter: LockTimeSetter
 ) {
 
     private fun replacementTransaction(
@@ -70,7 +71,7 @@ class ReplacementTransactionBuilder(
         val output = TransactionOutput(outputs.first())
         output.value = output.value - (minFee - fee)
 
-        if (output.value > dustCalculator.dust(output.scriptType)) {
+        if (output.value > dustCalculator.dust(output.scriptType, null)) {
             return Pair(listOf(output) + outputs.drop(1), fee)
         }
 
@@ -139,7 +140,7 @@ class ReplacementTransactionBuilder(
             fixedOutputs = listOf(sortedOutputs.last())
             sortedOutputs = sortedOutputs.dropLast(1)
         }
-        val unusedUtxo = unspentOutputProvider.getConfirmedSpendableUtxo().sortedBy { it.output.value }
+        val unusedUtxo = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sortedBy { it.output.value }
         var optimalReplacement: Triple</*inputs*/ List<UnspentOutput>, /*outputs*/ List<TransactionOutput>, /*fee*/ Long>? = null
 
         var utxoCount = 0
@@ -198,7 +199,7 @@ class ReplacementTransactionBuilder(
         userAddress: Address,
         publicKey: PublicKey
     ): MutableTransaction? {
-        val unusedUtxo = unspentOutputProvider.getConfirmedSpendableUtxo().sortedBy { it.output.value }
+        val unusedUtxo = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sortedBy { it.output.value }
         val originalInputsValue = fixedUtxo.sumOf { it.value }
 
         var optimalReplacement: Triple</*inputs*/ List<UnspentOutput>, /*outputs*/ List<TransactionOutput>, /*fee*/ Long>? = null
@@ -216,7 +217,7 @@ class ReplacementTransactionBuilder(
             )
         )
         do {
-            if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType)) {
+            if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType, null)) {
                 utxoCount++
                 continue
             }
@@ -296,7 +297,12 @@ class ReplacementTransactionBuilder(
         check(absoluteFee <= minFee) { throw BuildError.FeeTooLow }
 
         val mutableTransaction = when (type) {
-            ReplacementType.SpeedUp -> speedUpReplacement(originalFullInfo, minFee, originalFeeRate, fixedUtxo)
+            ReplacementType.SpeedUp -> speedUpReplacement(
+                originalFullInfo,
+                minFee,
+                originalFeeRate,
+                fixedUtxo
+            )
             is ReplacementType.Cancel -> cancelReplacement(
                 originalFullInfo,
                 minFee,
@@ -329,7 +335,10 @@ class ReplacementTransactionBuilder(
         )
     }
 
-    fun replacementInfo(transactionHash: String, type: ReplacementType): ReplacementTransactionInfo? {
+    fun replacementInfo(
+        transactionHash: String,
+        type: ReplacementType
+    ): ReplacementTransactionInfo? {
         val originalFullInfo = storage.getFullTransactionInfo(transactionHash.toReversedByteArray()) ?: return null
         check(originalFullInfo.block == null) { throw BuildError.InvalidTransaction("Transaction already in block") }
         check(originalFullInfo.metadata.type != TransactionType.Incoming) { throw BuildError.InvalidTransaction("Can replace only outgoing transaction") }
@@ -371,7 +380,7 @@ class ReplacementTransactionBuilder(
             }
 
             is ReplacementType.Cancel -> {
-                val dustValue = dustCalculator.dust(type.address.scriptType).toLong()
+                val dustValue = dustCalculator.dust(type.address.scriptType, null).toLong()
                 val fixedOutputs = listOf(
                     TransactionOutput(
                         value = dustValue,
@@ -387,7 +396,7 @@ class ReplacementTransactionBuilder(
             }
         }
 
-        val confirmedUtxoTotalValue = unspentOutputProvider.getConfirmedSpendableUtxo().sumOf { it.output.value }
+        val confirmedUtxoTotalValue = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sumOf { it.output.value }
         val maxFeeAmount = originalFee + removableOutputsValue + confirmedUtxoTotalValue
 
         return if (absoluteFee > maxFeeAmount) {
