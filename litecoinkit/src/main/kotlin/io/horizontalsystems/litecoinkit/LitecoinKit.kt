@@ -33,6 +33,7 @@ import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
+import io.horizontalsystems.bitcoincore.utils.SegwitLegacyAddressConverter
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -229,6 +230,8 @@ class LitecoinKit : AbstractKit {
 
             Purpose.BIP86 -> {
                 bitcoinCore.addRestoreKeyConverter(Bip86RestoreKeyConverter(SegwitAddressConverter(network.addressSegwitHrp)))
+                bitcoinCore.addRestoreKeyConverter(Bip86RestoreKeyConverter(
+                    SegwitLegacyAddressConverter(network.addressSegwitHrp)))
             }
         }
 
