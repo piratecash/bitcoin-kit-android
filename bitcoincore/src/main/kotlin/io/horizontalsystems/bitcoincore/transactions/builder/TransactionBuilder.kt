@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.core.IRecipientSetter
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 
 class TransactionBuilder(
     private val recipientSetter: IRecipientSetter,
@@ -21,12 +22,25 @@ class TransactionBuilder(
         sortType: TransactionDataSortType,
         unspentOutputs: List<UnspentOutput>?,
         pluginData: Map<Byte, IPluginData>,
-        rbfEnabled: Boolean
+        rbfEnabled: Boolean,
+        dustThreshold: Int?,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters
     ): MutableTransaction {
         val mutableTransaction = MutableTransaction()
 
         recipientSetter.setRecipient(mutableTransaction, toAddress, value, pluginData, false, memo)
-        inputSetter.setInputs(mutableTransaction, feeRate, senderPay, unspentOutputs, sortType, rbfEnabled)
+        inputSetter.setInputs(
+            mutableTransaction,
+            feeRate,
+            senderPay,
+            unspentOutputs,
+            sortType,
+            rbfEnabled,
+            dustThreshold,
+            changeToFirstInput,
+            filters,
+        )
         lockTimeSetter.setLockTime(mutableTransaction)
 
         outputSetter.setOutputs(mutableTransaction, sortType)

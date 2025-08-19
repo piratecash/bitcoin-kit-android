@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.storage
 
+import androidx.room.concurrent.AtomicInt
 import androidx.sqlite.db.SimpleSQLiteQuery
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
@@ -19,11 +20,24 @@ import io.horizontalsystems.bitcoincore.models.TransactionMetadata
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
 open class Storage(protected open val store: CoreDatabase) : IStorage {
 
     private var transactionSerializer: BaseTransactionSerializer? = null
+    private var discoveredPeers = AtomicInt(0)
+    private val unreachedHosts = ConcurrentHashMap.newKeySet<String>()
+
+    override fun getDiscoveredPeersCount()
+        = discoveredPeers.get()
+
+    override fun addUnreachedHosts(host: String) {
+        unreachedHosts.add(host)
+    }
+
+    override fun getUnreachedHostCount()
+        = unreachedHosts.size
 
     override fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer) {
         this.transactionSerializer = transactionSerializer
@@ -55,6 +69,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun setPeerAddresses(list: List<PeerAddress>) {
+        discoveredPeers.addAndGet(list.size)
         store.peerAddress.insertAll(list)
     }
 
@@ -314,6 +329,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
 
     override fun getTransactionOfOutput(output: TransactionOutput): Transaction? {
         return store.transaction.getByHash(output.transactionHash)
+    }
+
+    override fun getTransactionOutputsCount(hash: ByteArray): Int {
+        return store.output.getCountByHash(hash)
     }
 
     override fun addTransaction(transaction: FullTransaction) {

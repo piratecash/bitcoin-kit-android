@@ -14,6 +14,9 @@ interface TransactionOutputDao {
     @Query("select * from transactionOutput where transactionHash in (:txHashes)")
     fun getTransactionsOutputs(txHashes: List<ByteArray>): List<TransactionOutput>
 
+    @Query("select count(*) from TransactionOutput where transactionHash = :hash")
+    fun getCountByHash(hash: ByteArray): Int
+
     @Delete
     fun delete(output: TransactionOutput)
 

@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import org.junit.Assert
@@ -32,10 +33,21 @@ class UnspentOutputSelectorSingleNoChangeTest {
         val value = 54L
         val selector =
             UnspentOutputSelectorSingleNoChange(calculator, dustCalculator, unspentOutputProvider)
-        `when`(dustCalculator.dust(any())).thenReturn(dust)
+        `when`(dustCalculator.dust(any(), any())).thenReturn(dust)
 
         assertThrows(SendValueErrors.Dust::class.java) {
-            selector.select(value, null, 100, ScriptType.P2PKH, ScriptType.P2WPKH, false, 0)
+            selector.select(
+                value,
+                null,
+                100,
+                ScriptType.P2PKH,
+                ScriptType.P2WPKH,
+                false,
+                0,
+                null,
+                false,
+                UtxoFilters()
+            )
         }
     }
 
@@ -43,10 +55,21 @@ class UnspentOutputSelectorSingleNoChangeTest {
     fun testSelect_EmptyOutputs() {
         val selector =
             UnspentOutputSelectorSingleNoChange(calculator, dustCalculator, unspentOutputProvider)
-        `when`(unspentOutputProvider.getSpendableUtxo()).thenReturn(emptyList())
+        `when`(unspentOutputProvider.getSpendableUtxo(UtxoFilters())).thenReturn(emptyList())
 
         assertThrows(SendValueErrors.EmptyOutputs::class.java) {
-            selector.select(10000, null, 100, ScriptType.P2PKH, ScriptType.P2WPKH, false, 0)
+            selector.select(
+                10000,
+                null,
+                100,
+                ScriptType.P2PKH,
+                ScriptType.P2WPKH,
+                false,
+                0,
+                null,
+                false,
+                UtxoFilters()
+            )
         }
     }
 
@@ -61,8 +84,8 @@ class UnspentOutputSelectorSingleNoChangeTest {
         val fee = 150
         val value = 6000L
 
-        `when`(unspentOutputProvider.getSpendableUtxo()).thenReturn(outputs)
-        `when`(dustCalculator.dust(any())).thenReturn(dust)
+        `when`(unspentOutputProvider.getSpendableUtxo(UtxoFilters())).thenReturn(outputs)
+        `when`(dustCalculator.dust(any(), any())).thenReturn(dust)
         `when`(calculator.inputSize(any())).thenReturn(10)
 //        `when`(calculator.outputSize(any())).thenReturn(2)
         `when`(calculator.transactionSize(
@@ -72,7 +95,18 @@ class UnspentOutputSelectorSingleNoChangeTest {
         `when`(queueParams.fee).thenReturn(fee)
 
         assertThrows(SendValueErrors.NoSingleOutput::class.java) {
-            selector.select(value, null, 100, ScriptType.P2PKH, ScriptType.P2WPKH, false, 0)
+            selector.select(
+                value,
+                null,
+                100,
+                ScriptType.P2PKH,
+                ScriptType.P2WPKH,
+                false,
+                0,
+                null,
+                false,
+                UtxoFilters()
+            )
         }
     }
 
@@ -88,8 +122,8 @@ class UnspentOutputSelectorSingleNoChangeTest {
         val fee = 150
         val value = 10000L
 
-        `when`(unspentOutputProvider.getSpendableUtxo()).thenReturn(outputs)
-        `when`(dustCalculator.dust(any())).thenReturn(dust)
+        `when`(unspentOutputProvider.getSpendableUtxo(UtxoFilters())).thenReturn(outputs)
+        `when`(dustCalculator.dust(any(), any())).thenReturn(dust)
         `when`(calculator.inputSize(any())).thenReturn(10)
 //        `when`(calculator.outputSize(any())).thenReturn(2)
         `when`(calculator.transactionSize(
@@ -99,7 +133,18 @@ class UnspentOutputSelectorSingleNoChangeTest {
         `when`(queueParams.fee).thenReturn(fee)
 
         val selectedInfo =
-            selector.select(value, null, feeRate, ScriptType.P2PKH, ScriptType.P2WPKH, false, 0)
+            selector.select(
+                value,
+                null,
+                feeRate,
+                ScriptType.P2PKH,
+                ScriptType.P2WPKH,
+                false,
+                0,
+                null,
+                false,
+                UtxoFilters()
+            )
         Assert.assertEquals(null, selectedInfo.changeValue)
         Assert.assertEquals(1, selectedInfo.outputs.size)
         Assert.assertArrayEquals(arrayOf(outputs[1]), selectedInfo.outputs.toTypedArray())
@@ -116,8 +161,8 @@ class UnspentOutputSelectorSingleNoChangeTest {
         val fee = 150
         val value = 10000L
 
-        `when`(unspentOutputProvider.getSpendableUtxo()).thenReturn(outputs)
-        `when`(dustCalculator.dust(any())).thenReturn(dust)
+        `when`(unspentOutputProvider.getSpendableUtxo(UtxoFilters())).thenReturn(outputs)
+        `when`(dustCalculator.dust(any(), any())).thenReturn(dust)
         `when`(calculator.inputSize(any())).thenReturn(10)
 //        `when`(calculator.outputSize(any())).thenReturn(2)
         `when`(calculator.transactionSize(
@@ -127,7 +172,18 @@ class UnspentOutputSelectorSingleNoChangeTest {
         `when`(queueParams.fee).thenReturn(fee)
 
         assertThrows(SendValueErrors.HasOutputFailedToSpend::class.java) {
-            selector.select(value, null, 100, ScriptType.P2PKH, ScriptType.P2WPKH, false, 0)
+            selector.select(
+                value,
+                null,
+                100,
+                ScriptType.P2PKH,
+                ScriptType.P2WPKH,
+                false,
+                0,
+                null,
+                false,
+                UtxoFilters()
+            )
         }
     }
 

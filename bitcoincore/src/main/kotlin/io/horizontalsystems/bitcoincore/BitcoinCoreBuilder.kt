@@ -64,6 +64,8 @@ import io.horizontalsystems.bitcoincore.network.messages.FilterLoadMessageSerial
 import io.horizontalsystems.bitcoincore.network.messages.GetBlocksMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.GetDataMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.GetDataMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.GetAddrMessageParser
+import io.horizontalsystems.bitcoincore.network.messages.GetAddrMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.InvMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.InvMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.MempoolMessageSerializer
@@ -677,6 +679,9 @@ class BitcoinCoreBuilder {
             .addMessageSerializer(TransactionMessageSerializer(transactionSerializer))
             .addMessageSerializer(VerAckMessageSerializer())
             .addMessageSerializer(VersionMessageSerializer())
+
+        networkMessageParser.add(GetAddrMessageParser())
+        networkMessageSerializer.add(GetAddrMessageSerializer())
 
         val bloomFilterLoader = BloomFilterLoader(bloomFilterManager, peerManager)
         bloomFilterManager.listener = bloomFilterLoader

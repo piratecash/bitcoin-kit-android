@@ -46,6 +46,10 @@ interface IStorage {
     fun setPeerAddresses(list: List<PeerAddress>)
     fun markConnected(ip: String, time: Long)
 
+    fun getDiscoveredPeersCount(): Int
+    fun addUnreachedHosts(host: String)
+    fun getUnreachedHostCount(): Int
+
     //  BlockHash
 
     fun getBlockHashesSortedBySequenceAndHeight(limit: Int): List<BlockHash>
@@ -106,6 +110,7 @@ interface IStorage {
     fun getFullTransactions(transactions: List<Transaction>): List<FullTransaction>
     fun getValidOrInvalidTransaction(uid: String): Transaction?
     fun getTransactionOfOutput(output: TransactionOutput): Transaction?
+    fun getTransactionOutputsCount(hash: ByteArray): Int
     fun addTransaction(transaction: FullTransaction)
     fun updateTransaction(transaction: Transaction)
     fun updateTransaction(transaction: FullTransaction)
@@ -191,6 +196,7 @@ interface IPeerAddressManager {
     val hasFreshIps: Boolean
     fun getIp(): String?
     fun addIps(ips: List<String>)
+    fun addUnreachedHosts(host: String)
     fun markFailed(ip: String)
     fun markSuccess(ip: String)
     fun markConnected(peer: Peer)

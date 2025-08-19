@@ -14,6 +14,7 @@ import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.cosantakit.CosantaKit
 import io.horizontalsystems.dashkit.DashKit
 import io.horizontalsystems.hodler.HodlerData
@@ -23,7 +24,7 @@ import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.coroutines.launch
 
-class MainViewModel : ViewModel(), PirateCashKit.Listener {
+class MainViewModel : ViewModel(), DashKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -48,17 +49,17 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: PirateCashKit
+    private lateinit var bitcoinKit: DashKit
 
     private val walletId = "MyWallet"
-    private val networkType = PirateCashKit.NetworkType.MainNet
+    private val networkType = DashKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = PirateCashKit(
+        bitcoinKit = DashKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -88,7 +89,7 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        PirateCashKit.clear(App.instance, networkType, walletId)
+        DashKit.clear(App.instance, networkType, walletId)
 
         init()
     }
@@ -103,7 +104,7 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
     }
 
     //
-    // PirateCashKit Listener implementations
+    // DashKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,
@@ -181,7 +182,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                             feeRate = feePriority.feeRate,
                             sortType = TransactionDataSortType.Shuffle,
                             pluginData = getPluginData(),
-                            rbfEnabled = true
+                            rbfEnabled = true,
+                            dustThreshold = null,
+                            changeToFirstInput = false,
+                            filters = UtxoFilters()
                         )
 
                         amountLiveData.value = null
@@ -211,7 +215,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                 null,
                 feePriority.feeRate,
                 null,
-                getPluginData()
+                getPluginData(),
+                null,
+                false,
+                UtxoFilters()
             )
         } catch (e: Exception) {
             amountLiveData.value = 0
@@ -219,7 +226,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
                 is SendValueErrors.Dust,
                 is SendValueErrors.EmptyOutputs -> "You need at least ${e.message} satoshis to make an transaction"
-
                 is AddressFormatException -> "Could not Format Address"
                 else -> e.message ?: "Maximum could not be calculated"
             }
@@ -243,7 +249,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             null,
             feeRate = feePriority.feeRate,
             unspentOutputs = null,
-            pluginData = getPluginData()
+            pluginData = getPluginData(),
+            dustThreshold = null,
+            changeToFirstInput = false,
+            filters = UtxoFilters()
         )
     }
 

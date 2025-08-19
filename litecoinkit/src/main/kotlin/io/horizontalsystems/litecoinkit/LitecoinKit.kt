@@ -33,6 +33,7 @@ import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
+import io.horizontalsystems.bitcoincore.utils.SegwitLegacyAddressConverter
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -229,6 +230,8 @@ class LitecoinKit : AbstractKit {
 
             Purpose.BIP86 -> {
                 bitcoinCore.addRestoreKeyConverter(Bip86RestoreKeyConverter(SegwitAddressConverter(network.addressSegwitHrp)))
+                bitcoinCore.addRestoreKeyConverter(Bip86RestoreKeyConverter(
+                    SegwitLegacyAddressConverter(network.addressSegwitHrp)))
             }
         }
 
@@ -312,6 +315,58 @@ class LitecoinKit : AbstractKit {
                         continue
                     }
             }
+        }
+
+        private fun network(networkType: NetworkType) = when (networkType) {
+            NetworkType.MainNet -> MainNetLitecoin()
+            NetworkType.TestNet -> TestNetLitecoin()
+        }
+
+        private fun addressConverter(purpose: Purpose, network: Network): AddressConverterChain {
+            val addressConverter = AddressConverterChain()
+            when (purpose) {
+                Purpose.BIP44,
+                Purpose.BIP49 -> {
+                    addressConverter.prependConverter(
+                        Base58AddressConverter(network.addressVersion, network.addressScriptVersion)
+                    )
+                }
+
+                Purpose.BIP84,
+                Purpose.BIP86 -> {
+                    addressConverter.prependConverter(
+                        SegwitAddressConverter(network.addressSegwitHrp)
+                    )
+                }
+            }
+
+            return addressConverter
+        }
+
+        fun firstAddress(
+            seed: ByteArray,
+            purpose: Purpose,
+            networkType: NetworkType = NetworkType.MainNet,
+        ): Address {
+            return BitcoinCore.firstAddress(
+                seed,
+                purpose,
+                network(networkType),
+                addressConverter(purpose, network(networkType))
+            )
+        }
+
+        fun firstAddress(
+            extendedKey: HDExtendedKey,
+            purpose: Purpose,
+            networkType: NetworkType = NetworkType.MainNet,
+        ): Address {
+            return BitcoinCore.firstAddress(
+                extendedKey,
+                purpose,
+                network(networkType),
+                addressConverter(purpose, network(networkType))
+            )
         }
     }
 

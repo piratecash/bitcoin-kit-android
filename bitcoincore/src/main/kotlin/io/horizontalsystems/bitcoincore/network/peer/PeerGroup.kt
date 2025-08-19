@@ -81,6 +81,10 @@ class PeerGroup(
         peerGroupListeners.add(listener)
     }
 
+    fun addPeers(peers: List<String>) {
+        hostManager.addIps(peers)
+    }
+
     //
     // PeerListener implementations
     //
@@ -190,6 +194,13 @@ class PeerGroup(
             peerGroupListeners.forEach { it.onPeerCreate(peer) }
             peerManager.add(peer)
             peer.start(peerThreadPool)
+        }
+
+        // If there are not enough addresses to reach the required number of peers, request them from already connected peers
+        if (peerManager.peersCount > 0 && !hostManager.hasFreshIps && peerManager.peersCount < peerCountToHold) {
+            peerManager.connected().forEach { peer ->
+                peer.sendGetAddrMessage()
+            }
         }
     }
 

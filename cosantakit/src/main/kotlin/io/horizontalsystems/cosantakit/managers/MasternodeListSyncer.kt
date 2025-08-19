@@ -39,7 +39,8 @@ class MasternodeListSyncer(
         peersQueue.execute {
             if (workingPeer == null) {
                 bitcoinCore.lastBlockInfo?.let { lastBlockInfo ->
-                    initialBlockDownload.syncedPeers.firstOrNull()?.let { syncedPeer ->
+                    val peersCopy = initialBlockDownload.syncedPeers.toList()
+                    peersCopy.firstOrNull()?.let { syncedPeer ->
                         val blockHash = lastBlockInfo.headerHash.toReversedByteArray()
                         val baseBlockHash = masternodeListManager.baseBlockHash
 
