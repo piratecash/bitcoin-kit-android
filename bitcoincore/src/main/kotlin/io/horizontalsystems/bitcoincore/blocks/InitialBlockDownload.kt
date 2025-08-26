@@ -16,7 +16,6 @@ import java.util.logging.Logger
 import kotlin.math.max
 
 class InitialBlockDownload(
-    private val network: Network,
     private var blockSyncer: BlockSyncer,
     private val peerManager: PeerManager,
     private val merkleBlockExtractor: MerkleBlockExtractor
@@ -75,8 +74,6 @@ class InitialBlockDownload(
     override fun handleMerkleBlock(merkleBlock: MerkleBlock) {
         val maxBlockHeight = syncPeer?.announcedLastBlockHeight ?: 0
         blockSyncer.handleMerkleBlock(merkleBlock, maxBlockHeight)
-        
-        logger.info("${network.logTag} MerkleBlock height=${merkleBlock.height}, local=${blockSyncer.localDownloadedBestBlockHeight}, max=$maxBlockHeight")
         
         updateSyncProgress(maxBlockHeight)
     }

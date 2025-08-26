@@ -422,14 +422,13 @@ class BitcoinCoreBuilder {
         val networkMessageParser = NetworkMessageParser(network.magic)
         val networkMessageSerializer = NetworkMessageSerializer(network.magic)
 
-        val blockchain = Blockchain(storage, blockValidator, dataProvider, network.logTag)
+        val blockchain = Blockchain(storage, blockValidator, dataProvider)
         val blockSyncer = BlockSyncer(
             storage = storage,
             blockchain = blockchain,
             transactionProcessor = blockTransactionProcessor,
             publicKeyManager = publicKeyManager,
-            checkpoint = checkpoint,
-            networkLog = network.logTag
+            checkpoint = checkpoint
         )
 
 
@@ -502,7 +501,7 @@ class BitcoinCoreBuilder {
                     apiSyncStateManager
                 )
                 initialDownload =
-                    InitialBlockDownload(network,blockSyncer, peerManager, merkleBlockExtractor)
+                    InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor)
             }
         }
 

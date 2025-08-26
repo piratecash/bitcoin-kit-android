@@ -17,14 +17,16 @@ import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.cosantakit.CosantaKit
 import io.horizontalsystems.dashkit.DashKit
+import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hodler.HodlerData
 import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
+import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.coroutines.launch
 
-class MainViewModel : ViewModel(), DashKit.Listener {
+class MainViewModel : ViewModel(), LitecoinKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -49,17 +51,17 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: DashKit
+    private lateinit var bitcoinKit: LitecoinKit
 
     private val walletId = "MyWallet"
-    private val networkType = DashKit.NetworkType.MainNet
+    private val networkType = LitecoinKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Api()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = DashKit(
+        bitcoinKit = LitecoinKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -67,6 +69,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             syncMode = syncMode,
             networkType = networkType,
             confirmationsThreshold = 3,
+            purpose = Purpose.BIP44
         )
 
         bitcoinKit.listener = this
@@ -96,7 +99,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        DashKit.clear(App.instance, networkType, walletId)
+        LitecoinKit.clear(App.instance, networkType, walletId)
 
         init()
     }
@@ -111,7 +114,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
     }
 
     //
-    // DashKit Listener implementations
+    // LitecoinKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,

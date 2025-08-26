@@ -18,8 +18,7 @@ class BlockSyncer(
     private val transactionProcessor: BlockTransactionProcessor,
     private val publicKeyManager: IPublicKeyManager,
     private val checkpoint: Checkpoint,
-    private val state: State = State(),
-    private val networkLog: String
+    private val state: State = State()
 ) {
     private val logger = Logger.getLogger("BlockSyncer")
 
@@ -122,14 +121,10 @@ class BlockSyncer(
     }
 
     fun handleMerkleBlock(merkleBlock: MerkleBlock, maxBlockHeight: Int) {
-        logger.info("$networkLog BlockSyncer.handleMerkleBlock: hash=${merkleBlock.blockHash.toHexString()}, height=${merkleBlock.height}, localHeight=${localDownloadedBestBlockHeight}")
-
         val block = when (val height = merkleBlock.height) {
             null -> blockchain.connect(merkleBlock)
             else -> blockchain.forceAdd(merkleBlock, height)
         }
-
-        logger.info("$networkLog BlockSyncer.handleMerkleBlock: block created, height=${block.height}, hash=${block.headerHash.toHexString()}")
 
         try {
             transactionProcessor.processReceived(
@@ -138,7 +133,6 @@ class BlockSyncer(
                 skipCheckBloomFilter = state.iterationHasPartialBlocks
             )
         } catch (e: BloomFilterManager.BloomFilterExpired) {
-            logger.warning("$networkLog BlockSyncer.handleMerkleBlock: Failed to process transactions: ${e.message}")
             state.iterationHasPartialBlocks = true
         }
 
@@ -147,8 +141,6 @@ class BlockSyncer(
         } else {
             storage.deleteBlockHash(block.headerHash)
         }
-        logger.info("$networkLog BlockSyncer.handleMerkleBlock: after processing, localHeight=${localDownloadedBestBlockHeight}, blockHeight=${block.height}")
-
 
         if (merkleBlock.height != null) {
             listener?.onBlockForceAdded()

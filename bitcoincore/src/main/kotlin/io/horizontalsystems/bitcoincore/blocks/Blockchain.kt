@@ -13,23 +13,16 @@ import java.util.logging.Logger
 class Blockchain(
     private val storage: IStorage,
     private val blockValidator: IBlockValidator?,
-    private val dataListener: IBlockchainDataListener,
-    private val networkLogTag: String
+    private val dataListener: IBlockchainDataListener
 ) {
-    private val logger = Logger.getLogger("Blockchain")
-
     fun connect(merkleBlock: MerkleBlock): Block {
-        logger.info("$networkLogTag Blockchain.connect: hash=${merkleBlock.blockHash.toHexString()}, height=${merkleBlock.height}")
-        
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
-            logger.info("$networkLogTag Blockchain.connect: block already exists in DB, height=${blockInDB.height}")
             return blockInDB
         }
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
         if (parentBlock == null) {
-            logger.info("$networkLogTag No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans...")
             storage.addBlock(Block(merkleBlock, Block()).apply {
                 orphan = true
             }) // add to orphans with empty parent
@@ -43,29 +36,20 @@ class Blockchain(
         val isFork = checkIfFork(block, parentBlock)
         if (isFork) {
             block.stale = true
-            logger.info("$networkLogTag Blockchain.connect: block is part of fork, marking as stale, height=${block.height}")
         }
 
         if (block.height % 2016 == 0) {
             storage.deleteBlocksWithoutTransactions(block.height - 2016)
         }
 
-        logger.info("$networkLogTag Blockchain.connect: adding block, height=${block.height}, parentHeight=${parentBlock.height}")
-        
         return addBlockAndNotify(block)
     }
 
     fun forceAdd(merkleBlock: MerkleBlock, height: Int): Block {
-        logger.info("$networkLogTag Blockchain.forceAdd: hash=${merkleBlock.blockHash.toHexString()}, height=$height")
-        
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
-            logger.info("$networkLogTag Blockchain.forceAdd: block already exists in DB, height=${blockInDB.height}")
             return blockInDB
         }
-
-        logger.info("$networkLogTag Blockchain.forceAdd: adding block, height=$height")
-        
         return addBlockAndNotify(Block(merkleBlock.header, height))
     }
 
@@ -115,13 +99,8 @@ class Blockchain(
     }
 
     private fun addBlockAndNotify(block: Block): Block {
-        logger.info("$networkLogTag: Blockchain.addBlockAndNotify: saving block, height=${block.height}, hash=${block.headerHash.toHexString()}")
-        
         storage.addBlock(block)
         dataListener.onBlockInsert(block)
-
-        logger.info("$networkLogTag: Blockchain.addBlockAndNotify: block saved, height=${block.height}")
-
         return block
     }
 
