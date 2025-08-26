@@ -42,7 +42,7 @@ object BlockSyncerTest : Spek({
         whenever(storage.blocksCount()).thenReturn(1)
         whenever(storage.lastBlock()).thenReturn(null)
 
-        blockSyncer = BlockSyncer(storage, blockchain, transactionProcessor, publicKeyManager, network.lastCheckpoint, state)
+        blockSyncer = BlockSyncer(storage, blockchain, transactionProcessor, publicKeyManager, network.lastCheckpoint, state, "Log")
     }
 
     afterEachTest {
@@ -59,7 +59,7 @@ object BlockSyncerTest : Spek({
                 whenever(storage.blocksCount()).thenReturn(1)
                 whenever(storage.lastBlock()).thenReturn(checkpointBlock)
 
-                BlockSyncer(storage, blockchain, transactionProcessor, publicKeyManager, network.lastCheckpoint, state)
+                BlockSyncer(storage, blockchain, transactionProcessor, publicKeyManager, network.lastCheckpoint, state, "TEST")
             }
 
             it("does not saves block to storage") {

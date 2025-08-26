@@ -422,13 +422,14 @@ class BitcoinCoreBuilder {
         val networkMessageParser = NetworkMessageParser(network.magic)
         val networkMessageSerializer = NetworkMessageSerializer(network.magic)
 
-        val blockchain = Blockchain(storage, blockValidator, dataProvider)
+        val blockchain = Blockchain(storage, blockValidator, dataProvider, network.logTag)
         val blockSyncer = BlockSyncer(
-            storage,
-            blockchain,
-            blockTransactionProcessor,
-            publicKeyManager,
-            checkpoint
+            storage = storage,
+            blockchain = blockchain,
+            transactionProcessor = blockTransactionProcessor,
+            publicKeyManager = publicKeyManager,
+            checkpoint = checkpoint,
+            networkLog = network.logTag
         )
 
 
