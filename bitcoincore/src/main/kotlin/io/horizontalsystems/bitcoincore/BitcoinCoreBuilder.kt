@@ -501,7 +501,7 @@ class BitcoinCoreBuilder {
                     apiSyncStateManager
                 )
                 initialDownload =
-                    InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor)
+                    InitialBlockDownload(network,blockSyncer, peerManager, merkleBlockExtractor)
             }
         }
 
