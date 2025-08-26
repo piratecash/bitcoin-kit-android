@@ -15,6 +15,8 @@ class Blockchain(
     private val blockValidator: IBlockValidator?,
     private val dataListener: IBlockchainDataListener
 ) {
+    private val logger = Logger.getLogger("Blockchain")
+
     fun connect(merkleBlock: MerkleBlock): Block {
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
@@ -23,6 +25,7 @@ class Blockchain(
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
         if (parentBlock == null) {
+            logger.info("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans...")
             storage.addBlock(Block(merkleBlock, Block()).apply {
                 orphan = true
             }) // add to orphans with empty parent
