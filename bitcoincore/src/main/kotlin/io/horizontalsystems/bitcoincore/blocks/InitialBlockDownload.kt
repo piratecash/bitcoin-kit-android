@@ -73,6 +73,8 @@ class InitialBlockDownload(
     override fun handleMerkleBlock(merkleBlock: MerkleBlock) {
         val maxBlockHeight = syncPeer?.announcedLastBlockHeight ?: 0
         blockSyncer.handleMerkleBlock(merkleBlock, maxBlockHeight)
+
+        updateSyncProgress(maxBlockHeight)
     }
 
     override fun onStart() {
@@ -127,6 +129,16 @@ class InitialBlockDownload(
                 val notSyncedPeers = peerManager.sorted().filter { !it.synced }
                 if (notSyncedPeers.isEmpty()) {
                     peerSyncListeners.forEach { it.onAllPeersSynced() }
+
+                    val maxPeerHeight = peerManager.connected().maxOfOrNull { it.announcedLastBlockHeight } ?: 0
+                    if (blockSyncer.localDownloadedBestBlockHeight >= maxPeerHeight) {
+                        listener?.onBlockSyncFinished()
+                    } else {
+                        peerManager.connected().forEach { peer ->
+                            peer.synced = false
+                        }
+                        assignNextSyncPeer()
+                    }
                 }
 
                 notSyncedPeers.firstOrNull { it.ready }?.let { nonSyncedPeer ->
@@ -175,14 +187,15 @@ class InitialBlockDownload(
                 assignNextSyncPeer()
                 peerSyncListeners.forEach { it.onPeerSynced(peer) }
 
-                // Some peers fail to send InventoryMessage within expected time
-                // and become 'synced' in InitialBlockDownload without sending all of their blocks.
-                // In such case, we assume not all blocks are downloaded
-                if (blockSyncer.localDownloadedBestBlockHeight >= peer.announcedLastBlockHeight) {
-                    listener?.onBlockSyncFinished()
-                }
+                listener?.onBlockSyncFinished()
             }
         }
     }
 
+    private fun updateSyncProgress(maxBlockHeight: Int) {
+        val currentHeight = blockSyncer.localDownloadedBestBlockHeight
+        if (maxBlockHeight > currentHeight) {
+            listener?.onCurrentBestBlockHeightUpdate(currentHeight, maxBlockHeight)
+        }
+    }
 }
