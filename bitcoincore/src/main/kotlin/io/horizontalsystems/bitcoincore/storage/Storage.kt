@@ -20,6 +20,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionMetadata
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
+import java.math.BigInteger
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
@@ -594,4 +595,33 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         store.sentTransaction.delete(transaction)
     }
 
+    override fun getChainWork(block: Block): BigInteger {
+        val work = blockWork(block.bits)
+
+        val parent = getBlock(block.previousBlockHash)
+        val parentWork = if (parent != null) getChainWork(parent) else BigInteger.ZERO
+
+        return parentWork.add(work)
+    }
+
+    private fun blockWork(bits: Long): BigInteger {
+        val target = decodeCompactBits(bits)
+        val two256 = BigInteger.ONE.shiftLeft(256)
+        return two256.divide(target.add(BigInteger.ONE))
+    }
+
+    private fun decodeCompactBits(compact: Long): BigInteger {
+        val size = ((compact ushr 24) and 0xFF).toInt()
+        val mantissa = compact and 0x007FFFFF
+
+        if ((compact and 0x00800000) != 0L) {
+            return BigInteger.ZERO
+        }
+
+        return if (size <= 3) {
+            BigInteger.valueOf(mantissa shr (8 * (3 - size)))
+        } else {
+            BigInteger.valueOf(mantissa).shiftLeft(8 * (size - 3))
+        }
+    }
 }

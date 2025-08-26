@@ -40,7 +40,11 @@ class Blockchain(
         val block = Block(merkleBlock, parentBlock)
         blockValidator?.validate(block, parentBlock)
 
-        block.stale = true
+        val isFork = checkIfFork(block, parentBlock)
+        if (isFork) {
+            block.stale = true
+            logger.info("$networkLogTag Blockchain.connect: block is part of fork, marking as stale, height=${block.height}")
+        }
 
         if (block.height % 2016 == 0) {
             storage.deleteBlocksWithoutTransactions(block.height - 2016)
@@ -120,4 +124,29 @@ class Blockchain(
 
         return block
     }
+
+    private fun checkIfFork(block: Block, parentBlock: Block): Boolean {
+        val existingBlockAtHeight = storage.getBlock(block.height)
+
+        if (existingBlockAtHeight != null &&
+            existingBlockAtHeight.headerHash.contentEquals(block.headerHash)) {
+            return false
+        }
+
+        if (existingBlockAtHeight != null &&
+            !existingBlockAtHeight.headerHash.contentEquals(block.headerHash)) {
+
+            val currentChainWork = storage.getChainWork(existingBlockAtHeight)
+            val newChainWork = storage.getChainWork(block)
+
+            return newChainWork <= currentChainWork
+        }
+
+        if (parentBlock.stale) {
+            return true
+        }
+
+        return false
+    }
+
 }
