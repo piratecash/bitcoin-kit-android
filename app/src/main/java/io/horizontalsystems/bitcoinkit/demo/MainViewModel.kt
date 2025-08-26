@@ -53,7 +53,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
 
     private val walletId = "MyWallet"
     private val networkType = DashKit.NetworkType.MainNet
-    private val syncMode = BitcoinCore.SyncMode.Blockchair()
+    private val syncMode = BitcoinCore.SyncMode.Api()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
@@ -85,6 +85,13 @@ class MainViewModel : ViewModel(), DashKit.Listener {
         started = true
 
         bitcoinKit.start()
+    }
+
+    fun stop() {
+        if (!started) return
+        started = false
+
+        bitcoinKit.stop()
     }
 
     fun clear() {
