@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.core.IBlockSyncListener
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
+import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHashesTask
@@ -184,5 +185,4 @@ class InitialBlockDownload(
             }
         }
     }
-
 }

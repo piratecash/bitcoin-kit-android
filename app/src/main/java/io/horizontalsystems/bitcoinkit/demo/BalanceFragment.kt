@@ -24,6 +24,7 @@ class BalanceFragment : Fragment() {
     lateinit var lastBlockValue: TextView
     lateinit var stateValue: TextView
     lateinit var startButton: Button
+    lateinit var stopButton: Button
     lateinit var clearButton: Button
     lateinit var buttonDebug: Button
     lateinit var buttonStatus: Button
@@ -77,9 +78,11 @@ class BalanceFragment : Fragment() {
             when (it) {
                 MainViewModel.State.STARTED -> {
                     startButton.isEnabled = false
+                    stopButton.isEnabled = true
                 }
                 else -> {
                     startButton.isEnabled = true
+                    stopButton.isEnabled = false
                 }
             }
         })
@@ -111,12 +114,17 @@ class BalanceFragment : Fragment() {
         lastBlockDateValue = view.findViewById(R.id.lastBlockDateValue)
         stateValue = view.findViewById(R.id.stateValue)
         startButton = view.findViewById(R.id.buttonStart)
+        stopButton = view.findViewById(R.id.buttonStop)
         clearButton = view.findViewById(R.id.buttonClear)
         buttonDebug = view.findViewById(R.id.buttonDebug)
         buttonStatus = view.findViewById(R.id.buttonStatus)
 
         startButton.setOnClickListener {
             viewModel.start()
+        }
+
+        stopButton.setOnClickListener {
+            viewModel.stop()
         }
 
         clearButton.setOnClickListener {

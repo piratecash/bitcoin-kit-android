@@ -121,7 +121,6 @@ class BlockSyncer(
     }
 
     fun handleMerkleBlock(merkleBlock: MerkleBlock, maxBlockHeight: Int) {
-
         val block = when (val height = merkleBlock.height) {
             null -> blockchain.connect(merkleBlock)
             else -> blockchain.forceAdd(merkleBlock, height)

@@ -35,7 +35,7 @@ object BlockchainTest : Spek({
         whenever(merkleBlock.header).thenReturn(blockHeader)
         whenever(merkleBlock.blockHash).thenReturn(byteArrayOf(1, 3))
 
-        blockchain = Blockchain(storage, blockValidator, dataListener)
+        blockchain = Blockchain(storage, blockValidator, dataListener, "TEST")
     }
 
     afterEachTest {

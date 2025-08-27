@@ -51,6 +51,7 @@ import io.horizontalsystems.dashkit.instantsend.transactionlockvote.TransactionL
 import io.horizontalsystems.dashkit.instantsend.transactionlockvote.TransactionLockVoteManager
 import io.horizontalsystems.dashkit.managers.ConfirmedUnspentOutputProvider
 import io.horizontalsystems.dashkit.managers.MasternodeListManager
+import io.horizontalsystems.dashkit.managers.MasternodeListSyncer
 import io.horizontalsystems.dashkit.managers.MasternodeSortedList
 import io.horizontalsystems.dashkit.managers.QuorumListManager
 import io.horizontalsystems.dashkit.managers.QuorumSortedList
@@ -59,6 +60,7 @@ import io.horizontalsystems.dashkit.masternodelist.MasternodeListMerkleRootCalcu
 import io.horizontalsystems.dashkit.masternodelist.MerkleRootCreator
 import io.horizontalsystems.dashkit.masternodelist.MerkleRootHasher
 import io.horizontalsystems.dashkit.masternodelist.QuorumListMerkleRootCalculator
+import io.horizontalsystems.dashkit.messages.GetMasternodeListDiffMessageSerializer
 import io.horizontalsystems.dashkit.messages.ISLockMessageParser
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.dashkit.messages.TransactionLockMessageParser
@@ -69,6 +71,7 @@ import io.horizontalsystems.dashkit.models.DashTransactionInfo
 import io.horizontalsystems.dashkit.models.InstantTransactionState
 import io.horizontalsystems.dashkit.storage.DashKitDatabase
 import io.horizontalsystems.dashkit.storage.DashStorage
+import io.horizontalsystems.dashkit.tasks.PeerTaskFactory
 import io.horizontalsystems.dashkit.validators.DarkGravityWaveTestnetValidator
 import io.horizontalsystems.dashkit.validators.DarkGravityWaveValidator
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
@@ -333,6 +336,8 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .addMessageParser(ISLockMessageParser())
             .addMessageParser(TransactionMessageParser(transactionSerializer))
 
+        bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())
+
         val merkleRootHasher = MerkleRootHasher()
         val merkleRootCreator = MerkleRootCreator(merkleRootHasher)
         val masternodeListMerkleRootCalculator =
@@ -353,6 +358,16 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             MasternodeSortedList(),
             quorumListManager
         )
+        val masternodeSyncer = MasternodeListSyncer(
+            bitcoinCore,
+            PeerTaskFactory(),
+            masternodeListManager,
+            bitcoinCore.initialDownload
+        )
+
+        bitcoinCore.addPeerTaskHandler(masternodeSyncer)
+        bitcoinCore.addPeerSyncListener(masternodeSyncer)
+        bitcoinCore.addPeerGroupListener(masternodeSyncer)
 
         val base58AddressConverter =
             Base58AddressConverter(network.addressVersion, network.addressScriptVersion)

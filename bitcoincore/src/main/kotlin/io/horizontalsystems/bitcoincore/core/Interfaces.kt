@@ -29,6 +29,7 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.transactions.builder.MutableTransaction
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.hdwalletkit.HDKey
+import java.math.BigInteger
 
 interface IStorage {
 
@@ -179,6 +180,8 @@ interface IStorage {
     fun addSentTransaction(transaction: SentTransaction)
     fun updateSentTransaction(transaction: SentTransaction)
     fun deleteSentTransaction(transaction: SentTransaction)
+
+    fun getChainWork(block: Block): BigInteger
 }
 
 interface ITransactionInfoConverter {

@@ -424,11 +424,11 @@ class BitcoinCoreBuilder {
 
         val blockchain = Blockchain(storage, blockValidator, dataProvider)
         val blockSyncer = BlockSyncer(
-            storage,
-            blockchain,
-            blockTransactionProcessor,
-            publicKeyManager,
-            checkpoint
+            storage = storage,
+            blockchain = blockchain,
+            transactionProcessor = blockTransactionProcessor,
+            publicKeyManager = publicKeyManager,
+            checkpoint = checkpoint
         )
 
 
