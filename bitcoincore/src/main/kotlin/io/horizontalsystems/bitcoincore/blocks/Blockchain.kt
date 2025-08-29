@@ -119,8 +119,8 @@ class Blockchain(
         if (existingBlockAtHeight != null &&
             !existingBlockAtHeight.headerHash.contentEquals(block.headerHash)) {
 
-            val currentChainWork = storage.getChainWork(existingBlockAtHeight,  mutableSetOf())
-            val newChainWork = storage.getChainWork(block,  mutableSetOf())
+            val currentChainWork = storage.getChainWork(existingBlockAtHeight)
+            val newChainWork = storage.getChainWork(block)
 
             return newChainWork <= currentChainWork
         }

@@ -181,7 +181,7 @@ interface IStorage {
     fun updateSentTransaction(transaction: SentTransaction)
     fun deleteSentTransaction(transaction: SentTransaction)
 
-    fun getChainWork(block: Block, visited: MutableSet<String>): BigInteger
+    fun getChainWork(block: Block): BigInteger
 }
 
 interface ITransactionInfoConverter {
