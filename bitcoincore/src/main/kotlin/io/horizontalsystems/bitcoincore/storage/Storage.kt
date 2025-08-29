@@ -595,11 +595,20 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         store.sentTransaction.delete(transaction)
     }
 
-    override fun getChainWork(block: Block): BigInteger {
+    override fun getChainWork(block: Block, visited: MutableSet<String>): BigInteger {
         val work = blockWork(block.bits)
+        val hash = block.headerHash.toHexString()
+
+        if (!visited.add(hash)) {
+            return BigInteger.ZERO
+        }
+
+        if (block.height == 0) {
+            return work
+        }
 
         val parent = getBlock(block.previousBlockHash)
-        val parentWork = if (parent != null) getChainWork(parent) else BigInteger.ZERO
+        val parentWork = if (parent != null) getChainWork(parent, visited) else BigInteger.ZERO
 
         return parentWork.add(work)
     }

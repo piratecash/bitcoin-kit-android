@@ -9,6 +9,7 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import java.util.logging.Logger
+import kotlin.collections.mutableSetOf
 
 class Blockchain(
     private val storage: IStorage,
@@ -118,8 +119,8 @@ class Blockchain(
         if (existingBlockAtHeight != null &&
             !existingBlockAtHeight.headerHash.contentEquals(block.headerHash)) {
 
-            val currentChainWork = storage.getChainWork(existingBlockAtHeight)
-            val newChainWork = storage.getChainWork(block)
+            val currentChainWork = storage.getChainWork(existingBlockAtHeight,  mutableSetOf())
+            val newChainWork = storage.getChainWork(block,  mutableSetOf())
 
             return newChainWork <= currentChainWork
         }
