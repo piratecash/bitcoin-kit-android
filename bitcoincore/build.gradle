@@ -80,6 +80,8 @@ dependencies {
     // HDWallet Kit
     api 'com.github.horizontalsystems:hd-wallet-kit-android:a74b51f'
 
+    api libs.timber
+
     // Test helpers
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.6.1'
