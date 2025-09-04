@@ -9,24 +9,27 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import java.util.logging.Logger
-import kotlin.collections.mutableSetOf
+import timber.log.Timber
 
 class Blockchain(
     private val storage: IStorage,
     private val blockValidator: IBlockValidator?,
-    private val dataListener: IBlockchainDataListener
+    private val dataListener: IBlockchainDataListener,
+    private val logTag: String
 ) {
     private val logger = Logger.getLogger("Blockchain")
 
     fun connect(merkleBlock: MerkleBlock): Block {
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
+            Timber.tag(logTag).d("Block already exists in DB: hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}")
             return blockInDB
         }
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
         if (parentBlock == null) {
             logger.info("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans...")
+            Timber.tag(logTag).d("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
             storage.addBlock(Block(merkleBlock, Block()).apply {
                 orphan = true
             }) // add to orphans with empty parent
@@ -35,11 +38,17 @@ class Blockchain(
         }
 
         val block = Block(merkleBlock, parentBlock)
-        blockValidator?.validate(block, parentBlock)
+        try {
+            blockValidator?.validate(block, parentBlock)
+        } catch (e: BlockValidatorException) {
+            Timber.tag(logTag).d("Block validation failed: hash=${merkleBlock.blockHash.toHexString()}, error=${e.message}")
+            throw e
+        }
 
         val isFork = checkIfFork(block, parentBlock)
         if (isFork) {
             block.stale = true
+            Timber.tag(logTag).d("Block marked as stale (fork): hash=${merkleBlock.blockHash.toHexString()}, height=${block.height}")
         }
 
         if (block.height % 2016 == 0) {
@@ -52,16 +61,20 @@ class Blockchain(
     fun forceAdd(merkleBlock: MerkleBlock, height: Int): Block {
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
+            Timber.tag(logTag).d("Block already exists in DB (forceAdd): hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}")
             return blockInDB
         }
+        Timber.tag(logTag).d("Force adding block: hash=${merkleBlock.blockHash.toHexString()}, height=$height")
         return addBlockAndNotify(Block(merkleBlock.header, height))
     }
 
     fun insertLastBlock(header: BlockHeader, height: Int) {
         if (storage.getBlock(header.hash) != null) {
+            Timber.tag(logTag).d("Last block already exists in DB: hash=${header.hash.toHexString()}, height=$height")
             return
         }
 
+        Timber.tag(logTag).d("Inserting last block: hash=${header.hash.toHexString()}, height=$height")
         addBlockAndNotify(Block(header, height))
     }
 
@@ -104,6 +117,7 @@ class Blockchain(
 
     private fun addBlockAndNotify(block: Block): Block {
         storage.addBlock(block)
+        Timber.tag(logTag).d("Block added successfully: hash=${block.headerHash.toHexString()}, height=${block.height}, stale=${block.stale}")
         dataListener.onBlockInsert(block)
         return block
     }

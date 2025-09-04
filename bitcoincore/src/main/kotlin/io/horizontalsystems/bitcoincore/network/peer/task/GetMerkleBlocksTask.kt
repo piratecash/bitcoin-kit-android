@@ -10,15 +10,18 @@ import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.MerkleBlockMessage
 import io.horizontalsystems.bitcoincore.network.messages.TransactionMessage
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
+import timber.log.Timber
 import kotlin.math.roundToInt
 
 class GetMerkleBlocksTask(
-        hashes: List<BlockHash>,
-        private val merkleBlockHandler: MerkleBlockHandler,
-        private val merkleBlockExtractor: MerkleBlockExtractor,
-        private val minMerkleBlocks: Double,
-        private val minTransactions: Double,
-        private val minReceiveBytes: Double) : PeerTask() {
+    hashes: List<BlockHash>,
+    private val merkleBlockHandler: MerkleBlockHandler,
+    private val merkleBlockExtractor: MerkleBlockExtractor,
+    private val minMerkleBlocks: Double,
+    private val minTransactions: Double,
+    private val minReceiveBytes: Double,
+    private val logTag: String
+) : PeerTask() {
 
     interface MerkleBlockHandler {
         fun handleMerkleBlock(merkleBlock: MerkleBlock)
@@ -99,10 +102,12 @@ class GetMerkleBlocksTask(
                 receivedTransactions += message.txCount
                 handleMerkleBlock(merkleBlockExtractor.extract(message))
             }
+
             is TransactionMessage -> {
                 receivedBytes += message.size
                 handleTransaction(message.transaction)
             }
+
             else -> false
         }
 
@@ -127,7 +132,8 @@ class GetMerkleBlocksTask(
     }
 
     private fun handleTransaction(transaction: FullTransaction): Boolean {
-        val block = pendingMerkleBlocks.find { it.associatedTransactionHashes[HashBytes(transaction.header.hash)] == true }
+        val block =
+            pendingMerkleBlocks.find { it.associatedTransactionHashes[HashBytes(transaction.header.hash)] == true }
                 ?: return false
 
         block.associatedTransactions.add(transaction)
@@ -146,8 +152,10 @@ class GetMerkleBlocksTask(
         }
 
         try {
+            Timber.tag(logTag).d("Processing merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
             merkleBlockHandler.handleMerkleBlock(merkleBlock)
         } catch (e: Exception) {
+            Timber.tag(logTag).d("Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, error=${e.message}")
             listener?.onTaskFailed(this, e)
         }
 

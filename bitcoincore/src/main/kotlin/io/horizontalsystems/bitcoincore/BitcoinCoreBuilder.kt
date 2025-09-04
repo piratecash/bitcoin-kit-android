@@ -304,7 +304,12 @@ class BitcoinCoreBuilder {
         val unspentOutputProvider =
             UnspentOutputProvider(storage, confirmationsThreshold, pluginManager)
 
-        val dataProvider = DataProvider(storage, unspentOutputProvider, transactionInfoConverter)
+        val dataProvider = DataProvider(
+            storage = storage,
+            unspentOutputProvider = unspentOutputProvider,
+            transactionInfoConverter = transactionInfoConverter,
+            logTag = network.logTag
+        )
 
         val connectionManager = ConnectionManager(context)
 
@@ -422,7 +427,12 @@ class BitcoinCoreBuilder {
         val networkMessageParser = NetworkMessageParser(network.magic)
         val networkMessageSerializer = NetworkMessageSerializer(network.magic)
 
-        val blockchain = Blockchain(storage, blockValidator, dataProvider)
+        val blockchain = Blockchain(
+            storage = storage,
+            blockValidator = blockValidator,
+            dataListener = dataProvider,
+            logTag = network.logTag
+        )
         val blockSyncer = BlockSyncer(
             storage = storage,
             blockchain = blockchain,
@@ -501,7 +511,12 @@ class BitcoinCoreBuilder {
                     apiSyncStateManager
                 )
                 initialDownload =
-                    InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor)
+                    InitialBlockDownload(
+                        blockSyncer = blockSyncer,
+                        peerManager = peerManager,
+                        merkleBlockExtractor = merkleBlockExtractor,
+                        logTag = network.logTag
+                    )
             }
         }
 
