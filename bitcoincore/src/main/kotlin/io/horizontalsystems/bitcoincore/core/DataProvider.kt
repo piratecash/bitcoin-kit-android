@@ -66,7 +66,7 @@ class DataProvider(
         if (block.height > (lastBlockInfo?.height ?: 0)) {
             val blockInfo = blockInfo(block)
 
-            Timber.tag(logTag).d("Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}")
+//            Timber.tag(logTag).d("Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}")
             lastBlockInfo = blockInfo
             listener?.onLastBlockInfoUpdate(blockInfo)
             balanceUpdateSubject.onNext(true)

@@ -35,9 +35,10 @@ import io.horizontalsystems.bitcoincore.storage.migrations.Migration_19_20
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_20_21
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_25_26
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_26_27
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_27_28
 
 @Database(
-    version = 27, exportSchema = false, entities = [
+    version = 28, exportSchema = false, entities = [
         BlockchainState::class,
         PeerAddress::class,
         BlockHash::class,
@@ -79,6 +80,7 @@ abstract class CoreDatabase : RoomDatabase() {
             return Room.databaseBuilder(context, CoreDatabase::class.java, dbName)
                 .allowMainThreadQueries()
                 .addMigrations(
+                    Migration_27_28,
                     Migration_26_27,
                     Migration_25_26,
                     Migration_20_21,

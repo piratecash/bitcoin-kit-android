@@ -152,7 +152,7 @@ class GetMerkleBlocksTask(
         }
 
         try {
-            Timber.tag(logTag).d("Processing merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
+//            Timber.tag(logTag).d("Processing merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
             merkleBlockHandler.handleMerkleBlock(merkleBlock)
         } catch (e: Exception) {
             Timber.tag(logTag).d("Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, error=${e.message}")

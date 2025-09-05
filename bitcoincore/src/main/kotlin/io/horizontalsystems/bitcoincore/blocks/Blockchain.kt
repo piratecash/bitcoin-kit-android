@@ -117,7 +117,7 @@ class Blockchain(
 
     private fun addBlockAndNotify(block: Block): Block {
         storage.addBlock(block)
-        Timber.tag(logTag).d("Block added successfully: hash=${block.headerHash.toHexString()}, height=${block.height}, stale=${block.stale}")
+//        Timber.tag(logTag).d("Block added successfully: hash=${block.headerHash.toHexString()}, height=${block.height}, stale=${block.stale}")
         dataListener.onBlockInsert(block)
         return block
     }
