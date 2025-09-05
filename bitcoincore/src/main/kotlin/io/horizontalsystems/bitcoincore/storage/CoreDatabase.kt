@@ -12,6 +12,7 @@ import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.BlockHashPublicKey
 import io.horizontalsystems.bitcoincore.models.BlockchainState
 import io.horizontalsystems.bitcoincore.models.InvalidTransaction
+import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.ScriptTypeConverter
@@ -32,14 +33,17 @@ import io.horizontalsystems.bitcoincore.storage.migrations.Migration_17_18
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_18_19
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_19_20
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_20_21
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_25_26
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_26_27
 
 @Database(
-    version = 25, exportSchema = false, entities = [
+    version = 27, exportSchema = false, entities = [
         BlockchainState::class,
         PeerAddress::class,
         BlockHash::class,
         BlockHashPublicKey::class,
         Block::class,
+        OrphanBlock::class,
         SentTransaction::class,
         Transaction::class,
         TransactionInput::class,
@@ -60,6 +64,7 @@ abstract class CoreDatabase : RoomDatabase() {
     abstract val blockHash: BlockHashDao
     abstract val blockHashPublicKey: BlockHashPublicKeyDao
     abstract val block: BlockDao
+    abstract val orphanBlockDao: OrphanBlockDao
     abstract val sentTransaction: SentTransactionDao
     abstract val transaction: TransactionDao
     abstract val transactionMetadata: TransactionMetadataDao
@@ -74,6 +79,8 @@ abstract class CoreDatabase : RoomDatabase() {
             return Room.databaseBuilder(context, CoreDatabase::class.java, dbName)
                 .allowMainThreadQueries()
                 .addMigrations(
+                    Migration_26_27,
+                    Migration_25_26,
                     Migration_20_21,
                     Migration_19_20,
                     Migration_18_19,
@@ -91,7 +98,7 @@ abstract class CoreDatabase : RoomDatabase() {
                     update_transaction_output,
                     update_block_timestamp,
                     add_hasTransaction_to_Block,
-                    add_connectionTime_to_PeerAddress
+                    add_connectionTime_to_PeerAddress,
                 )
                 .fallbackToDestructiveMigration()
                 .build()

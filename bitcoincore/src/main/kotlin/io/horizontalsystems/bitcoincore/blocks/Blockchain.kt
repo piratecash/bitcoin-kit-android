@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
+import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import java.util.logging.Logger
 import timber.log.Timber
@@ -30,9 +31,8 @@ class Blockchain(
         if (parentBlock == null) {
             logger.info("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans...")
             Timber.tag(logTag).d("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
-            storage.addBlock(Block(merkleBlock, Block()).apply {
-                orphan = true
-            }) // add to orphans with empty parent
+            storage.addOrphanBlock(OrphanBlock(merkleBlock))
+            // add to orphans with empty parent
             // Maybe we shouldn't disconnect the peer here since we will request parent block
             throw BlockValidatorException.NoPreviousBlock(merkleBlock.header.previousBlockHeaderHash)
         }

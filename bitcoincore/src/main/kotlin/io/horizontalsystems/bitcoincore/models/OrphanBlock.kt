@@ -3,13 +3,12 @@ package io.horizontalsystems.bitcoincore.models
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Ignore
-import androidx.room.Index
 import androidx.room.PrimaryKey
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 
 /**
- * Block
+ * OrphanBlock
  *
  *  Size        Field           Description
  *  ====        =====           ===========
@@ -18,8 +17,8 @@ import io.horizontalsystems.bitcoincore.storage.BlockHeader
  *  Variable    Transactions    The transactions in the block
  */
 
-@Entity(indices = [Index("height")])
-class Block() {
+@Entity
+class OrphanBlock() {
 
     //  Header
     @ColumnInfo(name = "block_version")
@@ -34,20 +33,16 @@ class Block() {
 
     @PrimaryKey
     var headerHash: ByteArray = byteArrayOf()
-    var height: Int = 0
-    var stale = false
-    var partial = false
 
     @Ignore
     var merkleBlock: MerkleBlock? = null
 
-    fun previousBlock(storage: IStorage): Block? {
-        return storage.getBlock(hashHash = previousBlockHash)
+    fun previousBlock(storage: IStorage): OrphanBlock? {
+        return storage.getOrphanBlock(hashHash = previousBlockHash)
     }
 
-    constructor(merkleBlock: MerkleBlock, previousBlock: Block) : this(merkleBlock.header, height = previousBlock.height + 1, merkleBlock)
-    constructor(header: BlockHeader, previousBlock: Block) : this(header, height = previousBlock.height + 1)
-    constructor(header: BlockHeader, height: Int, merkleBlock: MerkleBlock? = null) : this() {
+    constructor(merkleBlock: MerkleBlock) : this(merkleBlock.header, merkleBlock)
+    constructor(header: BlockHeader, merkleBlock: MerkleBlock? = null) : this() {
         version = header.version
         previousBlockHash = header.previousBlockHeaderHash
         merkleRoot = header.merkleRoot
@@ -56,7 +51,6 @@ class Block() {
         nonce = header.nonce
 
         headerHash = header.hash
-        this.height = height
         this.merkleBlock = merkleBlock
     }
 }
