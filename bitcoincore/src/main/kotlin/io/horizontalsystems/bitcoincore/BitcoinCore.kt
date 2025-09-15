@@ -15,6 +15,7 @@ import io.horizontalsystems.bitcoincore.core.Wallet
 import io.horizontalsystems.bitcoincore.core.WatchAccountWallet
 import io.horizontalsystems.bitcoincore.core.description
 import io.horizontalsystems.bitcoincore.core.scriptType
+import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.managers.IRestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.IUnspentOutputSelector
@@ -195,6 +196,11 @@ class BitcoinCore(
 
     fun transactions(fromUid: String? = null, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
         return dataProvider.transactions(fromUid, type, limit)
+            .doOnSuccess { updateInputAddressesIfNeed(it) }
+    }
+
+    private fun updateInputAddressesIfNeed(transactions: List<TransactionInfo>) {
+        addressExtractor.requestInputsByHash(transactions.map { it.transactionHash.hexToByteArray().reversedArray() })
     }
 
     fun sendInfo(
