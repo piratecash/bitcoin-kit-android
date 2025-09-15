@@ -50,6 +50,7 @@ import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
+import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.TransactionCreator
 import io.horizontalsystems.bitcoincore.transactions.TransactionFeeCalculator
 import io.horizontalsystems.bitcoincore.transactions.TransactionSyncer
@@ -72,6 +73,7 @@ import kotlin.math.roundToInt
 class BitcoinCore(
     private val storage: IStorage,
     private val dataProvider: DataProvider,
+    private val addressExtractor: AddressExtractor,
     private val publicKeyManager: IPublicKeyManager,
     private val addressConverter: AddressConverterChain,
     private val restoreKeyConverterChain: RestoreKeyConverterChain,
@@ -174,6 +176,7 @@ class BitcoinCore(
     }
 
     fun stop() {
+        addressExtractor.stop()
         dataProvider.clear()
         syncManager.stop()
     }

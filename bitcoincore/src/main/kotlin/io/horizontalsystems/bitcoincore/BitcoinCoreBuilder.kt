@@ -90,6 +90,7 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
+import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.PendingTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.SendTransactionsOnPeersSynced
@@ -394,8 +395,17 @@ class BitcoinCoreBuilder {
             MyOutputsCache.create(storage),
             TransactionOutputProvider(storage)
         )
+
+        val blockchairApi =
+            if (apiTransactionProvider is BlockchairTransactionProvider) {
+                apiTransactionProvider.blockchairApi
+            } else {
+                BlockchairApi(network.blockchairChainId)
+            }
+
+        val addressExtractor = AddressExtractor(blockchairApi, storage, dataProvider, network.logTag)
         val transactionExtractor =
-            TransactionExtractor(addressConverter, storage, pluginManager, metadataExtractor)
+            TransactionExtractor(addressConverter, storage, pluginManager, metadataExtractor, addressExtractor)
 
         val conflictsResolver = TransactionConflictsResolver(storage)
         val ignorePendingIncoming = false //syncMode is BitcoinCore.SyncMode.Blockchair
@@ -469,12 +479,6 @@ class BitcoinCoreBuilder {
                 val lastBlockProvider = if (customLastBLockProvider != null) {
                     customLastBLockProvider!!
                 } else {
-                    val blockchairApi =
-                        if (apiTransactionProvider is BlockchairTransactionProvider) {
-                            apiTransactionProvider.blockchairApi
-                        } else {
-                            BlockchairApi(network.blockchairChainId)
-                        }
                     BlockchairLastBlockProvider(blockchairApi)
                 }
 
@@ -627,6 +631,7 @@ class BitcoinCoreBuilder {
         val bitcoinCore = BitcoinCore(
             storage,
             dataProvider,
+            addressExtractor,
             publicKeyManager,
             addressConverter,
             restoreKeyConverterChain,

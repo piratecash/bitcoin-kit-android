@@ -4,7 +4,7 @@ plugins {
     id 'kotlin-kapt'
     id 'maven-publish'
     id 'com.google.devtools.ksp'
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.0" // или твоя версия Kotlin
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.0"
 }
 
 afterEvaluate {
