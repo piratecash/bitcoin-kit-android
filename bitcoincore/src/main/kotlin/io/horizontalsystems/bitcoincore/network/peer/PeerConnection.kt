@@ -6,6 +6,7 @@ import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
 import io.horizontalsystems.bitcoincore.utils.NetworkUtils
+import timber.log.Timber
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -65,7 +66,7 @@ class PeerConnection(
                 while (isRunning && inputStream.available() > 0) {
                     try {
                         val parsedMsg = networkMessageParser.parseMessage(bitcoinInput)
-                        logger.info("${network.logTag}: <= $parsedMsg")
+                        Timber.tag(network.logTag).d("<= $parsedMsg")
                         listener.onMessage(parsedMsg)
                     } catch (ex : Exception) {
                         ex.printStackTrace()

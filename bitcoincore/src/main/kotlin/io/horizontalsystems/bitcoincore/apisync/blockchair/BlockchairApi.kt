@@ -8,6 +8,9 @@ import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiManager
 import io.horizontalsystems.bitcoincore.managers.ApiManagerException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -20,6 +23,7 @@ class BlockchairApi(
     private val limit = 10000
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
+    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     init {
         dateFormat.timeZone = TimeZone.getTimeZone("GMT")
     }
@@ -51,6 +55,12 @@ class BlockchairApi(
             }
         }
         return transactionItemsMap.values.toList()
+    }
+
+    override suspend fun getTransactions(hashes: List<String>): List<FullApiTransaction> {
+        return hashes
+            .chunked(10)
+            .flatMap { fetchTransactionsByHashes(it) }
     }
 
     override fun blockHashes(heights: List<Int>): Map<Int, String> {
@@ -135,6 +145,17 @@ class BlockchairApi(
             return Pair(emptyList(), emptyList())
         }
     }
+
+    private suspend fun fetchTransactionsByHashes(hashes: List<String>): List<FullApiTransaction> =
+        withContext(Dispatchers.IO) {
+            try {
+                val rawJson = apiManager.doOkHttpGetAsString("$chainId/dashboards/transactions/${hashes.joinToString(separator = ",")}")!!
+                json.decodeFromString<BlockchairTransactionResponse>(rawJson).data.values.toList()
+            } catch (ex: Exception) {
+                Timber.d("Blockchair: No transactions found for hashes: $hashes: %s", ex.printStackTrace())
+                emptyList()
+            }
+        }
 
     private fun dateStringToTimestamp(date: String): Long? {
         return try {

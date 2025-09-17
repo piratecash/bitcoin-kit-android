@@ -391,7 +391,7 @@ We allow maximum 0.5 BTC to be locked. We assume that's an acceptable amount to 
 
 ## Prerequisites
 * JDK >= 1.8
-* Android 6 (minSdkVersion 23) or greater
+* Android 6 (minSdkVersion 24) or greater
 
 ## Installation
 Add the JitPack to module build.gradle

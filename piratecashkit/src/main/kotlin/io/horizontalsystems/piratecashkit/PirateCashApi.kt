@@ -1,14 +1,17 @@
 package io.horizontalsystems.piratecashkit
 
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
+import io.horizontalsystems.bitcoincore.apisync.blockchair.FullApiTransaction
 import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
 import io.horizontalsystems.piratecashkit.data.network.dto.AddressTxDto
 import io.horizontalsystems.piratecashkit.data.network.dto.BlockDto
+import io.horizontalsystems.piratecashkit.data.network.dto.PirateTransactionResponse
 import io.horizontalsystems.piratecashkit.data.network.dto.TransactionItemDto
 import io.horizontalsystems.piratecashkit.data.network.dto.toBlockHeaderItem
+import io.horizontalsystems.piratecashkit.data.network.dto.toFullApiTransaction
 import io.horizontalsystems.piratecashkit.data.network.dto.toTransactionItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,22 +20,21 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import java.util.logging.Logger
+import timber.log.Timber
 
 class PirateCashApi : IApiTransactionProvider, Api {
     private companion object {
-        const val HOST = "https://piratecash.info/"
+            const val HOST = "https://piratecash.info/"
         const val GAP_LIMIT = 20
     }
 
     private val json = Json { ignoreUnknownKeys = true }
 
     private val apiManager = ApiManager(HOST)
-    private val logger = Logger.getLogger("PirateCashApi")
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
-        logger.info("PirateCash: Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]")
+        Timber.tag("PirateCash").d("Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]")
 
         return runBlocking {
             val allTransactions = mutableListOf<TransactionItem>()
@@ -47,7 +49,7 @@ class PirateCashApi : IApiTransactionProvider, Api {
                 if (txs.isEmpty()) {
                     leftGaps--
                     if (leftGaps <= 0) {
-                        logger.info("PirateCash: Gaps limit reached")
+                        Timber.tag("PirateCash").d("Gaps limit reached")
                         break
                     }
                 } else {
@@ -85,7 +87,25 @@ class PirateCashApi : IApiTransactionProvider, Api {
     }
 
     override fun broadcastTransaction(rawTransactionHex: String) {
-        logger.info("PirateCash: Calling empty broadcastTransaction")
+        Timber.tag("PirateCash").d("Calling empty broadcastTransaction")
+    }
+
+    override suspend fun getTransactions(hashes: List<String>): List<FullApiTransaction> {
+        return runBlocking {
+            hashes.map { hash ->
+                coroutineScope.async {
+                    fetchTransaction(hash)
+                }
+            }.awaitAll().filterNotNull()
+        }
+    }
+
+    private fun fetchTransaction(hash: String): FullApiTransaction? = try {
+        val rawJson = apiManager.doOkHttpGetAsString("ext/gettx/$hash")!!
+        json.decodeFromString<PirateTransactionResponse>(rawJson).tx.toFullApiTransaction()
+    } catch (ex: Exception) {
+        ex.printStackTrace()
+        null
     }
 
     private suspend fun fetchTransactions(
@@ -93,7 +113,7 @@ class PirateCashApi : IApiTransactionProvider, Api {
         from: Int,
         to: Int
     ): List<TransactionItem> = try {
-        logger.info("PirateCash: fetchTransactions for address: $addr")
+        Timber.tag("PirateCash").d("fetchTransactions for address: $addr")
         val rawJson = apiManager.doOkHttpGetAsString("ext/getaddresstxs/$addr/$from/$to")!!
         val results = json.decodeFromString<List<AddressTxDto>>(rawJson).map {
             coroutineScope.async {
@@ -107,7 +127,7 @@ class PirateCashApi : IApiTransactionProvider, Api {
     }
 
     private fun fetchTransactionInfo(transactionHash: String): TransactionItem? = try {
-        logger.info("PirateCash: fetchTransactionInfo for transactionHash: $transactionHash")
+        Timber.tag("PirateCash").d("fetchTransactionInfo for transactionHash: $transactionHash")
         val rawJson = apiManager.doOkHttpGetAsString("ext/gettx/$transactionHash")!!
         json.decodeFromString<TransactionItemDto>(rawJson).toTransactionItem()
     } catch (ex: Exception) {

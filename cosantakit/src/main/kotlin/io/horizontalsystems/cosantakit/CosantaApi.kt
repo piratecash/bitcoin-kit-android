@@ -1,14 +1,17 @@
 package io.horizontalsystems.cosantakit
 
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
+import io.horizontalsystems.bitcoincore.apisync.blockchair.FullApiTransaction
 import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
 import io.horizontalsystems.cosantakit.data.network.dto.AddressTxDto
 import io.horizontalsystems.cosantakit.data.network.dto.BlockDto
+import io.horizontalsystems.cosantakit.data.network.dto.CosantaTransactionResponse
 import io.horizontalsystems.cosantakit.data.network.dto.TransactionItemDto
 import io.horizontalsystems.cosantakit.data.network.dto.toBlockHeaderItem
+import io.horizontalsystems.cosantakit.data.network.dto.toFullApiTransaction
 import io.horizontalsystems.cosantakit.data.network.dto.toTransactionItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +20,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import java.util.logging.Logger
+import timber.log.Timber
 
 class CosantaApi : IApiTransactionProvider, Api {
     private companion object {
@@ -28,11 +31,10 @@ class CosantaApi : IApiTransactionProvider, Api {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val apiManager = ApiManager(HOST)
-    private val logger = Logger.getLogger("CosantaApi")
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
-        logger.info("COSA: Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]")
+        Timber.tag("COSA").d("Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]")
 
         return runBlocking {
             val allTransactions = mutableListOf<TransactionItem>()
@@ -47,7 +49,7 @@ class CosantaApi : IApiTransactionProvider, Api {
                 if (txs.isEmpty()) {
                     leftGaps--
                     if (leftGaps <= 0) {
-                        logger.info("COSA: Gaps limit reached")
+                        Timber.tag("COSA").d("Gaps limit reached")
                         break
                     }
                 } else {
@@ -78,7 +80,7 @@ class CosantaApi : IApiTransactionProvider, Api {
 
     private fun getBlock(blockHash: String): BlockHeaderItem? = try {
         val rawJson = apiManager.doOkHttpGetAsString("api/getblock?hash=$blockHash")!!
-        logger.info("getBlock for blockHash: $rawJson")
+        Timber.tag("COSA").d("getBlock for blockHash: $rawJson")
         json.decodeFromString<BlockDto>(rawJson).toBlockHeaderItem()
     } catch (ex: Exception) {
         ex.printStackTrace()
@@ -86,7 +88,25 @@ class CosantaApi : IApiTransactionProvider, Api {
     }
 
     override fun broadcastTransaction(rawTransactionHex: String) {
-        logger.info("COSA: Calling empty broadcastTransaction")
+        Timber.tag("COSA").d("Calling empty broadcastTransaction")
+    }
+
+    override suspend fun getTransactions(hashes: List<String>): List<FullApiTransaction> {
+        return runBlocking {
+            hashes.map { hash ->
+                coroutineScope.async {
+                    fetchTransaction(hash)
+                }
+            }.awaitAll().filterNotNull()
+        }
+    }
+
+    private fun fetchTransaction(hash: String): FullApiTransaction? = try {
+        val rawJson = apiManager.doOkHttpGetAsString("ext/gettx/$hash")!!
+        json.decodeFromString<CosantaTransactionResponse>(rawJson).tx.toFullApiTransaction()
+    } catch (ex: Exception) {
+        ex.printStackTrace()
+        null
     }
 
     private suspend fun fetchTransactions(
@@ -94,7 +114,7 @@ class CosantaApi : IApiTransactionProvider, Api {
         from: Int,
         to: Int
     ): List<TransactionItem> = try {
-        logger.info("COSA: fetchTransactions for address: $addr")
+        Timber.tag("COSA").d("fetchTransactions for address: $addr")
         val rawJson = apiManager.doOkHttpGetAsString("ext/getaddresstxs/$addr/$from/$to")!!
         val results = json.decodeFromString<List<AddressTxDto>>(rawJson).map {
             coroutineScope.async {
@@ -108,7 +128,7 @@ class CosantaApi : IApiTransactionProvider, Api {
     }
 
     private fun fetchTransactionInfo(transactionHash: String): TransactionItem? = try {
-        logger.info("COSA: fetchTransactionInfo for transactionHash: $transactionHash")
+        Timber.tag("COSA").d("fetchTransactionInfo for transactionHash: $transactionHash")
         val rawJson = apiManager.doOkHttpGetAsString("ext/gettx/$transactionHash")!!
         json.decodeFromString<TransactionItemDto>(rawJson).toTransactionItem()
     } catch (ex: Exception) {

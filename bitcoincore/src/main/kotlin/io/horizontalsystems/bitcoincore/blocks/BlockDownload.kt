@@ -18,7 +18,7 @@ class BlockDownload(
     private val peerManager: PeerManager,
     private val merkleBlockExtractor: MerkleBlockExtractor,
     private val requestUnknownBlocks: Boolean,
-    private val tag: String
+    private val logTag: String
 ) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler {
 
     override var listener: IBlockSyncListener? = null
@@ -138,7 +138,7 @@ class BlockDownload(
                     syncPeer = nonSyncedPeer
                     blockSyncer.downloadStarted()
 
-                    logger.info("$tag: Start syncing peer ${nonSyncedPeer.host}")
+                    logger.info("$logTag: Start syncing peer ${nonSyncedPeer.host}")
 
                     downloadBlockchain()
                 }
@@ -161,7 +161,7 @@ class BlockDownload(
             // Need to request all blocks to resolve orphaned blocks
             (blockSyncer.getOrphanParents()).let {
                 if (!it.isEmpty()) {
-                    logger.info("$tag: Requesting orphan parents (${it.size} [${it[0].headerHash.toHexString()}, ...]")
+                    logger.info("$logTag: Requesting orphan parents (${it.size} [${it[0].headerHash.toHexString()}, ...]")
                     peer.addTask(
                         GetMerkleBlocksTask(
                             hashes = it,
@@ -169,7 +169,8 @@ class BlockDownload(
                             merkleBlockExtractor = merkleBlockExtractor,
                             minMerkleBlocks = minMerkleBlocks,
                             minTransactions = minTransactions,
-                            minReceiveBytes = minReceiveBytes
+                            minReceiveBytes = minReceiveBytes,
+                            logTag = logTag
                         )
                     )
                 }
@@ -186,7 +187,8 @@ class BlockDownload(
                         merkleBlockExtractor = merkleBlockExtractor,
                         minMerkleBlocks = minMerkleBlocks,
                         minTransactions = minTransactions,
-                        minReceiveBytes = minReceiveBytes
+                        minReceiveBytes = minReceiveBytes,
+                        logTag = logTag
                     )
                 )
             }
@@ -197,7 +199,7 @@ class BlockDownload(
 
                 blockSyncer.downloadCompleted()
                 peer.sendMempoolMessage()
-                logger.info("$tag: Peer synced ${peer.host}")
+                logger.info("$logTag: Peer synced ${peer.host}")
                 syncPeer = null
                 assignNextSyncPeer()
                 peerSyncListeners.forEach { it.onPeerSynced(peer) }

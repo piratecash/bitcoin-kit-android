@@ -121,6 +121,10 @@ class BlockSyncer(
     }
 
     fun handleMerkleBlock(merkleBlock: MerkleBlock, maxBlockHeight: Int) {
+        handleMerkleBlock(merkleBlock, maxBlockHeight, 0)
+    }
+
+    private fun handleMerkleBlock(merkleBlock: MerkleBlock, maxBlockHeight: Int, recursionDepth: Int) {
         val block = when (val height = merkleBlock.height) {
             null -> blockchain.connect(merkleBlock)
             else -> blockchain.forceAdd(merkleBlock, height)
@@ -148,18 +152,33 @@ class BlockSyncer(
             listener?.onCurrentBestBlockHeightUpdate(block.height, maxBlockHeight)
         }
 
-        checkParentsForOrphans(block, maxBlockHeight)
+        checkParentsForOrphans(block, maxBlockHeight, recursionDepth)
     }
 
     /***
      * Check if there are any orphan blocks that have parents in the database.
      */
     private fun checkParentsForOrphans(block: Block, maxBlockHeight: Int) {
+        checkParentsForOrphans(block, maxBlockHeight, 0)
+    }
+
+    /***
+     * Check if there are any orphan blocks that have parents in the database.
+     * @param recursionDepth Current recursion depth to prevent infinite recursion
+     */
+    private fun checkParentsForOrphans(block: Block, maxBlockHeight: Int, recursionDepth: Int) {
+        // Prevent infinite recursion - limit to reasonable depth
+        if (recursionDepth > 100) {
+            logger.warning("Maximum recursion depth reached in checkParentsForOrphans, stopping to prevent stack overflow")
+            return
+        }
+
         val orphan = storage.getOrphanChild(block.headerHash)
-        if (orphan != null && orphan.merkleBlock != null) {
+        if (orphan != null && orphan.merkleBlock != null && block.height > 0 && !block.stale) {
             orphan.merkleBlock?.let {
-                logger.info("Found orphan block ${it.blockHash.toHexString()} for parent")
-                handleMerkleBlock(it, maxBlockHeight)
+                logger.info("Found orphan block ${it.blockHash.toHexString()} for parent (recursion depth: $recursionDepth)")
+                handleMerkleBlock(it, maxBlockHeight, recursionDepth + 1)
+                storage.deleteOrphanBlock(orphan)
             }
         }
     }

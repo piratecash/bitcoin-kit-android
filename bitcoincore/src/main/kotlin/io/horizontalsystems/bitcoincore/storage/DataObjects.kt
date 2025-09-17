@@ -62,6 +62,10 @@ open class FullTransaction(
         }
     }
 
+    fun hasEmptyInputAddresses(): Boolean {
+        return inputs.any { it.address.isNullOrEmpty() }
+    }
+
 }
 
 class InputToSign(

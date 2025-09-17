@@ -18,11 +18,13 @@ import io.reactivex.Single
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import java.util.concurrent.TimeUnit
+import timber.log.Timber
 
 class DataProvider(
         private val storage: IStorage,
         private val unspentOutputProvider: UnspentOutputProvider,
-        private val transactionInfoConverter: ITransactionInfoConverter
+        private val transactionInfoConverter: ITransactionInfoConverter,
+        private val logTag: String
 ) : IBlockchainDataListener {
 
     interface Listener {
@@ -59,13 +61,17 @@ class DataProvider(
                 }
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     override fun onBlockInsert(block: Block) {
-        if (block.height > lastBlockInfo?.height ?: 0) {
+        if (block.height > (lastBlockInfo?.height ?: 0)) {
             val blockInfo = blockInfo(block)
 
+//            Timber.tag(logTag).d("Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}")
             lastBlockInfo = blockInfo
             listener?.onLastBlockInfoUpdate(blockInfo)
             balanceUpdateSubject.onNext(true)
+        } else {
+            Timber.tag(logTag).d("Block inserted but not updating last block: hash=${block.headerHash.toHexString()}, height=${block.height}, currentLastHeight=${lastBlockInfo?.height}")
         }
     }
 

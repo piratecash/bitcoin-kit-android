@@ -15,6 +15,7 @@ import io.horizontalsystems.bitcoincore.core.Wallet
 import io.horizontalsystems.bitcoincore.core.WatchAccountWallet
 import io.horizontalsystems.bitcoincore.core.description
 import io.horizontalsystems.bitcoincore.core.scriptType
+import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.managers.IRestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.IUnspentOutputSelector
@@ -50,6 +51,7 @@ import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
+import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.TransactionCreator
 import io.horizontalsystems.bitcoincore.transactions.TransactionFeeCalculator
 import io.horizontalsystems.bitcoincore.transactions.TransactionSyncer
@@ -72,6 +74,7 @@ import kotlin.math.roundToInt
 class BitcoinCore(
     private val storage: IStorage,
     private val dataProvider: DataProvider,
+    private val addressExtractor: AddressExtractor,
     private val publicKeyManager: IPublicKeyManager,
     private val addressConverter: AddressConverterChain,
     private val restoreKeyConverterChain: RestoreKeyConverterChain,
@@ -174,6 +177,7 @@ class BitcoinCore(
     }
 
     fun stop() {
+        addressExtractor.stop()
         dataProvider.clear()
         syncManager.stop()
     }
@@ -192,6 +196,11 @@ class BitcoinCore(
 
     fun transactions(fromUid: String? = null, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
         return dataProvider.transactions(fromUid, type, limit)
+            .doOnSuccess { updateInputAddressesIfNeed(it) }
+    }
+
+    private fun updateInputAddressesIfNeed(transactions: List<TransactionInfo>) {
+        addressExtractor.requestInputsByHash(transactions.map { it.transactionHash.hexToByteArray().reversedArray() })
     }
 
     fun sendInfo(

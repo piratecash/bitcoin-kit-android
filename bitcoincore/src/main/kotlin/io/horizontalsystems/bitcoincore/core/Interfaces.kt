@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.BlockHashPublicKey
 import io.horizontalsystems.bitcoincore.models.InvalidTransaction
+import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.SentTransaction
@@ -68,13 +69,17 @@ interface IStorage {
 
     //  Block
 
-    fun getOrphanBlocks(): List<Block>
     fun getBlockByHeightStalePrioritized(height: Int): Block?
 
     fun getBlock(height: Int): Block?
     fun getBlock(hashHash: ByteArray): Block?
     fun getBlock(stale: Boolean, sortedHeight: String): Block?
-    fun getOrphanChild(parentHash: ByteArray): Block?
+
+    fun addOrphanBlock(block: OrphanBlock)
+    fun getOrphanChild(parentHash: ByteArray): OrphanBlock?
+    fun getOrphanBlocks(): List<OrphanBlock>
+    fun getOrphanBlock(hashHash: ByteArray): OrphanBlock?
+    fun deleteOrphanBlock(block: OrphanBlock)
 
     fun getBlocks(stale: Boolean): List<Block>
     fun getBlocks(heightGreaterThan: Int, sortedBy: String, limit: Int): List<Block>

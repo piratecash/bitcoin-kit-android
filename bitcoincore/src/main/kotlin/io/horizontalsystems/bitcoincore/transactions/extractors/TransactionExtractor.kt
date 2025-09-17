@@ -5,6 +5,7 @@ import io.horizontalsystems.bitcoincore.core.PluginManager
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
+import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.scripts.OP_CHECKMULTISIG
 import io.horizontalsystems.bitcoincore.transactions.scripts.OP_CHECKMULTISIGVERIFY
 import io.horizontalsystems.bitcoincore.transactions.scripts.OP_CHECKSIG
@@ -26,7 +27,8 @@ class TransactionExtractor(
     private val addressConverter: IAddressConverter,
     private val storage: IStorage,
     private val pluginManager: PluginManager,
-    private val metadataExtractor: TransactionMetadataExtractor
+    private val metadataExtractor: TransactionMetadataExtractor,
+    private val addressExtractor: AddressExtractor
 ) {
 
     fun extractOutputs(transaction: FullTransaction) {
@@ -245,7 +247,8 @@ class TransactionExtractor(
             }
         }
 
-        val checks = listOf(OP_CHECKSIG, OP_CHECKSIGVERIFY, OP_CHECKMULTISIGVERIFY, OP_CHECKMULTISIG)
+        val checks =
+            listOf(OP_CHECKSIG, OP_CHECKSIGVERIFY, OP_CHECKMULTISIGVERIFY, OP_CHECKMULTISIG)
         if (checks.contains(chunkLast.opcode)) {
             return redeemChunk.data
         }
@@ -260,6 +263,10 @@ class TransactionExtractor(
         if (transaction.header.isMine) {
             extractAddress(transaction)
             extractInputs(transaction)
+
+            if (transaction.hasEmptyInputAddresses()) {
+                addressExtractor.requestInputs(transaction)
+            }
         }
     }
 }

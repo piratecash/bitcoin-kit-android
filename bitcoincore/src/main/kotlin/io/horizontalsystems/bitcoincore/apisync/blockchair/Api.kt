@@ -6,6 +6,7 @@ import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 interface Api {
 
     fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem>
+    suspend fun getTransactions(hashes: List<String>): List<FullApiTransaction>
 
     fun blockHashes(heights: List<Int>): Map<Int, String>
 

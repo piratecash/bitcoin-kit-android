@@ -90,6 +90,7 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
+import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.PendingTransactionProcessor
 import io.horizontalsystems.bitcoincore.transactions.SendTransactionsOnPeersSynced
@@ -304,7 +305,12 @@ class BitcoinCoreBuilder {
         val unspentOutputProvider =
             UnspentOutputProvider(storage, confirmationsThreshold, pluginManager)
 
-        val dataProvider = DataProvider(storage, unspentOutputProvider, transactionInfoConverter)
+        val dataProvider = DataProvider(
+            storage = storage,
+            unspentOutputProvider = unspentOutputProvider,
+            transactionInfoConverter = transactionInfoConverter,
+            logTag = network.logTag
+        )
 
         val connectionManager = ConnectionManager(context)
 
@@ -389,8 +395,17 @@ class BitcoinCoreBuilder {
             MyOutputsCache.create(storage),
             TransactionOutputProvider(storage)
         )
+
+        val blockchairApi =
+            if (apiTransactionProvider is BlockchairTransactionProvider) {
+                apiTransactionProvider.blockchairApi
+            } else {
+                BlockchairApi(network.blockchairChainId)
+            }
+
+        val addressExtractor = AddressExtractor(blockchairApi, storage, dataProvider, network.logTag)
         val transactionExtractor =
-            TransactionExtractor(addressConverter, storage, pluginManager, metadataExtractor)
+            TransactionExtractor(addressConverter, storage, pluginManager, metadataExtractor, addressExtractor)
 
         val conflictsResolver = TransactionConflictsResolver(storage)
         val ignorePendingIncoming = false //syncMode is BitcoinCore.SyncMode.Blockchair
@@ -422,7 +437,12 @@ class BitcoinCoreBuilder {
         val networkMessageParser = NetworkMessageParser(network.magic)
         val networkMessageSerializer = NetworkMessageSerializer(network.magic)
 
-        val blockchain = Blockchain(storage, blockValidator, dataProvider)
+        val blockchain = Blockchain(
+            storage = storage,
+            blockValidator = blockValidator,
+            dataListener = dataProvider,
+            logTag = network.logTag
+        )
         val blockSyncer = BlockSyncer(
             storage = storage,
             blockchain = blockchain,
@@ -459,12 +479,6 @@ class BitcoinCoreBuilder {
                 val lastBlockProvider = if (customLastBLockProvider != null) {
                     customLastBLockProvider!!
                 } else {
-                    val blockchairApi =
-                        if (apiTransactionProvider is BlockchairTransactionProvider) {
-                            apiTransactionProvider.blockchairApi
-                        } else {
-                            BlockchairApi(network.blockchairChainId)
-                        }
                     BlockchairLastBlockProvider(blockchairApi)
                 }
 
@@ -501,7 +515,12 @@ class BitcoinCoreBuilder {
                     apiSyncStateManager
                 )
                 initialDownload =
-                    InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor)
+                    InitialBlockDownload(
+                        blockSyncer = blockSyncer,
+                        peerManager = peerManager,
+                        merkleBlockExtractor = merkleBlockExtractor,
+                        logTag = network.logTag
+                    )
             }
         }
 
@@ -612,6 +631,7 @@ class BitcoinCoreBuilder {
         val bitcoinCore = BitcoinCore(
             storage,
             dataProvider,
+            addressExtractor,
             publicKeyManager,
             addressConverter,
             restoreKeyConverterChain,

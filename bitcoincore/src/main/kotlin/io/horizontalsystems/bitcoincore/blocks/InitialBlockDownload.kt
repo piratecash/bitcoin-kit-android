@@ -18,7 +18,8 @@ import kotlin.math.max
 class InitialBlockDownload(
     private var blockSyncer: BlockSyncer,
     private val peerManager: PeerManager,
-    private val merkleBlockExtractor: MerkleBlockExtractor
+    private val merkleBlockExtractor: MerkleBlockExtractor,
+    private val logTag: String
 ) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler {
 
     override var listener: IBlockSyncListener? = null
@@ -158,7 +159,7 @@ class InitialBlockDownload(
             if (blockHashes.isEmpty()) {
                 peer.synced = peer.blockHashesSynced
             } else {
-                peer.addTask(GetMerkleBlocksTask(blockHashes, this, merkleBlockExtractor, minMerkleBlocks, minTransactions, minReceiveBytes))
+                peer.addTask(GetMerkleBlocksTask(blockHashes, this, merkleBlockExtractor, minMerkleBlocks, minTransactions, minReceiveBytes, logTag = logTag))
             }
 
             if (!peer.blockHashesSynced) {

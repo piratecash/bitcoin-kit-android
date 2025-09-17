@@ -10,6 +10,7 @@ import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.BlockHashPublicKey
 import io.horizontalsystems.bitcoincore.models.BlockchainState
 import io.horizontalsystems.bitcoincore.models.InvalidTransaction
+import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.SentTransaction
@@ -126,8 +127,8 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
 
     // Block
 
-    override fun getOrphanBlocks(): List<Block> =
-        store.block.getOrphanBlocks()
+    override fun getOrphanBlocks(): List<OrphanBlock> =
+        store.orphanBlockDao.getOrphanBlocks()
 
     override fun getBlockByHeightStalePrioritized(height: Int): Block? {
         return store.block.getBlockByHeightStalePrioritized(height)
@@ -149,8 +150,20 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         }
     }
 
-    override fun getOrphanChild(parentHash: ByteArray): Block? {
-        return store.block.getOrphanChild(parentHash)
+    override fun getOrphanChild(parentHash: ByteArray): OrphanBlock? {
+        return store.orphanBlockDao.getOrphanChild(parentHash)
+    }
+
+    override fun addOrphanBlock(block: OrphanBlock) {
+        store.orphanBlockDao.insert(block)
+    }
+
+    override fun getOrphanBlock(hashHash: ByteArray): OrphanBlock? {
+        return store.orphanBlockDao.getOrphanBlockByHash(hashHash)
+    }
+
+    override fun deleteOrphanBlock(block: OrphanBlock) {
+        store.orphanBlockDao.delete(block)
     }
 
     override fun getBlocks(stale: Boolean): List<Block> {
@@ -596,12 +609,37 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun getChainWork(block: Block): BigInteger {
-        val work = blockWork(block.bits)
+        var totalWork = BigInteger.ZERO
+        var currentBlock: Block? = block
+        val visited = mutableSetOf<String>()
 
-        val parent = getBlock(block.previousBlockHash)
-        val parentWork = if (parent != null) getChainWork(parent) else BigInteger.ZERO
+        while (currentBlock != null) {
+            val hash = currentBlock.headerHash.toHexString()
 
-        return parentWork.add(work)
+            if (!visited.add(hash)) {
+                break
+            }
+
+            // Protection against excessively long chains (typical reorgs < 10 blocks, but giving safety margin)
+            if (visited.size > 100) {
+                break
+            }
+
+            totalWork = totalWork.add(blockWork(currentBlock.bits))
+
+            if (currentBlock.height == 0 || currentBlock.previousBlockHash.isEmpty()) {
+                break
+            }
+
+            val parent = getBlock(currentBlock.previousBlockHash)
+            if (parent == null || parent.height >= currentBlock.height) {
+                break
+            }
+
+            currentBlock = parent
+        }
+
+        return totalWork
     }
 
     private fun blockWork(bits: Long): BigInteger {

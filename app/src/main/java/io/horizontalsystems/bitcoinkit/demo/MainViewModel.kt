@@ -15,6 +15,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
+import io.horizontalsystems.bitcoinkit.BitcoinKit
 import io.horizontalsystems.cosantakit.CosantaKit
 import io.horizontalsystems.dashkit.DashKit
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
@@ -26,7 +27,7 @@ import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.coroutines.launch
 
-class MainViewModel : ViewModel(), LitecoinKit.Listener {
+class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -51,17 +52,17 @@ class MainViewModel : ViewModel(), LitecoinKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: LitecoinKit
+    private lateinit var bitcoinKit: PirateCashKit
 
     private val walletId = "MyWallet"
-    private val networkType = LitecoinKit.NetworkType.MainNet
-    private val syncMode = BitcoinCore.SyncMode.Api()
+    private val networkType = PirateCashKit.NetworkType.MainNet
+    private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = LitecoinKit(
+        bitcoinKit = PirateCashKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -69,7 +70,7 @@ class MainViewModel : ViewModel(), LitecoinKit.Listener {
             syncMode = syncMode,
             networkType = networkType,
             confirmationsThreshold = 3,
-            purpose = Purpose.BIP44
+//            purpose = Purpose.BIP84
         )
 
         bitcoinKit.listener = this
@@ -99,7 +100,7 @@ class MainViewModel : ViewModel(), LitecoinKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        LitecoinKit.clear(App.instance, networkType, walletId)
+        PirateCashKit.clear(App.instance, networkType, walletId)
 
         init()
     }
@@ -114,7 +115,7 @@ class MainViewModel : ViewModel(), LitecoinKit.Listener {
     }
 
     //
-    // LitecoinKit Listener implementations
+    // PirateCashKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,
