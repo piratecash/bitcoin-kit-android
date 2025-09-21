@@ -194,7 +194,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                             sortType = TransactionDataSortType.Shuffle,
                             pluginData = getPluginData(),
                             rbfEnabled = true,
-                            dustThreshold = null,
                             changeToFirstInput = false,
                             filters = UtxoFilters()
                         )
@@ -227,7 +226,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                 feePriority.feeRate,
                 null,
                 getPluginData(),
-                null,
                 false,
                 UtxoFilters()
             )
@@ -261,7 +259,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             feeRate = feePriority.feeRate,
             unspentOutputs = null,
             pluginData = getPluginData(),
-            dustThreshold = null,
             changeToFirstInput = false,
             filters = UtxoFilters()
         )

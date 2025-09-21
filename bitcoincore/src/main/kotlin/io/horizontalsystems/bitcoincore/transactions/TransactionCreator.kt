@@ -31,7 +31,6 @@ class TransactionCreator(
         unspentOutputs: List<UnspentOutput>?,
         pluginData: Map<Byte, IPluginData>,
         rbfEnabled: Boolean,
-        dustThreshold: Int?,
         changeToFirstInput: Boolean,
         filters: UtxoFilters
     ): FullTransaction {
@@ -45,7 +44,6 @@ class TransactionCreator(
             unspentOutputs = unspentOutputs,
             pluginData = pluginData,
             rbfEnabled = rbfEnabled,
-            dustThreshold = dustThreshold,
             changeToFirstInput = changeToFirstInput,
             filters = filters,
         )

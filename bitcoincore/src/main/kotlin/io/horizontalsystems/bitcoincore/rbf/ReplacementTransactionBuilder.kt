@@ -71,7 +71,7 @@ class ReplacementTransactionBuilder(
         val output = TransactionOutput(outputs.first())
         output.value = output.value - (minFee - fee)
 
-        if (output.value > dustCalculator.dust(output.scriptType, null)) {
+        if (output.value > dustCalculator.dust(output.scriptType)) {
             return Pair(listOf(output) + outputs.drop(1), fee)
         }
 
@@ -217,7 +217,7 @@ class ReplacementTransactionBuilder(
             )
         )
         do {
-            if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType, null)) {
+            if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType)) {
                 utxoCount++
                 continue
             }
@@ -380,7 +380,7 @@ class ReplacementTransactionBuilder(
             }
 
             is ReplacementType.Cancel -> {
-                val dustValue = dustCalculator.dust(type.address.scriptType, null).toLong()
+                val dustValue = dustCalculator.dust(type.address.scriptType).toLong()
                 val fixedOutputs = listOf(
                     TransactionOutput(
                         value = dustValue,
