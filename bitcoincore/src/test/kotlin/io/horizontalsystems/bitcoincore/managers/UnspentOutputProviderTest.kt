@@ -12,6 +12,7 @@ import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -62,7 +63,7 @@ object UnspentOutputProviderTest : Spek({
             }
 
             it("returns unspentOutput") {
-                assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo().toTypedArray())
+                assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
             }
         }
 
@@ -80,7 +81,7 @@ object UnspentOutputProviderTest : Spek({
                 }
 
                 it("doesn't return unspentOutput") {
-                    assertArrayEquals(arrayOf(), provider.getSpendableUtxo().toTypedArray())
+                    assertArrayEquals(arrayOf(), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
                 }
             }
 
@@ -101,7 +102,7 @@ object UnspentOutputProviderTest : Spek({
                     it("returns unspentOutput") {
                         block.height = lastBlock.height - confirmationsThreshold
 
-                        assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo().toTypedArray())
+                        assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
                     }
                 }
 
@@ -109,7 +110,7 @@ object UnspentOutputProviderTest : Spek({
                     it("doesn't return unspentOutput") {
                         block.height = lastBlock.height - confirmationsThreshold + 2
 
-                        assertArrayEquals(arrayOf(), provider.getSpendableUtxo().toTypedArray())
+                        assertArrayEquals(arrayOf(), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
                     }
                 }
             }

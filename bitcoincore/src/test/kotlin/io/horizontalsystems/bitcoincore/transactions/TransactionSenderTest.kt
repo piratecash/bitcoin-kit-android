@@ -33,8 +33,8 @@ object TransactionSenderTest : Spek({
             initialBlockDownload,
             storage,
             timer,
-            SendType.P2P,
             mock(),
+            SendType.P2P
         )
     }
 

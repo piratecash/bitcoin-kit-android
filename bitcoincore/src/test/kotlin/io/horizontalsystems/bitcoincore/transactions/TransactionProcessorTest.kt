@@ -12,6 +12,8 @@ import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.transactions.extractors.MyOutputsCache
 import io.horizontalsystems.bitcoincore.transactions.extractors.TransactionExtractor
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
+import org.mockito.Mockito.mock
 import org.junit.Assert
 import org.mockito.Mockito
 import org.mockito.Mockito.mock
@@ -31,6 +33,7 @@ object TransactionProcessorTest : Spek({
     val blockchainDataListener = mock(IBlockchainDataListener::class.java)
     val irregularOutputFinder = mock(IIrregularOutputFinder::class.java)
     val conflictsResolver = mock(TransactionConflictsResolver::class.java)
+    val transactionSerializer = mock(BaseTransactionSerializer::class.java)
 
     beforeEachTest {
         fullTransaction = Fixtures.transactionP2PKH
@@ -57,7 +60,8 @@ object TransactionProcessorTest : Spek({
                     sequence = 0
                 )
             ),
-            outputs = listOf(TransactionOutput())
+            outputs = listOf(TransactionOutput()),
+            transactionSerializer = transactionSerializer
         )
         val tx2 = FullTransaction(
             header = Transaction(),
@@ -70,7 +74,8 @@ object TransactionProcessorTest : Spek({
             ),
             outputs = listOf(
                 TransactionOutput().apply { index = 0 },
-                TransactionOutput().apply { index = 1 })
+                TransactionOutput().apply { index = 1 }),
+            transactionSerializer = transactionSerializer
         )
         val tx3 = FullTransaction(
             header = Transaction(),
@@ -81,7 +86,8 @@ object TransactionProcessorTest : Spek({
                     sequence = 0
                 )
             ),
-            outputs = listOf(TransactionOutput().apply { index = 0 })
+            outputs = listOf(TransactionOutput().apply { index = 0 }),
+            transactionSerializer = transactionSerializer
         )
         val tx4 = FullTransaction(
             header = Transaction(),
@@ -97,7 +103,8 @@ object TransactionProcessorTest : Spek({
                     sequence = 0
                 )
             ),
-            outputs = listOf(TransactionOutput().apply { index = 0 })
+            outputs = listOf(TransactionOutput().apply { index = 0 }),
+            transactionSerializer = transactionSerializer
         )
 
         return listOf(tx1, tx2, tx3, tx4)

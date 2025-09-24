@@ -2,11 +2,13 @@ package io.horizontalsystems.bitcoincore.core
 
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.utils.Utils
+import kotlinx.serialization.Serializable
 
 /**
  * Just wraps a ByteArray so that equals and hashcode work correctly, allowing it to be
  * used as keys in a map
  */
+@Serializable
 class HashBytes(val bytes: ByteArray) : Comparable<HashBytes> {
     private val hashLength = 32
 

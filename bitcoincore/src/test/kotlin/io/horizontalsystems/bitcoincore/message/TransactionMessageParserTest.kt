@@ -4,13 +4,15 @@ import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.network.messages.TransactionMessage
 import io.horizontalsystems.bitcoincore.network.messages.TransactionMessageParser
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
+import org.mockito.Mockito.mock
 import org.junit.Assert.assertEquals
 import org.spekframework.spek2.Spek
 import org.spekframework.spek2.style.specification.describe
 
 object TransactionMessageParserTest : Spek({
     val messageParser by memoized {
-        TransactionMessageParser()
+        TransactionMessageParser(mock(BaseTransactionSerializer::class.java))
     }
 
     describe("#parseMessage") {

@@ -12,7 +12,7 @@ object DataProviderTest : Spek({
     val transactionInfoConverter = mock<ITransactionInfoConverter>()
 
     val dataProvider by memoized {
-        DataProvider(storage, unspentOutputProvider, transactionInfoConverter)
+        DataProvider(storage, unspentOutputProvider, transactionInfoConverter, "")
     }
 
     afterEachTest {

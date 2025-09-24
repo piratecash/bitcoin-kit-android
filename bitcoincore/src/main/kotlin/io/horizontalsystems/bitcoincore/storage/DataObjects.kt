@@ -12,7 +12,9 @@ import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.utils.HashUtils
+import kotlinx.serialization.Serializable
 
+@Serializable
 class BlockHeader(
     val version: Int,
     val previousBlockHeaderHash: ByteArray,
