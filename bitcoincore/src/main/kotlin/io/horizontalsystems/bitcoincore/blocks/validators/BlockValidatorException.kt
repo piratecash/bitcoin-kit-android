@@ -6,6 +6,8 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 open class BlockValidatorException(msg: String) : RuntimeException(msg) {
     class NoHeader : BlockValidatorException("No Header")
     class NoCheckpointBlock : BlockValidatorException("No Checkpoint Block")
+    class OrphanBlock(block: ByteArray? = null) :
+        BlockValidatorException("Orphan Block: ${block?.toHexString()}")
     class NoPreviousBlock(block: ByteArray? = null) :
         BlockValidatorException("No PreviousBlock: ${block?.toHexString()}")
 

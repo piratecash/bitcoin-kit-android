@@ -18,8 +18,6 @@ class Blockchain(
     private val dataListener: IBlockchainDataListener,
     private val logTag: String
 ) {
-    private val logger = Logger.getLogger("Blockchain")
-
     fun connect(merkleBlock: MerkleBlock): Block {
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
@@ -29,12 +27,11 @@ class Blockchain(
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
         if (parentBlock == null) {
-            logger.info("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans...")
-            Timber.tag(logTag).d("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
+            Timber.tag(logTag).i("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
             storage.addOrphanBlock(OrphanBlock(merkleBlock))
             // add to orphans with empty parent
             // Maybe we shouldn't disconnect the peer here since we will request parent block
-            throw BlockValidatorException.NoPreviousBlock(merkleBlock.header.previousBlockHeaderHash)
+            throw BlockValidatorException.OrphanBlock(merkleBlock.header.previousBlockHeaderHash)
         }
 
         val block = Block(merkleBlock, parentBlock)
