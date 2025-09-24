@@ -5,15 +5,18 @@ import io.horizontalsystems.bitcoincore.core.IPeerAddressManagerListener
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.models.PeerAddress
 import io.horizontalsystems.bitcoincore.network.Network
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Logger
 
-class PeerAddressManager(private val network: Network, private val storage: IStorage) : IPeerAddressManager {
+class PeerAddressManager(private val network: Network, private val storage: IStorage) :
+    IPeerAddressManager {
 
     override var listener: IPeerAddressManagerListener? = null
 
     private val state = State()
     private val logger = Logger.getLogger("PeerHostManager")
     private val peerDiscover = PeerDiscover(this, network.logTag)
+    private val checkedHosts = ConcurrentHashMap.newKeySet<String>()
 
     override val hasFreshIps: Boolean
         get() {
@@ -27,7 +30,10 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
     override fun getIp(): String? {
         val peerAddress = getLeastScoreFastestPeer()
         if (peerAddress == null) {
-            peerDiscover.lookup(network.dnsSeeds)
+            val dnsListToCheck = network.dnsSeeds.filter { !checkedHosts.contains(it) }
+            if (dnsListToCheck.isNotEmpty()) {
+                peerDiscover.lookup(dnsListToCheck)
+            }
             return null
         }
 
@@ -36,7 +42,10 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
         return peerAddress.ip
     }
 
-    override fun addIps(ips: List<String>) {
+    override fun addIps(host: String?, ips: List<String>) {
+        if (ips.isNotEmpty() && host != null) {
+            checkedHosts.add(host)
+        }
         storage.setPeerAddresses(ips.map { PeerAddress(it, 0) })
 
         logger.info("${network.logTag}: Added new addresses: ${ips.size}")
@@ -44,8 +53,7 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
         listener?.onAddAddress()
     }
 
-    override fun addUnreachedHosts(host: String)
-        = storage.addUnreachedHosts(host)
+    override fun addUnreachedHosts(host: String) = storage.addUnreachedHosts(host)
 
     override fun markFailed(ip: String) {
         state.remove(ip)

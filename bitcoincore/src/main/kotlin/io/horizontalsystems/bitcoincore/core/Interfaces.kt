@@ -203,7 +203,7 @@ interface IPeerAddressManager {
     val listener: IPeerAddressManagerListener?
     val hasFreshIps: Boolean
     fun getIp(): String?
-    fun addIps(ips: List<String>)
+    fun addIps(host: String?, ips: List<String>)
     fun addUnreachedHosts(host: String)
     fun markFailed(ip: String)
     fun markSuccess(ip: String)

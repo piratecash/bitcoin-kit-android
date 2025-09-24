@@ -86,7 +86,7 @@ class PeerGroup(
     }
 
     fun addPeers(peers: List<String>) {
-        hostManager.addIps(peers)
+        hostManager.addIps(null, peers)
     }
 
     //
@@ -147,7 +147,7 @@ class PeerGroup(
                     it.hostAddress
                 }
 
-            hostManager.addIps(peerIps)
+            hostManager.addIps(null, peerIps)
         } else if (message is InvMessage) {
             inventoryItemsHandler?.handleInventoryItems(peer, message.inventory)
         }

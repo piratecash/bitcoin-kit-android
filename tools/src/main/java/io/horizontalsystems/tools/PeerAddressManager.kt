@@ -37,7 +37,7 @@ class PeerAddressManager(private val network: Network) : IPeerAddressManager {
         return peerAddress.ip
     }
 
-    override fun addIps(ips: List<String>) {
+    override fun addIps(host: String?, ips: List<String>) {
         state.setPeerAddresses(ips.map { PeerAddress(it, 0) })
         listener?.onAddAddress()
     }

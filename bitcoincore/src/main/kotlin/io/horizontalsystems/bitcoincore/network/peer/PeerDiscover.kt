@@ -24,10 +24,10 @@ class PeerDiscover(private val peerAddressManager: IPeerAddressManager, private 
                         val ips = InetAddress
                             .getAllByName(host)
                             .filter { it !is Inet6Address }
-                            .map { it.hostAddress }
+                            .mapNotNull { it.hostAddress }
 
                         logger.info("$tag: Fetched ${ips.size} peer addresses from host: $host")
-                        peerAddressManager.addIps(ips)
+                        peerAddressManager.addIps(host, ips)
                     } catch (e: UnknownHostException) {
                         peerAddressManager.addUnreachedHosts(host)
                         logger.warning("$tag: Cannot look up host: $host")
