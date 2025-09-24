@@ -298,7 +298,8 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             bitcoinCore,
             PeerTaskFactory(),
             masternodeListManager,
-            bitcoinCore.initialDownload
+            bitcoinCore.initialDownload,
+            network.logTag
         )
 
         bitcoinCore.addPeerTaskHandler(masternodeSyncer)
@@ -420,7 +421,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
     companion object {
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
-        const val defaultPeerSize: Int = 5
+        const val defaultPeerSize: Int = 8
         const val defaultConfirmationsThreshold: Int = 6
 
         private fun getDatabaseNameCore(

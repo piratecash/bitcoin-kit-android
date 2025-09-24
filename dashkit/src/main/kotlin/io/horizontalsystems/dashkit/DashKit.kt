@@ -89,7 +89,6 @@ import kotlinx.coroutines.sync.withLock
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
-import java.util.logging.Logger
 import kotlin.collections.flatten
 
 class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
@@ -362,7 +361,8 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             bitcoinCore,
             PeerTaskFactory(),
             masternodeListManager,
-            bitcoinCore.initialDownload
+            bitcoinCore.initialDownload,
+            network.logTag
         )
 
         bitcoinCore.addPeerTaskHandler(masternodeSyncer)

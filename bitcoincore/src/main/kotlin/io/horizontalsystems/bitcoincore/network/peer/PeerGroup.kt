@@ -10,6 +10,7 @@ import io.horizontalsystems.bitcoincore.network.messages.InvMessage
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
+import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.Executors
@@ -53,6 +54,9 @@ class PeerGroup(
     private var peerCountToConnect: Int? = null // number of peers to connect to
     private val peerCountToHold = peerSize      // number of peers held
     private var peerCountConnected = 0          // number of peers connected to
+
+    private var lastLogTime = 0L
+    private val logIntervalMs = 60_000L
 
     fun start() {
         if (running) {
@@ -146,6 +150,22 @@ class PeerGroup(
             hostManager.addIps(peerIps)
         } else if (message is InvMessage) {
             inventoryItemsHandler?.handleInventoryItems(peer, message.inventory)
+        }
+        logPeersStatusThrottled()
+    }
+
+    override fun onPongMessage() {
+        logPeersStatusThrottled()
+    }
+
+    private fun logPeersStatusThrottled() {
+        if(Timber.treeCount == 0) {
+            return
+        }
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastLogTime >= logIntervalMs) {
+            Timber.tag(network.logTag).d("Peers status: ${peerManager.peersCount} connected, ${peerManager.readyPears().size} ready, isSynced: ${peerManager.hasSyncedPeer()}")
+            lastLogTime = currentTime
         }
     }
 

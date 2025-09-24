@@ -52,7 +52,7 @@ class TransactionSender(
 
     fun canSendTransaction() {
         if (getPeersToSend().isEmpty()) {
-            throw PeerGroup.Error("peers not synced")
+            throw PeerGroup.Error("Peers not synced, have ${peerManager.peersCount}/${minConnectedPeerSize} peers")
         }
     }
 
