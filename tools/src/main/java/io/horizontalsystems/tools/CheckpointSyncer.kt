@@ -89,8 +89,13 @@ class CheckpointSyncer(
         }
 
         val connectionManager = object : IConnectionManager {
-            override val listener: IConnectionManagerListener? = null
             override val isConnected = true
+
+            override fun addListener(listener: IConnectionManagerListener) {
+            }
+
+            override fun removeListener(listener: IConnectionManagerListener) {
+            }
 
             override fun onEnterForeground() {
             }

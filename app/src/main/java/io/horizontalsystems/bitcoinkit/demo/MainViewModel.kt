@@ -27,7 +27,7 @@ import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.coroutines.launch
 
-class MainViewModel : ViewModel(), PirateCashKit.Listener {
+class MainViewModel : ViewModel(), CosantaKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -52,17 +52,17 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: PirateCashKit
+    private lateinit var bitcoinKit: CosantaKit
 
     private val walletId = "MyWallet"
-    private val networkType = PirateCashKit.NetworkType.MainNet
+    private val networkType = CosantaKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = PirateCashKit(
+        bitcoinKit = CosantaKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -100,7 +100,7 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     fun clear() {
         bitcoinKit.stop()
-        PirateCashKit.clear(App.instance, networkType, walletId)
+        CosantaKit.clear(App.instance, networkType, walletId)
 
         init()
     }
@@ -115,7 +115,7 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
     }
 
     //
-    // PirateCashKit Listener implementations
+    // CosantaKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,

@@ -215,8 +215,9 @@ interface IPeerAddressManagerListener {
 }
 
 interface IConnectionManager {
-    val listener: IConnectionManagerListener?
     val isConnected: Boolean
+    fun addListener(listener: IConnectionManagerListener)
+    fun removeListener(listener: IConnectionManagerListener)
     fun onEnterForeground()
     fun onEnterBackground()
 }

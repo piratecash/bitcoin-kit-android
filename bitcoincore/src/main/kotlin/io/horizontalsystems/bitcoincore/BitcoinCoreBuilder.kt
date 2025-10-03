@@ -312,7 +312,7 @@ class BitcoinCoreBuilder {
             logTag = network.logTag
         )
 
-        val connectionManager = ConnectionManager(context)
+        val connectionManager = ConnectionManager.getInstance(context)
 
         var privateWallet: IPrivateWallet? = null
         val publicKeyFetcher: IPublicKeyFetcher
@@ -533,10 +533,11 @@ class BitcoinCoreBuilder {
             blockSyncer.localDownloadedBestBlockHeight
         )
         apiSyncer.listener = syncManager
-        connectionManager.listener = syncManager
         blockSyncer.listener = syncManager
         initialDownload.listener = syncManager
         blockHashScanner.listener = syncManager
+
+        connectionManager.addListener(syncManager)
 
         val unspentOutputSelector = UnspentOutputSelectorChain(unspentOutputProvider)
         val pendingTransactionSyncer =
