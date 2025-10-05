@@ -27,7 +27,8 @@ class TransactionSender(
     private val transactionSerializer: BaseTransactionSerializer,
     private val sendType: BitcoinCore.SendType,
     private val maxRetriesCount: Int = 3,
-    private val retriesPeriod: Int = 60
+    private val retriesPeriod: Int = 60,
+    private val allowBroadcastFromUnsyncedPeers: Boolean
 ) : IPeerTaskHandler, TransactionSendTimer.Listener {
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -78,9 +79,11 @@ class TransactionSender(
         }
 
         val freeSyncedPeer = initialBlockDownload.syncedPeers
-            .sortedBy { it.ready } // not ready first
-            .firstOrNull()
-            ?: return emptyList()
+            .minByOrNull { it.ready }
+
+        if (!allowBroadcastFromUnsyncedPeers && freeSyncedPeer == null) {
+            return emptyList()
+        }
 
         val readyPeers = peerManager.readyPears()
             .filter { it != freeSyncedPeer }

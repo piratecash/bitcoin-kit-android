@@ -248,6 +248,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .setStorage(coreStorage)
             .setBlockHeaderHasher(X11HasherExt())
             .setApiTransactionProvider(apiTransactionProvider)

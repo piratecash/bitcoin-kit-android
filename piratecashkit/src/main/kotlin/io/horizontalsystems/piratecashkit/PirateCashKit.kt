@@ -250,6 +250,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .setStorage(coreStorage)
 //            .setBlockHeaderHasher(Scry())
             .setApiTransactionProvider(apiTransactionProvider)

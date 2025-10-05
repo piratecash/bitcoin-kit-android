@@ -154,6 +154,7 @@ class BitcoinCoreBuilder {
     private var requestUnknownBlocks = false
     private var sendType: BitcoinCore.SendType = BitcoinCore.SendType.P2P
     private var transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
+    private var allowBroadcastFromUnsyncedPeers = false
 
     // parameters for signing
     private var iInputSigner: IInputSigner? = null
@@ -212,6 +213,11 @@ class BitcoinCoreBuilder {
 
     fun setSendType(sendType: BitcoinCore.SendType): BitcoinCoreBuilder {
         this.sendType = sendType
+        return this
+    }
+
+    fun setAllowBroadcastFromUnsyncedPeers(value: Boolean): BitcoinCoreBuilder {
+        allowBroadcastFromUnsyncedPeers = value
         return this
     }
 
@@ -433,6 +439,7 @@ class BitcoinCoreBuilder {
         val bloomFilterManager = BloomFilterManager()
 
         val peerManager = PeerManager()
+        peerManager.setAllowBroadcastFromUnsyncedPeers(allowBroadcastFromUnsyncedPeers)
 
         val networkMessageParser = NetworkMessageParser(network.magic)
         val networkMessageSerializer = NetworkMessageSerializer(network.magic)
@@ -598,7 +605,8 @@ class BitcoinCoreBuilder {
                 storage = storage,
                 timer = transactionSendTimer,
                 sendType = sendType,
-                transactionSerializer = transactionSerializer
+                transactionSerializer = transactionSerializer,
+                allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers
             )
 
             dustCalculator = dustCalculatorInstance

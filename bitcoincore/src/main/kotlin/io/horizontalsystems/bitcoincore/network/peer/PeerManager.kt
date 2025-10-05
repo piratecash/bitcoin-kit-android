@@ -1,10 +1,13 @@
 package io.horizontalsystems.bitcoincore.network.peer
 
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.jvm.Volatile
 
 class PeerManager {
 
     private var peers = ConcurrentHashMap<String, Peer>()
+    @Volatile
+    private var allowBroadcastFromUnsyncedPeers = false
 
     val peersCount: Int
         get() = peers.size
@@ -15,6 +18,10 @@ class PeerManager {
 
     fun remove(peer: Peer) {
         peers.remove(peer.host)
+    }
+
+    fun setAllowBroadcastFromUnsyncedPeers(value: Boolean) {
+        allowBroadcastFromUnsyncedPeers = value
     }
 
     fun disconnectAll() {
@@ -31,7 +38,9 @@ class PeerManager {
     }
 
     fun readyPears(): List<Peer> {
-        return peers.values.filter { it.connected && it.ready }
+        return peers.values.filter { peer ->
+            peer.connected && (allowBroadcastFromUnsyncedPeers || peer.ready)
+        }
     }
 
     fun hasSyncedPeer(): Boolean {

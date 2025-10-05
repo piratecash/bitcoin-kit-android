@@ -17,7 +17,12 @@ object PeerManagerTest : Spek({
 
     val peerManager by memoized { PeerManager() }
 
-    fun addPeer(synced: Boolean, connected: Boolean = true, host: String = "0.0.0.0", ready: Boolean = true): Peer {
+    fun addPeer(
+        synced: Boolean,
+        connected: Boolean = true,
+        host: String = "0.0.0.0",
+        ready: Boolean = true,
+    ): Peer {
         val peer = mock<Peer> {}
 
         whenever(peer.connected).thenReturn(connected)
@@ -93,6 +98,7 @@ object PeerManagerTest : Spek({
 
     describe("#readyPears") {
         it("returns a list of ready peers") {
+            peerManager.setAllowBroadcastFromUnsyncedPeers(false)
             addPeer(host = "0.0.0.1", connected = true, synced = true, ready = false)
             addPeer(host = "0.0.0.2", connected = true, synced = true, ready = false)
             val p3 = addPeer(host = "0.0.0.3", connected = true, synced = true, ready = true)
@@ -102,10 +108,26 @@ object PeerManagerTest : Spek({
         }
 
         it("returns an empty list") {
+            peerManager.setAllowBroadcastFromUnsyncedPeers(false)
             addPeer(host = "0.0.0.1", connected = true, synced = true, ready = false)
             addPeer(host = "0.0.0.2", connected = true, synced = true, ready = false)
 
             assertEquals(listOf<Peer>(), peerManager.readyPears())
+        }
+
+        it("returns broadcast ready peers when allowed") {
+            peerManager.setAllowBroadcastFromUnsyncedPeers(true)
+            addPeer(host = "0.0.0.1", connected = true, synced = false, ready = false)
+            val p2 = addPeer(host = "0.0.0.2", connected = true, synced = false, ready = false)
+
+            assertEquals(listOf(p2), peerManager.readyPears())
+        }
+
+        it("ignores readyForBroadcast when peer disconnected") {
+            peerManager.setAllowBroadcastFromUnsyncedPeers(true)
+            addPeer(host = "0.0.0.1", connected = false, synced = false, ready = false)
+
+            assertEquals(emptyList<Peer>(), peerManager.readyPears())
         }
     }
 

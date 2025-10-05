@@ -34,7 +34,8 @@ object TransactionSenderTest : Spek({
             storage,
             timer,
             mock(),
-            SendType.P2P
+            SendType.P2P,
+            allowBroadcastFromUnsyncedPeers = true
         )
     }
 
@@ -51,7 +52,7 @@ object TransactionSenderTest : Spek({
                     transactionSender.canSendTransaction()
                     fail("Expected an Exception to be thrown")
                 } catch (e: PeerGroup.Error) {
-                    assertTrue(e.message == "peers not synced")
+                    assertTrue(e.message?.startsWith("Peers not synced") == true)
                 }
             }
         }
@@ -73,7 +74,7 @@ object TransactionSenderTest : Spek({
                     transactionSender.canSendTransaction()
                     fail("Expected an Exception to be thrown")
                 } catch (e: PeerGroup.Error) {
-                    assertTrue(e.message == "peers not synced")
+                    assertTrue(e.message?.startsWith("Peers not synced") == true)
                 }
             }
         }
@@ -126,6 +127,34 @@ object TransactionSenderTest : Spek({
 
             it("returns nothing") {
                 transactionSender.canSendTransaction()
+            }
+        }
+    }
+
+    describe("#canSendTransaction with unsynced broadcast") {
+
+        val transactionSenderUnsynced by memoized {
+            TransactionSender(
+                transactionSyncer,
+                peerManager,
+                initialBlockDownload,
+                storage,
+                timer,
+                mock(),
+                SendType.P2P,
+                allowBroadcastFromUnsyncedPeers = true
+            )
+        }
+
+        context("when ready peers exist but no synced peers") {
+            beforeEach {
+                whenever(peerManager.peersCount).thenReturn(2)
+                whenever(peerManager.readyPears()).thenReturn(listOf(peer1, peer2))
+                whenever(initialBlockDownload.syncedPeers).thenReturn(CopyOnWriteArrayList())
+            }
+
+            it("does not throw") {
+                transactionSenderUnsynced.canSendTransaction()
             }
         }
     }
