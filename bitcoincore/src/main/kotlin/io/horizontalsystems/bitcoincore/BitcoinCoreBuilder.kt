@@ -587,15 +587,16 @@ class BitcoinCoreBuilder {
                 dustCalculatorInstance,
                 transactionDataSorterFactory
             )
-            val lockTimeSetter = LockTimeSetter(storage)
+            val lockTimeSetter = LockTimeSetter(storage, network.usesLastBlockHeightAsLockTime)
             val transactionBuilder =
-                TransactionBuilder(recipientSetter, outputSetter, inputSetter, lockTimeSetter)
+                TransactionBuilder(recipientSetter, outputSetter, inputSetter, lockTimeSetter, network.transactionVersion)
             transactionFeeCalculator = TransactionFeeCalculator(
                 recipientSetter,
                 inputSetter,
                 addressConverter,
                 publicKeyManager,
                 purpose.scriptType,
+                network.transactionVersion,
             )
             val transactionSendTimer = TransactionSendTimer(60)
             val transactionSenderInstance = TransactionSender(
@@ -633,7 +634,8 @@ class BitcoinCoreBuilder {
                 publicKeyManager = publicKeyManager,
                 conflictsResolver = conflictsResolver,
                 lockTimeSetter = lockTimeSetter,
-                transactionSerializer = transactionSerializer
+                transactionSerializer = transactionSerializer,
+                transactionVersion = network.transactionVersion,
             )
         }
 

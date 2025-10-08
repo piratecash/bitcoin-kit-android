@@ -37,7 +37,8 @@ class ReplacementTransactionBuilder(
     private val publicKeyManager: IPublicKeyManager,
     private val conflictsResolver: TransactionConflictsResolver,
     private val transactionSerializer: BaseTransactionSerializer,
-    private val lockTimeSetter: LockTimeSetter
+    private val lockTimeSetter: LockTimeSetter,
+    private val transactionVersion: Int
 ) {
 
     private fun replacementTransaction(
@@ -177,6 +178,7 @@ class ReplacementTransactionBuilder(
 
         return optimalReplacement?.let { (inputs, outputs, _) ->
             val mutableTransaction = MutableTransaction()
+            mutableTransaction.transaction.version = transactionVersion
             setInputs(
                 mutableTransaction = mutableTransaction,
                 originalInputs = originalFullInfo.inputs,
@@ -248,6 +250,7 @@ class ReplacementTransactionBuilder(
 
         return optimalReplacement?.let { (inputs, outputs, _) ->
             val mutableTransaction = MutableTransaction()
+            mutableTransaction.transaction.version = transactionVersion
             setInputs(
                 mutableTransaction = mutableTransaction,
                 originalInputs = originalFullInfo.inputs,

@@ -18,6 +18,7 @@ class TransactionFeeCalculator(
     private val addressConverter: AddressConverterChain,
     private val publicKeyManager: IPublicKeyManager,
     private val changeScriptType: ScriptType,
+    private val transactionVersion: Int,
 ) {
 
     fun sendInfo(
@@ -32,6 +33,7 @@ class TransactionFeeCalculator(
         filters: UtxoFilters
     ): BitcoinSendInfo {
         val mutableTransaction = MutableTransaction()
+        mutableTransaction.transaction.version = transactionVersion
 
         recipientSetter.setRecipient(
             mutableTransaction = mutableTransaction,

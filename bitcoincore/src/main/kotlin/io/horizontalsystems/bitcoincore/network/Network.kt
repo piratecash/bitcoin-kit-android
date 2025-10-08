@@ -17,6 +17,8 @@ abstract class Network {
 
     abstract val blockchairChainId: String
 
+    open val transactionVersion = 2
+    open val usesLastBlockHeightAsLockTime = true
     abstract val maxBlockSize: Int
     abstract val dustRelayTxFee: Int
 

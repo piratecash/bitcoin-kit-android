@@ -13,6 +13,8 @@ class MainNetDogecoin : Network() {
     override var addressSegwitHrp: String = "doge"
     override var addressScriptVersion: Int = 0x16
     override var coinType: Int = 3
+    override val transactionVersion: Int = 1
+    override val usesLastBlockHeightAsLockTime: Boolean = false
     override val blockchairChainId: String = "dogecoin"
 
     override val maxBlockSize = 1_000_000

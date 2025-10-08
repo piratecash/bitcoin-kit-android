@@ -10,7 +10,8 @@ class TransactionBuilder(
     private val recipientSetter: IRecipientSetter,
     private val outputSetter: OutputSetter,
     private val inputSetter: InputSetter,
-    private val lockTimeSetter: LockTimeSetter
+    private val lockTimeSetter: LockTimeSetter,
+    private val transactionVersion: Int
 ) {
 
     fun buildTransaction(
@@ -27,6 +28,7 @@ class TransactionBuilder(
         filters: UtxoFilters
     ): MutableTransaction {
         val mutableTransaction = MutableTransaction()
+        mutableTransaction.transaction.version = transactionVersion
 
         recipientSetter.setRecipient(mutableTransaction, toAddress, value, pluginData, false, memo)
         inputSetter.setInputs(
@@ -55,6 +57,7 @@ class TransactionBuilder(
         rbfEnabled: Boolean
     ): MutableTransaction {
         val mutableTransaction = MutableTransaction(false)
+        mutableTransaction.transaction.version = transactionVersion
 
         recipientSetter.setRecipient(
             mutableTransaction,

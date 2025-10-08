@@ -103,12 +103,14 @@ class TransactionSender(
             }
 
             is BitcoinCore.SendType.API -> {
-                sendViaAPI(transactions, sendType.blockchairApi)
+                sendViaAPI(transactions, sendType.blockchairApi) {
+                    sendViaP2P(transactions)
+                }
             }
         }
     }
 
-    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi) = coroutineScope.launch {
+    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi, fallback: () -> Boolean) = coroutineScope.launch {
         transactions.forEach { transaction ->
             try {
                 val hex = transactionSerializer.serialize(transaction).toHexString()
@@ -116,15 +118,19 @@ class TransactionSender(
 
                 transactionSyncer.handleRelayed(listOf(transaction))
             } catch (error: Throwable) {
-                transactionSyncer.handleInvalid(transaction)
+                error.printStackTrace()
+                val sent = fallback()
+                if (!sent) {
+                    transactionSyncer.handleInvalid(transaction)
+                }
             }
         }
     }
 
-    private fun sendViaP2P(transactions: List<FullTransaction>) {
+    private fun sendViaP2P(transactions: List<FullTransaction>): Boolean {
         val peers = getPeersToSend()
         if (peers.isEmpty()) {
-            return
+            return false
         }
 
         timer.startIfNotRunning()
@@ -136,6 +142,7 @@ class TransactionSender(
                 peer.addTask(SendTransactionTask(transaction))
             }
         }
+        return true
     }
 
     private fun transactionSendStart(transaction: FullTransaction) {
