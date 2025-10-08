@@ -16,7 +16,7 @@ class MainNetDogecoin : Network() {
     override val blockchairChainId: String = "dogecoin"
 
     override val maxBlockSize = 1_000_000
-    override val dustRelayTxFee = 3000 // https://github.com/bitcoin/bitcoin/blob/c536dfbcb00fb15963bf5d507b7017c241718bf6/src/policy/policy.h#L50
+    override val dustRelayTxFee = 1_000_000 //0.01 DOGE per kilobyte transaction fee by https://dogecoincore.com/en/doc/fee-recommendation.html
 
     override val syncableFromApi = true
 
