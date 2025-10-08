@@ -24,7 +24,7 @@ class UnspentOutputSelectorSingleNoChange(
         filters: UtxoFilters
     ): SelectedUnspentOutputInfo {
         val dust = dustCalculator.dust(outputScriptType)
-        if (value <= dust) {
+        if (value < dust) {
             throw SendValueErrors.Dust
         }
 
