@@ -14,7 +14,7 @@ import io.horizontalsystems.dashkit.models.Masternode
 import io.horizontalsystems.dashkit.models.MasternodeListState
 import io.horizontalsystems.dashkit.models.Quorum
 
-@Database(version = 5, exportSchema = false, entities = [
+@Database(version = 6, exportSchema = false, entities = [
     Masternode::class,
     Quorum::class,
     MasternodeListState::class,

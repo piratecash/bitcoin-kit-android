@@ -340,7 +340,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         val calculator = TransactionSizeCalculator()
         val dustCalculator = DustCalculator(network.dustRelayTxFee, calculator)
         val confirmedUnspentOutputProvider =
-            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold)
+            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold, instantTransactionManager)
         bitcoinCore.prependUnspentOutputSelector(
             UnspentOutputSelector(
                 calculator,

@@ -402,7 +402,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val calculator = TransactionSizeCalculator()
         val dustCalculator = DustCalculator(network.dustRelayTxFee, calculator)
         val confirmedUnspentOutputProvider =
-            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold)
+            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold, instantTransactionManager)
         bitcoinCore.prependUnspentOutputSelector(
             UnspentOutputSelector(
                 calculator,

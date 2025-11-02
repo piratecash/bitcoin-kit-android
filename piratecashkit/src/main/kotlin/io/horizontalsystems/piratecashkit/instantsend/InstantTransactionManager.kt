@@ -9,9 +9,9 @@ import io.horizontalsystems.piratecashkit.models.InstantTransactionInput
 import io.horizontalsystems.piratecashkit.models.InstantTransactionState
 
 class InstantTransactionManager(
-    private val storage: IPirateCashStorage,
-    private val instantSendFactory: InstantSendFactory,
-    private val state: InstantTransactionState
+        private val storage: IPirateCashStorage,
+        private val instantSendFactory: InstantSendFactory,
+        private val state: InstantTransactionState
 ) {
     init {
         state.instantTransactionHashes = storage.instantTransactionHashes().toMutableList()
@@ -34,16 +34,18 @@ class InstantTransactionManager(
     }
 
     @Throws
-    fun updateInput(inputTxHash: ByteArray, transactionInputs: List<InstantTransactionInput>) {
+    fun updateInput(inputTxHash: ByteArray, inputTxOutputIndex: Long, transactionInputs: List<InstantTransactionInput>) {
         val updatedInputs = transactionInputs.toMutableList()
 
-        val inputIndex = transactionInputs.indexOfFirst { it.inputTxHash.contentEquals(inputTxHash) }
+        val inputIndex = transactionInputs.indexOfFirst {
+            it.inputTxHash.contentEquals(inputTxHash) && it.inputTxOutputIndex == inputTxOutputIndex
+        }
         if (inputIndex == -1) {
             throw PirateCashKitErrors.LockVoteValidation.TxInputNotFound()
         }
 
         val input = transactionInputs[inputIndex]
-        val increasedInput = instantSendFactory.instantTransactionInput(input.txHash, input.inputTxHash, input.voteCount + 1, input.blockHeight)
+        val increasedInput = instantSendFactory.instantTransactionInput(input.txHash, input.inputTxHash, input.inputTxOutputIndex, input.voteCount + 1, input.blockHeight)
         storage.addInstantTransactionInput(increasedInput)
 
         updatedInputs[inputIndex] = increasedInput
@@ -70,7 +72,7 @@ class InstantTransactionManager(
     private fun makeInputs(txHash: ByteArray, inputs: List<TransactionInput>): List<InstantTransactionInput> {
         val instantInputs = mutableListOf<InstantTransactionInput>()
         for (input in inputs) {
-            val instantInput = instantSendFactory.instantTransactionInput(txHash, input.previousOutputTxHash, 0, null)
+            val instantInput = instantSendFactory.instantTransactionInput(txHash, input.previousOutputTxHash, input.previousOutputIndex, 0, null)
 
             storage.addInstantTransactionInput(instantInput)
             instantInputs.add(instantInput)
