@@ -31,7 +31,7 @@ class InstantSend(
     override fun handleInventoryItems(peer: Peer, inventoryItems: List<InventoryItem>) {
         val transactionLockRequests = mutableListOf<ByteArray>()
         val transactionLockVotes = mutableListOf<ByteArray>()
-        val isLocks = mutableListOf<ByteArray>()
+        val isLocks = mutableListOf<InventoryItem>()
 
         inventoryItems.forEach { item ->
             when (item.type) {
@@ -42,7 +42,7 @@ class InstantSend(
                     transactionLockVotes.add(item.hash)
                 }
                 InventoryType.MSG_ISLOCK, InventoryType.MSG_ISDLOCK -> {
-                    isLocks.add(item.hash)
+                    isLocks.add(item)
                 }
             }
         }
