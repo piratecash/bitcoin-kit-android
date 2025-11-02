@@ -41,7 +41,7 @@ class InstantSend(
                 InventoryType.MSG_TXLOCK_VOTE -> {
                     transactionLockVotes.add(item.hash)
                 }
-                InventoryType.MSG_ISLOCK -> {
+                InventoryType.MSG_ISLOCK, InventoryType.MSG_ISDLOCK -> {
                     isLocks.add(item.hash)
                 }
             }
