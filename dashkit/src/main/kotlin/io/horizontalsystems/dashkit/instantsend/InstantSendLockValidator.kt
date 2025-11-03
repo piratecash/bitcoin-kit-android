@@ -14,20 +14,22 @@ class InstantSendLockValidator(
 
     @Throws
     fun validate(islock: ISLockMessage) {
-        // 01. Select quorum
+        val deterministic = islock.cycleHash != null
         val quorum = quorumListManager.getQuorum(QuorumType.LLMQ_50_60, islock.requestId)
 
         // 02. Make signId data to verify signature
         val signIdPayload = BitcoinOutput()
-                .writeByte(quorum.type)
-                .write(quorum.quorumHash)
-                .write(islock.requestId)
-                .write(islock.txHash)
-                .toByteArray()
+            .writeByte(quorum.type)
+            .write(quorum.quorumHash)
+            .write(islock.requestId)
+            .write(islock.txHash)
 
-        val signId = HashUtils.doubleSha256(signIdPayload)
+        if (deterministic) {
+            signIdPayload.write(checkNotNull(islock.cycleHash))
+        }
 
-        // 03. Verify signature by BLS
+        val signId = HashUtils.doubleSha256(signIdPayload.toByteArray())
+
         if (!bls.verifySignature(quorum.quorumPublicKey, islock.sign, signId)) {
             throw DashKitErrors.ISLockValidation.SignatureNotValid()
         }
