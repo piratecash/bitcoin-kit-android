@@ -55,6 +55,7 @@ interface IStorage {
     //  BlockHash
 
     fun getBlockHashesSortedBySequenceAndHeight(limit: Int): List<BlockHash>
+    fun hasBlockHash(headerHash: ByteArray): Boolean
     fun getBlockHashHeaderHashes(): List<ByteArray>
     fun getBlockHashHeaderHashes(except: List<ByteArray>): List<ByteArray>
     fun getLastBlockHash(): BlockHash?

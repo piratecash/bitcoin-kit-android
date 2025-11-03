@@ -85,6 +85,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.blockHash.getBlockHashesSortedSequenceHeight(limit)
     }
 
+    override fun hasBlockHash(headerHash: ByteArray): Boolean {
+        return store.blockHash.exists(headerHash)
+    }
+
     override fun getBlockHashHeaderHashes(): List<ByteArray> {
         return store.blockHash.allBlockHashes()
     }

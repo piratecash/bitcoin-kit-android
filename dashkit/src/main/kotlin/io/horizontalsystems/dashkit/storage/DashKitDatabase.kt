@@ -72,7 +72,7 @@ interface InstantTransactionInputDao {
 
 @Dao
 interface MasternodeDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAll(masternodes: List<Masternode>)
 
     @Query("SELECT * FROM Masternode")

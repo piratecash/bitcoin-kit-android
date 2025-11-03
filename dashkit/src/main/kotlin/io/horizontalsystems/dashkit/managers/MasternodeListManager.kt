@@ -69,7 +69,7 @@ class MasternodeListManager(
         val block = storage.getBlock(masternodeListDiffMessage.blockHash)
         val merkleRoot = block?.merkleRoot
 
-        if (block == null || merkleRoot == null) {
+        if (block == null || merkleRoot == null || merkleRoot.isEmpty()) {
             throw ValidationError.NoMerkleBlockHeader
         }
 

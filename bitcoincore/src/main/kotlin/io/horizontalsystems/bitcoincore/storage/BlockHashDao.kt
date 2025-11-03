@@ -20,6 +20,9 @@ interface BlockHashDao {
     @Query("SELECT * FROM BlockHash ORDER BY sequence ASC, height ASC LIMIT :limit")
     fun getBlockHashesSortedSequenceHeight(limit: Int): List<BlockHash>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM BlockHash WHERE headerHash = :hash)")
+    fun exists(hash: ByteArray): Boolean
+
     @Query("SELECT * FROM BlockHash WHERE height = 0")
     fun getBlockchainBlockHashes(): List<BlockHash>
 

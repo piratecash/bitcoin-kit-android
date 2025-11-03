@@ -195,7 +195,9 @@ class PeerGroup(
         if (peerCountToConnect > peerCountConnected && peerCountToHold > 1 && hostManager.hasFreshIps) {
             val sortedPeers = peerManager.sorted()
             if (sortedPeers.size >= peerCountToHold) {
-                sortedPeers.lastOrNull()?.close()
+                sortedPeers.lastOrNull()?.close(
+                    Peer.Error("Slowest peer")
+                )
             }
         }
     }

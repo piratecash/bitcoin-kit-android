@@ -22,6 +22,45 @@ class Blockchain(
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
             Timber.tag(logTag).d("Block already exists in DB: hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}")
+
+            val header = merkleBlock.header
+            var needsUpdate = false
+
+            if (blockInDB.merkleRoot.isEmpty()) {
+                blockInDB.merkleRoot = header.merkleRoot.copyOf()
+                needsUpdate = true
+            }
+
+            if (blockInDB.version != header.version) {
+                blockInDB.version = header.version
+                needsUpdate = true
+            }
+
+            if (!blockInDB.previousBlockHash.contentEquals(header.previousBlockHeaderHash)) {
+                blockInDB.previousBlockHash = header.previousBlockHeaderHash.copyOf()
+                needsUpdate = true
+            }
+
+            if (blockInDB.timestamp != header.timestamp) {
+                blockInDB.timestamp = header.timestamp
+                needsUpdate = true
+            }
+
+            if (blockInDB.bits != header.bits) {
+                blockInDB.bits = header.bits
+                needsUpdate = true
+            }
+
+            if (blockInDB.nonce != header.nonce) {
+                blockInDB.nonce = header.nonce
+                needsUpdate = true
+            }
+
+            if (needsUpdate) {
+                storage.updateBlock(blockInDB)
+                Timber.tag(logTag).d("Block data refreshed from merkle block: hash=${merkleBlock.blockHash.toHexString()}")
+            }
+
             return blockInDB
         }
 

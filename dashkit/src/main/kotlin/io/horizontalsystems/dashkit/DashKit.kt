@@ -364,6 +364,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             PeerTaskFactory(),
             masternodeListManager,
             bitcoinCore.initialDownload,
+            coreStorage,
             network.logTag
         )
 
