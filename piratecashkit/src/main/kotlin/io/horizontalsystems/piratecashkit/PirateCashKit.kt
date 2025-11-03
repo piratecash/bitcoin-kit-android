@@ -57,6 +57,7 @@ import io.horizontalsystems.piratecashkit.masternodelist.MerkleRootHasher
 import io.horizontalsystems.piratecashkit.masternodelist.QuorumListMerkleRootCalculator
 import io.horizontalsystems.piratecashkit.messages.PirateCashCoinMerkleBlockMessage
 import io.horizontalsystems.piratecashkit.messages.GetMasternodeListDiffMessageSerializer
+import io.horizontalsystems.piratecashkit.messages.ISDLockMessageParser
 import io.horizontalsystems.piratecashkit.messages.ISLockMessageParser
 import io.horizontalsystems.piratecashkit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.piratecashkit.messages.PirateCashBlockHeaderParser
@@ -276,6 +277,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
+            .addMessageParser(ISDLockMessageParser())
             .addMessageParser(TransactionMessageParser(transactionSerializer))
 
         bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())

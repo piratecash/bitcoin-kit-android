@@ -56,6 +56,7 @@ import io.horizontalsystems.cosantakit.masternodelist.QuorumListMerkleRootCalcul
 import io.horizontalsystems.cosantakit.messages.CosantaBlockHeaderParser
 import io.horizontalsystems.cosantakit.messages.CosantaCoinMerkleBlockMessage
 import io.horizontalsystems.cosantakit.messages.GetMasternodeListDiffMessageSerializer
+import io.horizontalsystems.cosantakit.messages.ISDLockMessageParser
 import io.horizontalsystems.cosantakit.messages.ISLockMessageParser
 import io.horizontalsystems.cosantakit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.cosantakit.messages.TransactionLockMessageParser
@@ -274,6 +275,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
+            .addMessageParser(ISDLockMessageParser())
             .addMessageParser(TransactionMessageParser())
 
         bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())

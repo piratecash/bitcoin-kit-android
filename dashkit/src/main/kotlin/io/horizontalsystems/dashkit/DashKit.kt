@@ -61,6 +61,7 @@ import io.horizontalsystems.dashkit.masternodelist.MerkleRootCreator
 import io.horizontalsystems.dashkit.masternodelist.MerkleRootHasher
 import io.horizontalsystems.dashkit.masternodelist.QuorumListMerkleRootCalculator
 import io.horizontalsystems.dashkit.messages.GetMasternodeListDiffMessageSerializer
+import io.horizontalsystems.dashkit.messages.ISDLockMessageParser
 import io.horizontalsystems.dashkit.messages.ISLockMessageParser
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.dashkit.messages.TransactionLockMessageParser
@@ -333,6 +334,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
+            .addMessageParser(ISDLockMessageParser())
             .addMessageParser(TransactionMessageParser(transactionSerializer))
 
         bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())
