@@ -57,7 +57,11 @@ class DashStorage(private val dashStore: DashKitDatabase, private val coreStorag
         }
 
     override var masternodeListState: MasternodeListState?
-        get() = dashStore.masternodeListStateDao.getState()
+        get() = try {
+            dashStore.masternodeListStateDao.getState()
+        } catch (_: Exception) {
+            null
+        }
         set(value) {
             value?.let {
                 dashStore.masternodeListStateDao.setState(value)

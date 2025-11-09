@@ -15,6 +15,7 @@ class MasternodeListManager(
     private val masternodeSortedList: MasternodeSortedList,
     private val quorumListManager: QuorumListManager
 ) {
+    private val updateLock = Any()
 
     open class ValidationError : Exception() {
         object WrongMerkleRootList : ValidationError()
@@ -35,9 +36,15 @@ class MasternodeListManager(
     //04. Calculate the merkle root of the list by following the “Calculating the merkle root of the Masternode list” section
     //05. Compare the calculated merkle root with what is found in “cbTx”. If it does not match, abort the process and ask for diffs from another node.
     //06. Calculate the hash of “cbTx” and verify existence of this transaction in the block specified by “blockHash”. To do this, use the already received block header and the fields “totalTransactions”, “merkleHashes” and “merkleFlags” from the MNLISTDIFF message and perform a merkle verification the same way as done when a “MERKLEBLOCK” message is received. If the verification fails, abort the process and ask for diffs from another node.
-    //07. Store the resulting validated masternode list identified by “blockHash”
+    //07. Store the resulting validated masternode list identified by "blockHash"
     @Throws(ValidationError::class)
-    fun updateList(masternodeListDiffMessage: MasternodeListDiffMessage) {
+    fun updateList(masternodeListDiffMessage: MasternodeListDiffMessage) = synchronized(updateLock) {
+        // Check if we've already processed this block
+        val currentState = storage.masternodeListState
+        if (currentState?.baseBlockHash?.contentEquals(masternodeListDiffMessage.blockHash) == true) {
+            return
+        }
+
         masternodeSortedList.removeAll()
 
         //01.

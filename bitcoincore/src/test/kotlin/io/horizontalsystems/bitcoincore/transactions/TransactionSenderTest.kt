@@ -44,6 +44,7 @@ object TransactionSenderTest : Spek({
         context("when 0 synced peers") {
             beforeEach {
                 whenever(peerManager.peersCount).thenReturn(2)
+                whenever(peerManager.readyPears()).thenReturn(emptyList())
                 whenever(initialBlockDownload.syncedPeers).thenReturn(CopyOnWriteArrayList())
             }
 
@@ -53,6 +54,9 @@ object TransactionSenderTest : Spek({
                     fail("Expected an Exception to be thrown")
                 } catch (e: PeerGroup.Error) {
                     assertTrue(e.message?.startsWith("Peers not synced") == true)
+                    assertTrue(e.message?.contains("connected=2") == true)
+                    assertTrue(e.message?.contains("synced=0") == true)
+                    assertTrue(e.message?.contains("ready=0") == true)
                 }
             }
         }
@@ -75,6 +79,9 @@ object TransactionSenderTest : Spek({
                     fail("Expected an Exception to be thrown")
                 } catch (e: PeerGroup.Error) {
                     assertTrue(e.message?.startsWith("Peers not synced") == true)
+                    assertTrue(e.message?.contains("connected=2") == true)
+                    assertTrue(e.message?.contains("synced=2") == true)
+                    assertTrue(e.message?.contains("ready=0") == true)
                 }
             }
         }

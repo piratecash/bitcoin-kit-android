@@ -23,6 +23,7 @@ class BalanceFragment : Fragment() {
     lateinit var lastBlockDateValue: TextView
     lateinit var lastBlockValue: TextView
     lateinit var stateValue: TextView
+    lateinit var masternodeCountValue: TextView
     lateinit var startButton: Button
     lateinit var stopButton: Button
     lateinit var clearButton: Button
@@ -74,6 +75,10 @@ class BalanceFragment : Fragment() {
             }
         })
 
+        viewModel.masternodeCount.observe(this, Observer { count ->
+            masternodeCountValue.text = count?.toString() ?: ""
+        })
+
         viewModel.status.observe(this, Observer {
             when (it) {
                 MainViewModel.State.STARTED -> {
@@ -113,6 +118,7 @@ class BalanceFragment : Fragment() {
         lastBlockValue = view.findViewById(R.id.lastBlockValue)
         lastBlockDateValue = view.findViewById(R.id.lastBlockDateValue)
         stateValue = view.findViewById(R.id.stateValue)
+        masternodeCountValue = view.findViewById(R.id.masternodeCountValue)
         startButton = view.findViewById(R.id.buttonStart)
         stopButton = view.findViewById(R.id.buttonStop)
         clearButton = view.findViewById(R.id.buttonClear)
@@ -138,6 +144,16 @@ class BalanceFragment : Fragment() {
         buttonStatus.setOnClickListener {
             viewModel.showStatusInfo()
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        viewModel.startStatsUpdates()
+    }
+
+    override fun onStop() {
+        viewModel.stopStatsUpdates()
+        super.onStop()
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -3,6 +3,7 @@ package io.horizontalsystems.bitcoinkit.demo
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cash.p.dogecoinkit.DogecoinKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
@@ -25,9 +26,14 @@ import io.horizontalsystems.hodler.LockTimeInterval
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class MainViewModel : ViewModel(), CosantaKit.Listener {
+class MainViewModel : ViewModel(), DashKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -43,8 +49,10 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
     val status = MutableLiveData<State>()
     val transactionRaw = MutableLiveData<String?>()
     val statusInfo = MutableLiveData<Map<String, Any>>()
+    val masternodeCount = MutableLiveData<Int>()
     lateinit var networkName: String
     private val disposables = CompositeDisposable()
+    private var statsJob: Job? = null
 
     private var started = false
         set(value) {
@@ -52,17 +60,17 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: CosantaKit
+    private lateinit var bitcoinKit: DashKit
 
     private val walletId = "MyWallet"
-    private val networkType = CosantaKit.NetworkType.MainNet
+    private val networkType = DashKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = CosantaKit(
+        bitcoinKit = DashKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -80,8 +88,12 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
 
         lastBlock.value = bitcoinKit.lastBlockInfo
         state.value = bitcoinKit.syncState
-
         started = false
+
+        scheduleNetworkStatsUpdate()
+        viewModelScope.launch {
+            refreshNetworkStats()
+        }
     }
 
     fun start() {
@@ -89,6 +101,7 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
         started = true
 
         bitcoinKit.start()
+        startStatsUpdates()
     }
 
     fun stop() {
@@ -96,13 +109,19 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
         started = false
 
         bitcoinKit.stop()
+        stopStatsUpdates()
     }
 
     fun clear() {
+        val wasRunning = statsJob?.isActive == true
+        stopStatsUpdates()
         bitcoinKit.stop()
-        CosantaKit.clear(App.instance, networkType, walletId)
+        DashKit.clear(App.instance, networkType, walletId)
 
         init()
+        if (wasRunning) {
+            startStatsUpdates()
+        }
     }
 
 
@@ -115,7 +134,7 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
     }
 
     //
-    // CosantaKit Listener implementations
+    // DashKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,
@@ -137,6 +156,7 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
 
     override fun onKitStateUpdate(state: KitState) {
         this.state.postValue(state)
+        scheduleNetworkStatsUpdate()
     }
 
     val receiveAddressLiveData = MutableLiveData<String>()
@@ -241,6 +261,37 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
         }
     }
 
+    fun startStatsUpdates() {
+        if (statsJob?.isActive == true) return
+        statsJob = viewModelScope.launch {
+            refreshNetworkStats()
+            while (isActive) {
+                delay(1_000)
+                refreshNetworkStats()
+            }
+        }
+    }
+
+    fun stopStatsUpdates() {
+        statsJob?.cancel()
+        statsJob = null
+    }
+
+    private fun scheduleNetworkStatsUpdate() {
+        viewModelScope.launch {
+            refreshNetworkStats()
+        }
+    }
+
+    private suspend fun refreshNetworkStats() {
+        val (masternodes, quorums) = withContext(Dispatchers.IO) {
+            val masternodeTotal = bitcoinKit.masternodeCount()
+            val quorumTotal = bitcoinKit.quorumCount()
+            masternodeTotal to quorumTotal
+        }
+        masternodeCount.postValue(masternodes)
+    }
+
     private fun updateFee() {
         try {
             feeLiveData.value = amount?.let {
@@ -270,6 +321,11 @@ class MainViewModel : ViewModel(), CosantaKit.Listener {
             pluginData[HodlerPlugin.id] = HodlerData(it)
         }
         return pluginData
+    }
+
+    override fun onCleared() {
+        stopStatsUpdates()
+        super.onCleared()
     }
 
     fun onRawTransactionClick(transactionHash: String) {

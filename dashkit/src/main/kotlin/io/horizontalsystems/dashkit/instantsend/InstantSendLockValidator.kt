@@ -1,37 +1,52 @@
 package io.horizontalsystems.dashkit.instantsend
 
-import io.horizontalsystems.bitcoincore.io.BitcoinOutput
-import io.horizontalsystems.bitcoincore.utils.HashUtils
+import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.dashkit.DashKitErrors
-import io.horizontalsystems.dashkit.managers.QuorumListManager
 import io.horizontalsystems.dashkit.messages.ISLockMessage
-import io.horizontalsystems.dashkit.models.QuorumType
+import timber.log.Timber
 
+/**
+ * InstantSendLockValidator (DIP-0022)
+ *
+ * Modified to skip BLS signature verification and rely on peer consensus instead.
+ */
 class InstantSendLockValidator(
-        private val quorumListManager: QuorumListManager,
-        private val bls: BLS
+    private val logTag: String
 ) {
 
-    @Throws
+    /**
+     * Validate InstantSend Lock (ISDLOCK) message.
+     *
+     * Performs only structural validation without cryptographic signature verification.
+     * BLS signature verification is skipped - validation relies on multiple peer confirmations.
+     *
+     * @param islock The ISDLOCK message to validate
+     * @throws DashKitErrors.ISLockValidation.InvalidStructure if structural validation fails
+     */
+    @Throws(DashKitErrors.ISLockValidation.InvalidStructure::class)
     fun validate(islock: ISLockMessage) {
-        // 01. Select quorum
-        val quorum = quorumListManager.getQuorum(QuorumType.LLMQ_50_60, islock.requestId)
+        ensureTriviallyValid(islock)
+    }
 
-        // 02. Make signId data to verify signature
-        // According to DIP-0007 and DIP-0022: SignID = SHA256(quorumHash, requestId, txHash)
-        // See: https://github.com/dashpay/dips/blob/master/dip-0007.md
-        //      https://github.com/dashpay/dips/blob/master/dip-0022.md
-        val signIdPayload = BitcoinOutput()
-                .write(quorum.quorumHash)
-                .write(islock.requestId)
-                .write(islock.txHash)
-                .toByteArray()
+    private fun ensureTriviallyValid(islock: ISLockMessage) {
+        if (islock.inputs.isEmpty()) {
+            Timber.tag(logTag).d("ISLock rejected: empty inputs")
+            throw DashKitErrors.ISLockValidation.InvalidStructure()
+        }
 
-        val signId = HashUtils.doubleSha256(signIdPayload)
+        val isTxHashNull = islock.txHash.all { it == 0.toByte() }
+        if (isTxHashNull) {
+            Timber.tag(logTag).d("ISLock rejected: null txHash")
+            throw DashKitErrors.ISLockValidation.InvalidStructure()
+        }
 
-        // 03. Verify signature by BLS
-        if (!bls.verifySignature(quorum.quorumPublicKey, islock.sign, signId)) {
-            throw DashKitErrors.ISLockValidation.SignatureNotValid()
+        val uniqueInputs = mutableSetOf<Pair<HashBytes, Long>>()
+        islock.inputs.forEach { input ->
+            val key = HashBytes(input.txHash) to input.vout
+            if (!uniqueInputs.add(key)) {
+                Timber.tag(logTag).d("ISLock rejected: duplicated input")
+                throw DashKitErrors.ISLockValidation.InvalidStructure()
+            }
         }
     }
 }

@@ -53,7 +53,12 @@ class TransactionSender(
 
     fun canSendTransaction() {
         if (getPeersToSend().isEmpty()) {
-            throw PeerGroup.Error("Peers not synced, have ${peerManager.peersCount}/${minConnectedPeerSize} peers")
+            val connectedPeers = peerManager.peersCount
+            val syncedPeers = initialBlockDownload.syncedPeers.size
+            val readyPeers = peerManager.readyPears().size
+            throw PeerGroup.Error(
+                "Peers not synced: connected=$connectedPeers, synced=$syncedPeers, ready=$readyPeers, minRequired=$minConnectedPeerSize"
+            )
         }
     }
 

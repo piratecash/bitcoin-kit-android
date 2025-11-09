@@ -234,6 +234,9 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun deleteBlocksWithoutTransactions(toHeight: Int) {
+        if (toHeight <= 0) {
+            return
+        }
         store.block.deleteBlocksWithoutTransactions(toHeight)
     }
 

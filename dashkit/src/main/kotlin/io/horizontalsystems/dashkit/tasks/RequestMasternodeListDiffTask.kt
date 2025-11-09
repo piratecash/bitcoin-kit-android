@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit
 
 class RequestMasternodeListDiffTask(
     private val baseBlockHash: ByteArray,
-    private val blockHash: ByteArray,
+    val blockHash: ByteArray,
     private val logTag: String
 ) : PeerTask() {
 

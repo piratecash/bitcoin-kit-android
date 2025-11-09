@@ -41,6 +41,7 @@ import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.dashkit.core.DashTransactionInfoConverter
 import io.horizontalsystems.dashkit.core.SingleSha256Hasher
 import io.horizontalsystems.dashkit.instantsend.BLS
+import io.horizontalsystems.dashkit.instantsend.ISLockPeerValidator
 import io.horizontalsystems.dashkit.instantsend.InstantSendFactory
 import io.horizontalsystems.dashkit.instantsend.InstantSendLockValidator
 import io.horizontalsystems.dashkit.instantsend.InstantTransactionManager
@@ -90,7 +91,6 @@ import kotlinx.coroutines.sync.withLock
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
-import kotlin.collections.flatten
 
 class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     enum class NetworkType {
@@ -114,6 +114,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     private val dashStorage: DashStorage
     private val instantSend: InstantSend
     private val dashTransactionInfoConverter: DashTransactionInfoConverter
+    private val masternodeListManager: MasternodeListManager
 
     private val coreStorage: Storage
 
@@ -319,7 +320,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .setTransactionInfoConverter(dashTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
             .apply {
-                if(iInputSigner != null && iSchnorrInputSigner != null) {
+                if (iInputSigner != null && iSchnorrInputSigner != null) {
                     setSigners(iInputSigner, iSchnorrInputSigner)
                 }
             }
@@ -344,20 +345,24 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val masternodeListMerkleRootCalculator =
             MasternodeListMerkleRootCalculator(merkleRootCreator)
         val masternodeCbTxHasher =
-            MasternodeCbTxHasher(CoinbaseTransactionSerializer(transactionSerializer), merkleRootHasher)
+            MasternodeCbTxHasher(
+                CoinbaseTransactionSerializer(transactionSerializer),
+                merkleRootHasher
+            )
 
         val quorumListManager = QuorumListManager(
             dashStorage,
             QuorumListMerkleRootCalculator(merkleRootCreator),
             QuorumSortedList()
         )
-        val masternodeListManager = MasternodeListManager(
+        masternodeListManager = MasternodeListManager(
             dashStorage,
             masternodeListMerkleRootCalculator,
             masternodeCbTxHasher,
             MerkleBranch(),
             MasternodeSortedList(),
-            quorumListManager
+            quorumListManager,
+            network.logTag
         )
         val masternodeSyncer = MasternodeListSyncer(
             bitcoinCore,
@@ -380,13 +385,21 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val bls = BLS()
         val transactionLockVoteValidator =
             TransactionLockVoteValidator(dashStorage, singleHasher, bls)
-        val instantSendLockValidator = InstantSendLockValidator(quorumListManager, bls)
+        val instantSendLockValidator = InstantSendLockValidator(network.logTag)
 
         val transactionLockVoteManager = TransactionLockVoteManager(transactionLockVoteValidator)
         val instantSendLockManager = InstantSendLockManager(instantSendLockValidator)
 
+        val islockPeerValidator = ISLockPeerValidator(network.logTag)
+
         val instantSendLockHandler =
-            InstantSendLockHandler(instantTransactionManager, instantSendLockManager)
+            InstantSendLockHandler(
+                instantTransactionManager,
+                instantSendLockManager,
+                islockPeerValidator,
+                bitcoinCore.peerGroup.getPeerManager(),
+                network.logTag
+            )
         instantSendLockHandler.delegate = this
         val transactionLockVoteHandler =
             TransactionLockVoteHandler(instantTransactionManager, transactionLockVoteManager)
@@ -405,7 +418,11 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val calculator = TransactionSizeCalculator()
         val dustCalculator = DustCalculator(network.dustRelayTxFee, calculator)
         val confirmedUnspentOutputProvider =
-            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold, instantTransactionManager)
+            ConfirmedUnspentOutputProvider(
+                coreStorage,
+                confirmationsThreshold,
+                instantTransactionManager
+            )
         bitcoinCore.prependUnspentOutputSelector(
             UnspentOutputSelector(
                 calculator,
@@ -522,6 +539,20 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             listener?.onTransactionsUpdate(listOf(), listOf(transactionInfo))
         }
     }
+
+    fun masternodeCount(): Int =
+        try {
+            dashStorage.masternodes.size
+        } catch (_: Exception) {
+            0
+        }
+
+    fun quorumCount(): Int =
+        try {
+            dashStorage.quorums.size
+        } catch (_: Exception) {
+            0
+        }
 
     companion object {
         const val maxTargetBits: Long = 0x1e0fffff

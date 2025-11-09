@@ -77,7 +77,7 @@ class InstantSend(
             }
             is RequestInstantSendLocksTask -> {
                 dispatchQueue.execute {
-                    handleInstantSendLocks(task.isLocks)
+                    handleInstantSendLocks(peer, task.isLocks)
                 }
                 true
             }
@@ -99,9 +99,9 @@ class InstantSend(
         }
     }
 
-    private fun handleInstantSendLocks(isLocks: List<ISLockMessage>) {
+    private fun handleInstantSendLocks(peer: Peer, isLocks: List<ISLockMessage>) {
         for (isLock in isLocks) {
-            instantSendLockHandler.handle(isLock)
+            instantSendLockHandler.handle(peer, isLock)
         }
     }
 

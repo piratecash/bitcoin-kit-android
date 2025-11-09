@@ -143,6 +143,10 @@ class BlockchairApi(
                 )
             }
         } catch (http404Exception: ApiManagerException.Http404Exception) {
+            Timber.d("Blockchair API: 404 for addresses ${addresses.joinToString(", ")}")
+            return Pair(emptyList(), emptyList())
+        } catch (http500Exception: ApiManagerException.Http500Exception) {
+            Timber.e("Blockchair API: Server error ${http500Exception.responseCode} for addresses ${addresses.joinToString(", ")} - ${http500Exception.message}")
             return Pair(emptyList(), emptyList())
         }
     }
@@ -182,6 +186,10 @@ class BlockchairApi(
             }
             return map
         } catch (http404Exception: ApiManagerException.Http404Exception) {
+            Timber.d("Blockchair API: 404 for block heights ${heights.joinToString(", ")}")
+            return emptyMap()
+        } catch (http500Exception: ApiManagerException.Http500Exception) {
+            Timber.e("Blockchair API: Server error ${http500Exception.responseCode} for block heights ${heights.joinToString(", ")} - ${http500Exception.message}")
             return emptyMap()
         }
     }

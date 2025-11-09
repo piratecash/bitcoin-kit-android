@@ -11,5 +11,9 @@ object DashKitErrors {
     sealed class ISLockValidation : Exception() {
         class SignatureNotValid : ISLockValidation()
         class QuorumNotFound : ISLockValidation()
+        class InvalidCycleHash : ISLockValidation()
+        class MissingCycleHash : ISLockValidation()
+        class InvalidStructure : ISLockValidation()
+        class InvalidQuorumIndex : ISLockValidation()
     }
 }

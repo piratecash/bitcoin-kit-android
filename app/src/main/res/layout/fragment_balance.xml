@@ -126,6 +126,26 @@
         app:layout_constraintTop_toTopOf="@+id/lastBlockDateTitle"
         tools:text="2019-01-01 12:12:12" />
 
+    <TextView
+        android:id="@+id/masternodeCountTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Masternodes:"
+        android:textAppearance="@style/TextAppearance.AppCompat.Large"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/lastBlockDateTitle" />
+
+    <TextView
+        android:id="@+id/masternodeCountValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:textAppearance="@style/TextAppearance.AppCompat.Large"
+        app:layout_constraintStart_toEndOf="@+id/masternodeCountTitle"
+        app:layout_constraintTop_toTopOf="@+id/masternodeCountTitle"
+        tools:text="0" />
+
     <Button
         android:id="@+id/buttonStart"
         android:layout_width="wrap_content"
@@ -133,7 +153,7 @@
         android:layout_marginTop="24dp"
         android:text="Start"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/lastBlockDateTitle" />
+        app:layout_constraintTop_toBottomOf="@+id/masternodeCountValue" />
 
     <Button
         android:id="@+id/buttonStop"
@@ -143,7 +163,7 @@
         android:layout_marginStart="16dp"
         android:text="Stop"
         app:layout_constraintStart_toEndOf="@id/buttonStart"
-        app:layout_constraintTop_toBottomOf="@+id/lastBlockDateTitle" />
+        app:layout_constraintTop_toBottomOf="@+id/masternodeCountValue" />
 
     <Button
         android:id="@+id/buttonDebug"
@@ -153,7 +173,7 @@
         android:layout_marginEnd="28dp"
         android:text="Debug info"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/lastBlockDateTitle" />
+        app:layout_constraintTop_toBottomOf="@+id/masternodeCountValue" />
 
     <Button
         android:id="@+id/buttonClear"

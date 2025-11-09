@@ -9,7 +9,6 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
-import java.util.logging.Logger
 import timber.log.Timber
 
 class Blockchain(
