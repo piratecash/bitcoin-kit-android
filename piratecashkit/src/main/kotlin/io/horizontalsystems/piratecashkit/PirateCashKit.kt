@@ -266,6 +266,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
                     setSigners(iInputSigner, iSchnorrInputSigner)
                 }
             }
+            .setInstantChecker(instantTransactionManager)
             .build()
             .addMessageParser(PirateCashCoinMerkleBlockMessage(PirateCashBlockHeaderParser()))
 

@@ -1,5 +1,6 @@
 package io.horizontalsystems.cosantakit.instantsend
 
+import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.cosantakit.CosantaKitErrors
@@ -12,7 +13,7 @@ class InstantTransactionManager(
         private val storage: ICosantaStorage,
         private val instantSendFactory: InstantSendFactory,
         private val state: InstantTransactionState
-) {
+) : IInstantTransactionChecker {
     init {
         state.instantTransactionHashes = storage.instantTransactionHashes().toMutableList()
     }
@@ -56,7 +57,7 @@ class InstantTransactionManager(
         }
     }
 
-    fun isTransactionInstant(txHash: ByteArray): Boolean {
+    override fun isTransactionInstant(txHash: ByteArray): Boolean {
         return state.instantTransactionHashes.any { it.contentEquals(txHash) }
     }
 

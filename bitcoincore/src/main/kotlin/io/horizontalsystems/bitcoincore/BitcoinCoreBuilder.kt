@@ -31,6 +31,7 @@ import io.horizontalsystems.bitcoincore.core.IApiSyncer
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.core.IHasher
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
+import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.core.IPlugin
 import io.horizontalsystems.bitcoincore.core.IPrivateWallet
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
@@ -155,6 +156,7 @@ class BitcoinCoreBuilder {
     private var sendType: BitcoinCore.SendType = BitcoinCore.SendType.P2P
     private var transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
     private var allowBroadcastFromUnsyncedPeers = false
+    private var instantChecker: IInstantTransactionChecker? = null
 
     // parameters for signing
     private var iInputSigner: IInputSigner? = null
@@ -218,6 +220,11 @@ class BitcoinCoreBuilder {
 
     fun setAllowBroadcastFromUnsyncedPeers(value: Boolean): BitcoinCoreBuilder {
         allowBroadcastFromUnsyncedPeers = value
+        return this
+    }
+
+    fun setInstantChecker(instantChecker: IInstantTransactionChecker): BitcoinCoreBuilder {
+        this.instantChecker = instantChecker
         return this
     }
 
@@ -309,7 +316,7 @@ class BitcoinCoreBuilder {
         transactionInfoConverter.baseConverter = BaseTransactionInfoConverter(pluginManager)
 
         val unspentOutputProvider =
-            UnspentOutputProvider(storage, confirmationsThreshold, pluginManager)
+            UnspentOutputProvider(storage, confirmationsThreshold, pluginManager, instantChecker)
 
         val dataProvider = DataProvider(
             storage = storage,

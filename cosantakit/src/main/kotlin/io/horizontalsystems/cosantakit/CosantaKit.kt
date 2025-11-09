@@ -263,6 +263,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
                     setSigners(iInputSigner, iSchnorrInputSigner)
                 }
             }
+            .setInstantChecker(instantTransactionManager)
             .build()
             .addMessageParser(CosantaCoinMerkleBlockMessage(CosantaBlockHeaderParser()))
 

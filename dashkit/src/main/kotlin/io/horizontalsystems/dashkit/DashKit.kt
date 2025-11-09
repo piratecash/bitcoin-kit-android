@@ -324,6 +324,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
                     setSigners(iInputSigner, iSchnorrInputSigner)
                 }
             }
+            .setInstantChecker(instantTransactionManager)
             .build()
 
         bitcoinCore.listener = this
