@@ -1,5 +1,6 @@
 package io.horizontalsystems.cosantakit.instantsend
 
+import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.cosantakit.CosantaKitErrors
@@ -9,12 +10,12 @@ import io.horizontalsystems.cosantakit.models.InstantTransactionInput
 import io.horizontalsystems.cosantakit.models.InstantTransactionState
 
 class InstantTransactionManager(
-    private val storage: ICosantaStorage,
-    private val instantSendFactory: InstantSendFactory,
-    private val state: InstantTransactionState
-) {
+        private val storage: ICosantaStorage,
+        private val instantSendFactory: InstantSendFactory,
+        private val state: InstantTransactionState
+) : IInstantTransactionChecker {
     init {
-        state.instantTransactionHashes = storage.instantTransactionHashes().toMutableList()
+        state.clearAndAppend(storage.instantTransactionHashes())
     }
 
     fun instantTransactionInputs(txHash: ByteArray, instantTransaction: FullTransaction?): List<InstantTransactionInput> {
@@ -34,16 +35,18 @@ class InstantTransactionManager(
     }
 
     @Throws
-    fun updateInput(inputTxHash: ByteArray, transactionInputs: List<InstantTransactionInput>) {
+    fun updateInput(inputTxHash: ByteArray, inputTxOutputIndex: Long, transactionInputs: List<InstantTransactionInput>) {
         val updatedInputs = transactionInputs.toMutableList()
 
-        val inputIndex = transactionInputs.indexOfFirst { it.inputTxHash.contentEquals(inputTxHash) }
+        val inputIndex = transactionInputs.indexOfFirst {
+            it.inputTxHash.contentEquals(inputTxHash) && it.inputTxOutputIndex == inputTxOutputIndex
+        }
         if (inputIndex == -1) {
             throw CosantaKitErrors.LockVoteValidation.TxInputNotFound()
         }
 
         val input = transactionInputs[inputIndex]
-        val increasedInput = instantSendFactory.instantTransactionInput(input.txHash, input.inputTxHash, input.voteCount + 1, input.blockHeight)
+        val increasedInput = instantSendFactory.instantTransactionInput(input.txHash, input.inputTxHash, input.inputTxOutputIndex, input.voteCount + 1, input.blockHeight)
         storage.addInstantTransactionInput(increasedInput)
 
         updatedInputs[inputIndex] = increasedInput
@@ -54,8 +57,8 @@ class InstantTransactionManager(
         }
     }
 
-    fun isTransactionInstant(txHash: ByteArray): Boolean {
-        return state.instantTransactionHashes.any { it.contentEquals(txHash) }
+    override fun isTransactionInstant(txHash: ByteArray): Boolean {
+        return state.isInstant(txHash)
     }
 
     fun isTransactionExists(txHash: ByteArray): Boolean {
@@ -70,7 +73,7 @@ class InstantTransactionManager(
     private fun makeInputs(txHash: ByteArray, inputs: List<TransactionInput>): List<InstantTransactionInput> {
         val instantInputs = mutableListOf<InstantTransactionInput>()
         for (input in inputs) {
-            val instantInput = instantSendFactory.instantTransactionInput(txHash, input.previousOutputTxHash, 0, null)
+            val instantInput = instantSendFactory.instantTransactionInput(txHash, input.previousOutputTxHash, input.previousOutputIndex, 0, null)
 
             storage.addInstantTransactionInput(instantInput)
             instantInputs.add(instantInput)

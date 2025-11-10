@@ -74,6 +74,7 @@ dependencies {
 
     api project(':bitcoincore')
     api files('libs/dashj-bls-0.15.3.jar')
+    api(libs.guava)
     implementation 'de.sfuhrm:saphir-hash-jca:3.0.6'
 
     // Test helpers

@@ -13,9 +13,14 @@ class BlockHashDiscoveryBatch(
     fun discoverBlockHashes(): Single<Pair<List<PublicKey>, List<BlockHash>>> {
         return Single.create { emitter ->
             try {
-                emitter.onSuccess(fetchRecursive())
+                val result = fetchRecursive()
+                if (!emitter.isDisposed) {
+                    emitter.onSuccess(result)
+                }
             } catch (e: Exception) {
-                emitter.tryOnError(e)
+                if (!emitter.isDisposed) {
+                    emitter.onError(e)
+                }
             }
         }
     }

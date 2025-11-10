@@ -21,6 +21,7 @@ class Peer(
         fun onReady(peer: Peer)
         fun onDisconnect(peer: Peer, e: Exception?)
         fun onReceiveMessage(peer: Peer, message: IMessage)
+        fun onPongMessage()
         fun onTaskComplete(peer: Peer, task: PeerTask)
     }
 
@@ -111,8 +112,7 @@ class Peer(
 
         when (message) {
             is PingMessage -> peerConnection.sendMessage(PongMessage(message.nonce))
-            is PongMessage -> {
-            }
+            is PongMessage -> listener.onPongMessage()
             is AddrMessage -> listener.onReceiveMessage(this, message)
             else -> if (tasks.none { it.handleMessage(message) }) {
                 listener.onReceiveMessage(this, message)

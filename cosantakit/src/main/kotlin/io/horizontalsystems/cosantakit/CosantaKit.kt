@@ -35,6 +35,7 @@ import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.cosantakit.core.CosantaTransactionInfoConverter
 import io.horizontalsystems.cosantakit.core.SingleSha256Hasher
 import io.horizontalsystems.cosantakit.instantsend.BLS
+import io.horizontalsystems.cosantakit.instantsend.ISLockPeerValidator
 import io.horizontalsystems.cosantakit.instantsend.InstantSendFactory
 import io.horizontalsystems.cosantakit.instantsend.InstantSendLockValidator
 import io.horizontalsystems.cosantakit.instantsend.InstantTransactionManager
@@ -56,6 +57,7 @@ import io.horizontalsystems.cosantakit.masternodelist.QuorumListMerkleRootCalcul
 import io.horizontalsystems.cosantakit.messages.CosantaBlockHeaderParser
 import io.horizontalsystems.cosantakit.messages.CosantaCoinMerkleBlockMessage
 import io.horizontalsystems.cosantakit.messages.GetMasternodeListDiffMessageSerializer
+import io.horizontalsystems.cosantakit.messages.ISDLockMessageParser
 import io.horizontalsystems.cosantakit.messages.ISLockMessageParser
 import io.horizontalsystems.cosantakit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.cosantakit.messages.TransactionLockMessageParser
@@ -248,6 +250,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .setStorage(coreStorage)
             .setBlockHeaderHasher(X11HasherExt())
             .setApiTransactionProvider(apiTransactionProvider)
@@ -261,6 +264,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
                     setSigners(iInputSigner, iSchnorrInputSigner)
                 }
             }
+            .setInstantChecker(instantTransactionManager)
             .build()
             .addMessageParser(CosantaCoinMerkleBlockMessage(CosantaBlockHeaderParser()))
 
@@ -273,6 +277,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
+            .addMessageParser(ISDLockMessageParser())
             .addMessageParser(TransactionMessageParser())
 
         bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())
@@ -298,7 +303,8 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             bitcoinCore,
             PeerTaskFactory(),
             masternodeListManager,
-            bitcoinCore.initialDownload
+            bitcoinCore.initialDownload,
+            network.logTag
         )
 
         bitcoinCore.addPeerTaskHandler(masternodeSyncer)
@@ -313,13 +319,21 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         val bls = BLS()
         val transactionLockVoteValidator =
             TransactionLockVoteValidator(cosantaStorage, singleHasher, bls)
-        val instantSendLockValidator = InstantSendLockValidator(quorumListManager, bls)
+        val instantSendLockValidator = InstantSendLockValidator(network.logTag)
 
         val transactionLockVoteManager = TransactionLockVoteManager(transactionLockVoteValidator)
         val instantSendLockManager = InstantSendLockManager(instantSendLockValidator)
 
+        val islockPeerValidator = ISLockPeerValidator(network.logTag)
+
         val instantSendLockHandler =
-            InstantSendLockHandler(instantTransactionManager, instantSendLockManager)
+            InstantSendLockHandler(
+                instantTransactionManager,
+                instantSendLockManager,
+                islockPeerValidator,
+                bitcoinCore.peerGroup.getPeerManager(),
+                network.logTag
+            )
         instantSendLockHandler.delegate = this
         val transactionLockVoteHandler =
             TransactionLockVoteHandler(instantTransactionManager, transactionLockVoteManager)
@@ -338,7 +352,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         val calculator = TransactionSizeCalculator()
         val dustCalculator = DustCalculator(network.dustRelayTxFee, calculator)
         val confirmedUnspentOutputProvider =
-            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold)
+            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold, instantTransactionManager)
         bitcoinCore.prependUnspentOutputSelector(
             UnspentOutputSelector(
                 calculator,
@@ -415,12 +429,13 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         bitcoinCore.listenerExecutor.execute {
             listener?.onTransactionsUpdate(listOf(), listOf(transactionInfo))
         }
+        bitcoinCore.refreshBalance()
     }
 
     companion object {
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
-        const val defaultPeerSize: Int = 5
+        const val defaultPeerSize: Int = 8
         const val defaultConfirmationsThreshold: Int = 6
 
         private fun getDatabaseNameCore(

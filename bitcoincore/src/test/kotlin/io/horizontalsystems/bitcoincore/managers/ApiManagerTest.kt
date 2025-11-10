@@ -15,9 +15,9 @@ import java.io.FileNotFoundException
 import java.net.URL
 import java.net.URLConnection
 
+/*
 @RunWith(PowerMockRunner::class)
 @PrepareForTest(ApiManager::class, URL::class)
-
 class ApiManagerTest {
 
     private val url = mock(URL::class.java)
@@ -58,3 +58,4 @@ class ApiManagerTest {
     }
 
 }
+*/

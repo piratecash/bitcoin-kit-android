@@ -5,6 +5,7 @@ import com.nhaarman.mockitokotlin2.whenever
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.models.*
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
@@ -108,7 +109,8 @@ object Fixtures {
                     script = "76a91437a9bfe84d9e4883ace248509bbf14c9d72af01788ac".hexToByteArray(),
                     type = ScriptType.UNKNOWN
                 )
-            )
+            ),
+            transactionSerializer = BaseTransactionSerializer()
         )
 
     //  P2SH: TestNet tx => 761cc7102efe24f4353ae7dc816fbed5e15963d11ca93e36449d521bda21ac4d
@@ -136,7 +138,8 @@ object Fixtures {
                     script = "a914aed6f804c63da80800892f8fd4cdbad0d3ad6d1287".hexToByteArray(),
                     type = ScriptType.UNKNOWN
                 )
-            )
+            ),
+            transactionSerializer = BaseTransactionSerializer()
         )
 
     //  P2PK: TestNet tx => 75b84cb54351866cb5248158735e801d9b2c56592633157ba10d08affa2ffbab
@@ -164,7 +167,8 @@ object Fixtures {
                     script = "410411db93e1dcdb8a016b49840f8c53bc1eb68a382e97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e160bfa9b8b64f9d4c03f999b8643f656b412a3ac".hexToByteArray(),
                     type = ScriptType.UNKNOWN
                 )
-            )
+            ),
+            transactionSerializer = BaseTransactionSerializer()
         )
 
     val transactionP2WPKH
@@ -193,7 +197,8 @@ object Fixtures {
                     type = ScriptType.P2PK,
                     lockingScriptPayload = byteArrayOf()
                 )
-            )
+            ),
+            transactionSerializer = BaseTransactionSerializer()
         )
 
     //  test public key

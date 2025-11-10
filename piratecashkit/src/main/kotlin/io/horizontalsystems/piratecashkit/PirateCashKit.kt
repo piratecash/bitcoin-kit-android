@@ -37,6 +37,7 @@ import io.horizontalsystems.hdwalletkit.Mnemonic
 import io.horizontalsystems.piratecashkit.core.PirateCashTransactionInfoConverter
 import io.horizontalsystems.piratecashkit.core.SingleSha256Hasher
 import io.horizontalsystems.piratecashkit.instantsend.BLS
+import io.horizontalsystems.piratecashkit.instantsend.ISLockPeerValidator
 import io.horizontalsystems.piratecashkit.instantsend.InstantSendFactory
 import io.horizontalsystems.piratecashkit.instantsend.InstantSendLockValidator
 import io.horizontalsystems.piratecashkit.instantsend.InstantTransactionManager
@@ -57,6 +58,7 @@ import io.horizontalsystems.piratecashkit.masternodelist.MerkleRootHasher
 import io.horizontalsystems.piratecashkit.masternodelist.QuorumListMerkleRootCalculator
 import io.horizontalsystems.piratecashkit.messages.PirateCashCoinMerkleBlockMessage
 import io.horizontalsystems.piratecashkit.messages.GetMasternodeListDiffMessageSerializer
+import io.horizontalsystems.piratecashkit.messages.ISDLockMessageParser
 import io.horizontalsystems.piratecashkit.messages.ISLockMessageParser
 import io.horizontalsystems.piratecashkit.messages.MasternodeListDiffMessageParser
 import io.horizontalsystems.piratecashkit.messages.PirateCashBlockHeaderParser
@@ -250,6 +252,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .setStorage(coreStorage)
 //            .setBlockHeaderHasher(Scry())
             .setApiTransactionProvider(apiTransactionProvider)
@@ -264,6 +267,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
                     setSigners(iInputSigner, iSchnorrInputSigner)
                 }
             }
+            .setInstantChecker(instantTransactionManager)
             .build()
             .addMessageParser(PirateCashCoinMerkleBlockMessage(PirateCashBlockHeaderParser()))
 
@@ -275,6 +279,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             .addMessageParser(TransactionLockMessageParser(transactionSerializer))
             .addMessageParser(TransactionLockVoteMessageParser())
             .addMessageParser(ISLockMessageParser())
+            .addMessageParser(ISDLockMessageParser())
             .addMessageParser(TransactionMessageParser(transactionSerializer))
 
         bitcoinCore.addMessageSerializer(GetMasternodeListDiffMessageSerializer())
@@ -300,7 +305,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             bitcoinCore,
             PeerTaskFactory(),
             masternodeListManager,
-            bitcoinCore.initialDownload
+            bitcoinCore.initialDownload,
+            network.logTag
         )
 
         bitcoinCore.addPeerTaskHandler(masternodeSyncer)
@@ -315,13 +321,21 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         val bls = BLS()
         val transactionLockVoteValidator =
             TransactionLockVoteValidator(pirateCashStorage, singleHasher, bls)
-        val instantSendLockValidator = InstantSendLockValidator(quorumListManager, bls)
+        val instantSendLockValidator = InstantSendLockValidator(network.logTag)
 
         val transactionLockVoteManager = TransactionLockVoteManager(transactionLockVoteValidator)
         val instantSendLockManager = InstantSendLockManager(instantSendLockValidator)
 
+        val islockPeerValidator = ISLockPeerValidator(network.logTag)
+
         val instantSendLockHandler =
-            InstantSendLockHandler(instantTransactionManager, instantSendLockManager)
+            InstantSendLockHandler(
+                instantTransactionManager,
+                instantSendLockManager,
+                islockPeerValidator,
+                bitcoinCore.peerGroup.getPeerManager(),
+                network.logTag
+            )
         instantSendLockHandler.delegate = this
         val transactionLockVoteHandler =
             TransactionLockVoteHandler(instantTransactionManager, transactionLockVoteManager)
@@ -340,7 +354,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         val calculator = TransactionSizeCalculator()
         val dustCalculator = DustCalculator(network.dustRelayTxFee, calculator)
         val confirmedUnspentOutputProvider =
-            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold)
+            ConfirmedUnspentOutputProvider(coreStorage, confirmationsThreshold, instantTransactionManager)
         bitcoinCore.prependUnspentOutputSelector(
             UnspentOutputSelector(
                 calculator,
@@ -417,12 +431,13 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         bitcoinCore.listenerExecutor.execute {
             listener?.onTransactionsUpdate(listOf(), listOf(transactionInfo))
         }
+        bitcoinCore.refreshBalance()
     }
 
     companion object {
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
-        const val defaultPeerSize: Int = 5
+        const val defaultPeerSize: Int = 8
         const val defaultConfirmationsThreshold: Int = 6
 
         private fun getDatabaseNameCore(

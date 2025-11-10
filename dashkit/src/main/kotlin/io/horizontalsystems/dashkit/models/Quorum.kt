@@ -90,5 +90,6 @@ class Quorum() : Comparable<Quorum> {
 }
 
 enum class QuorumType(val value: Int) {
-    LLMQ_50_60(1)
+    LLMQ_50_60(1),
+    LLMQ_60_75(5),
 }

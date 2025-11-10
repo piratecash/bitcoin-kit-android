@@ -1,9 +1,7 @@
 package io.horizontalsystems.dashkit.managers
 
-import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 import io.horizontalsystems.bitcoincore.utils.HashUtils
-import io.horizontalsystems.dashkit.DashKitErrors
 import io.horizontalsystems.dashkit.IDashStorage
 import io.horizontalsystems.dashkit.masternodelist.QuorumListMerkleRootCalculator
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessage
@@ -11,10 +9,39 @@ import io.horizontalsystems.dashkit.models.Quorum
 import io.horizontalsystems.dashkit.models.QuorumType
 
 class QuorumListManager(
-        private val storage: IDashStorage,
-        private val quorumListMerkleRootCalculator: QuorumListMerkleRootCalculator,
-        private val quorumSortedList: QuorumSortedList
+    private val storage: IDashStorage,
+    private val quorumListMerkleRootCalculator: QuorumListMerkleRootCalculator,
+    private val quorumSortedList: QuorumSortedList
 ) {
+    private data class QuorumParameters(
+        val useRotation: Boolean,
+        val dkgInterval: Int,
+        val signingActiveQuorumCount: Int
+    )
+
+    companion object {
+        private val defaultQuorumParameters = mapOf(
+            QuorumType.LLMQ_50_60 to QuorumParameters(
+                useRotation = false,
+                dkgInterval = 24,
+                signingActiveQuorumCount = 24
+            ),
+            QuorumType.LLMQ_60_75 to QuorumParameters(
+                useRotation = true,
+                dkgInterval = 24 * 12,
+                signingActiveQuorumCount = 32
+            )
+        )
+
+        val rotatingRetentionSpan: Int
+            get() {
+                val params = defaultQuorumParameters[QuorumType.LLMQ_60_75] ?: return 0
+                return params.dkgInterval * params.signingActiveQuorumCount
+            }
+    }
+
+    private val quorumParameters = defaultQuorumParameters
+
     open class ValidationError : Exception() {
         object WrongMerkleRootList : ValidationError()
     }
@@ -48,24 +75,27 @@ class QuorumListManager(
         storage.quorums = quorumSortedList.quorums
     }
 
-    fun getQuorum(quorumType: QuorumType, requestId: ByteArray): Quorum {
-        val typedQuorums = storage.getQuorumsByType(quorumType)
-
-        return typedQuorums.minWith(Comparator { quorum1, quorum2 ->
-            val orderingHash1 = orderingHash(quorum1, requestId)
-            val orderingHash2 = orderingHash(quorum2, requestId)
-
-            orderingHash1.compareTo(orderingHash2)
-        }) ?: throw DashKitErrors.ISLockValidation.QuorumNotFound()
+    private fun ByteArray.compareHashes(b: ByteArray): Int {
+        val minLen = minOf(this.size, b.size)
+        for (i in 0 until minLen) {
+            val ai = this[i].toInt() and 0xFF
+            val bi = b[i].toInt() and 0xFF
+            if (ai != bi) return ai - bi
+        }
+        return this.size - b.size
     }
 
-    private fun orderingHash(quorum: Quorum, requestId: ByteArray): HashBytes {
+    private fun orderingHash(
+        quorumType: QuorumType,
+        quorum: Quorum,
+        requestId: ByteArray
+    ): ByteArray {
         val orderingPayload = BitcoinOutput()
-                .writeByte(quorum.type)
-                .write(quorum.quorumHash)
-                .write(requestId)
-                .toByteArray()
+            .writeByte(quorumType.value)
+            .write(quorum.quorumHash)
+            .write(requestId)
+            .toByteArray()
 
-        return HashBytes(HashUtils.doubleSha256(orderingPayload))
+        return HashUtils.doubleSha256(orderingPayload)
     }
 }

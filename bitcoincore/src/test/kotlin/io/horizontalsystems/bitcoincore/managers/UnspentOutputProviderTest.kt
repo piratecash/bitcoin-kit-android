@@ -3,6 +3,7 @@ package io.horizontalsystems.bitcoincore.managers
 import com.nhaarman.mockitokotlin2.mock
 import com.nhaarman.mockitokotlin2.whenever
 import io.horizontalsystems.bitcoincore.Fixtures
+import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.core.PluginManager
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
@@ -12,6 +13,7 @@ import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -62,7 +64,7 @@ object UnspentOutputProviderTest : Spek({
             }
 
             it("returns unspentOutput") {
-                assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo().toTypedArray())
+                assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
             }
         }
 
@@ -80,7 +82,7 @@ object UnspentOutputProviderTest : Spek({
                 }
 
                 it("doesn't return unspentOutput") {
-                    assertArrayEquals(arrayOf(), provider.getSpendableUtxo().toTypedArray())
+                    assertArrayEquals(arrayOf(), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
                 }
             }
 
@@ -101,7 +103,7 @@ object UnspentOutputProviderTest : Spek({
                     it("returns unspentOutput") {
                         block.height = lastBlock.height - confirmationsThreshold
 
-                        assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo().toTypedArray())
+                        assertArrayEquals(arrayOf(unspentOutput), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
                     }
                 }
 
@@ -109,7 +111,7 @@ object UnspentOutputProviderTest : Spek({
                     it("doesn't return unspentOutput") {
                         block.height = lastBlock.height - confirmationsThreshold + 2
 
-                        assertArrayEquals(arrayOf(), provider.getSpendableUtxo().toTypedArray())
+                        assertArrayEquals(arrayOf(), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
                     }
                 }
             }
@@ -135,6 +137,70 @@ object UnspentOutputProviderTest : Spek({
 
             assertEquals(unspentOutputs[0].output.value + unspentOutputs[1].output.value, balance.spendable)
             //assertEquals(0, balance.unspendable)
+        }
+    }
+
+    describe("InstantSend support") {
+        val instantChecker = mock<IInstantTransactionChecker>()
+        val providerWithInstant by memoized {
+            UnspentOutputProvider(
+                storage = storage,
+                confirmationsThreshold = confirmationsThreshold,
+                pluginManager = pluginManager,
+                instantChecker = instantChecker
+            )
+        }
+
+        context("when transaction is InstantSend locked") {
+            beforeEach {
+                transaction.isOutgoing = false
+                transaction.status = Transaction.Status.NEW  // Not relayed yet
+                unspentOutput = UnspentOutput(output, pubKey, transaction, null)  // No block
+
+                whenever(storage.getUnspentOutputs()).thenReturn(listOf(unspentOutput))
+                whenever(pluginManager.isSpendable(unspentOutput)).thenReturn(true)
+                whenever(instantChecker.isTransactionInstant(transaction.hash)).thenReturn(true)
+            }
+
+            it("returns unspentOutput even without block or RELAYED status") {
+                assertArrayEquals(arrayOf(unspentOutput), providerWithInstant.getSpendableUtxo(UtxoFilters()).toTypedArray())
+            }
+
+            it("includes in balance") {
+                val balance = providerWithInstant.getBalance()
+                assertEquals(output.value, balance.spendable)
+            }
+
+            it("excludes from unspendableNotRelayed") {
+                val balance = providerWithInstant.getBalance()
+                assertEquals(0, balance.unspendableNotRelayed)
+            }
+        }
+
+        context("when transaction is NOT InstantSend locked") {
+            beforeEach {
+                transaction.isOutgoing = false
+                transaction.status = Transaction.Status.NEW
+                unspentOutput = UnspentOutput(output, pubKey, transaction, null)
+
+                whenever(storage.getUnspentOutputs()).thenReturn(listOf(unspentOutput))
+                whenever(pluginManager.isSpendable(unspentOutput)).thenReturn(true)
+                whenever(instantChecker.isTransactionInstant(transaction.hash)).thenReturn(false)
+            }
+
+            it("doesn't return unspentOutput without block") {
+                assertArrayEquals(arrayOf(), providerWithInstant.getSpendableUtxo(UtxoFilters()).toTypedArray())
+            }
+
+            it("excludes from balance") {
+                val balance = providerWithInstant.getBalance()
+                assertEquals(0, balance.spendable)
+            }
+
+            it("includes in unspendableNotRelayed") {
+                val balance = providerWithInstant.getBalance()
+                assertEquals(output.value, balance.unspendableNotRelayed)
+            }
         }
     }
 

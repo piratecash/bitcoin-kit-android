@@ -27,7 +27,8 @@ class TransactionSender(
     private val transactionSerializer: BaseTransactionSerializer,
     private val sendType: BitcoinCore.SendType,
     private val maxRetriesCount: Int = 3,
-    private val retriesPeriod: Int = 60
+    private val retriesPeriod: Int = 60,
+    private val allowBroadcastFromUnsyncedPeers: Boolean
 ) : IPeerTaskHandler, TransactionSendTimer.Listener {
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -52,7 +53,12 @@ class TransactionSender(
 
     fun canSendTransaction() {
         if (getPeersToSend().isEmpty()) {
-            throw PeerGroup.Error("peers not synced")
+            val connectedPeers = peerManager.peersCount
+            val syncedPeers = initialBlockDownload.syncedPeers.size
+            val readyPeers = peerManager.readyPears().size
+            throw PeerGroup.Error(
+                "Peers not synced: connected=$connectedPeers, synced=$syncedPeers, ready=$readyPeers, minRequired=$minConnectedPeerSize"
+            )
         }
     }
 
@@ -78,9 +84,11 @@ class TransactionSender(
         }
 
         val freeSyncedPeer = initialBlockDownload.syncedPeers
-            .sortedBy { it.ready } // not ready first
-            .firstOrNull()
-            ?: return emptyList()
+            .minByOrNull { it.ready }
+
+        if (!allowBroadcastFromUnsyncedPeers && freeSyncedPeer == null) {
+            return emptyList()
+        }
 
         val readyPeers = peerManager.readyPears()
             .filter { it != freeSyncedPeer }
@@ -100,12 +108,14 @@ class TransactionSender(
             }
 
             is BitcoinCore.SendType.API -> {
-                sendViaAPI(transactions, sendType.blockchairApi)
+                sendViaAPI(transactions, sendType.blockchairApi) {
+                    sendViaP2P(transactions)
+                }
             }
         }
     }
 
-    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi) = coroutineScope.launch {
+    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi, fallback: () -> Boolean) = coroutineScope.launch {
         transactions.forEach { transaction ->
             try {
                 val hex = transactionSerializer.serialize(transaction).toHexString()
@@ -113,15 +123,19 @@ class TransactionSender(
 
                 transactionSyncer.handleRelayed(listOf(transaction))
             } catch (error: Throwable) {
-                transactionSyncer.handleInvalid(transaction)
+                error.printStackTrace()
+                val sent = fallback()
+                if (!sent) {
+                    transactionSyncer.handleInvalid(transaction)
+                }
             }
         }
     }
 
-    private fun sendViaP2P(transactions: List<FullTransaction>) {
+    private fun sendViaP2P(transactions: List<FullTransaction>): Boolean {
         val peers = getPeersToSend()
         if (peers.isEmpty()) {
-            return
+            return false
         }
 
         timer.startIfNotRunning()
@@ -133,6 +147,7 @@ class TransactionSender(
                 peer.addTask(SendTransactionTask(transaction))
             }
         }
+        return true
     }
 
     private fun transactionSendStart(transaction: FullTransaction) {

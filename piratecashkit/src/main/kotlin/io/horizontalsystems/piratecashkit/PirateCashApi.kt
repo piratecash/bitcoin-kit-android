@@ -1,5 +1,6 @@
 package io.horizontalsystems.piratecashkit
 
+import com.eclipsesource.json.JsonValue
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.FullApiTransaction
 import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
@@ -86,8 +87,9 @@ class PirateCashApi : IApiTransactionProvider, Api {
         null
     }
 
-    override fun broadcastTransaction(rawTransactionHex: String) {
+    override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
         Timber.tag("PirateCash").d("Calling empty broadcastTransaction")
+        return com.eclipsesource.json.Json.value("")
     }
 
     override suspend fun getTransactions(hashes: List<String>): List<FullApiTransaction> {

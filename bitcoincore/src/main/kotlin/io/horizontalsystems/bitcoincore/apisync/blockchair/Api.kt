@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.apisync.blockchair
 
+import com.eclipsesource.json.JsonValue
 import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 
@@ -12,5 +13,5 @@ interface Api {
 
     fun lastBlockHeader(): BlockHeaderItem
 
-    fun broadcastTransaction(rawTransactionHex: String)
+    fun broadcastTransaction(rawTransactionHex: String): JsonValue
 }

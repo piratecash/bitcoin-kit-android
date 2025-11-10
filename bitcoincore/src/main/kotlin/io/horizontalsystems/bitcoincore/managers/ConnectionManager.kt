@@ -7,93 +7,183 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IConnectionManagerListener
+import java.lang.ref.WeakReference
 
-class ConnectionManager(context: Context) : IConnectionManager {
+class ConnectionManager private constructor(context: Context) : IConnectionManager {
 
-    private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val connectivityManager =
+        context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    override var listener: IConnectionManagerListener? = null
+    private val listeners = mutableListOf<WeakReference<IConnectionManagerListener>>()
+    private val listenersLock = Any()
+    private val lock = Any()
+    private val activeNetworks = mutableSetOf<Network>()
+    private val validatedNetworks = mutableSetOf<Network>()
+    private val callback = ConnectionStatusCallback()
+
+    @Volatile
     override var isConnected: Boolean = false
-
-    private var hasValidInternet = false
-    private var hasConnection = false
-    private var callback = ConnectionStatusCallback()
+        private set
 
     init {
-        onEnterForeground()
+        registerCallback()
+        updateInitialState()
+    }
+
+    override fun addListener(listener: IConnectionManagerListener) {
+        synchronized(listenersLock) {
+            cleanupListenersLocked()
+            val alreadyRegistered = listeners.any { it.get() === listener }
+            if (!alreadyRegistered) {
+                listeners.add(WeakReference(listener))
+            }
+        }
+        listener.onConnectionChange(isConnected)
+    }
+
+    override fun removeListener(listener: IConnectionManagerListener) {
+        synchronized(listenersLock) {
+            cleanupListenersLocked()
+            listeners.removeAll { it.get() === listener }
+        }
     }
 
     override fun onEnterForeground() {
-        setInitialValues()
-        try {
-            connectivityManager.unregisterNetworkCallback(callback)
-        } catch (e: Exception) {
-            //was not registered, or already unregistered
-        }
-        connectivityManager.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
+        registerCallback()
+        updateInitialState()
     }
 
     override fun onEnterBackground() {
+        // No-op: keep monitoring for the lifetime of the process.
+    }
+
+    private fun registerCallback() {
         try {
             connectivityManager.unregisterNetworkCallback(callback)
-        } catch (e: Exception) {
-            //already unregistered
+        } catch (_: Exception) { }
+
+        try {
+            connectivityManager.registerNetworkCallback(
+                NetworkRequest.Builder().build(),
+                callback
+            )
+        } catch (_: Exception) {
         }
     }
 
-    private fun setInitialValues() {
-        hasConnection = false
-        hasValidInternet = false
-        isConnected = getInitialConnectionStatus()
-        listener?.onConnectionChange(isConnected)
+    private fun updateInitialState() {
+        val changed = synchronized(lock) {
+            activeNetworks.clear()
+            validatedNetworks.clear()
+
+            connectivityManager.allNetworks.forEach { network ->
+                activeNetworks.add(network)
+
+                connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                    if (capabilities.isValidInternet()) {
+                        validatedNetworks.add(network)
+                    }
+                }
+            }
+
+            updateConnectionStateLocked()
+        }
+
+        if (changed) {
+            notifyListeners()
+        }
     }
 
-    private fun getInitialConnectionStatus(): Boolean {
-        val network = connectivityManager.activeNetwork ?: return false
+    private fun updateConnectionStateLocked(): Boolean {
+        val previous = isConnected
 
-        hasConnection = true
-        val capabilities = connectivityManager.getNetworkCapabilities(network)
-        hasValidInternet = capabilities?.let {
-            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        } ?: false
+        val activeNetwork = connectivityManager.activeNetwork
+        val capabilities = activeNetwork?.let {
+            connectivityManager.getNetworkCapabilities(it)
+        }
 
-        return hasValidInternet
+        isConnected = capabilities?.isValidInternet() == true
+
+        return previous != isConnected
     }
 
+    private fun NetworkCapabilities.isValidInternet(): Boolean {
+        return hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
 
-    inner class ConnectionStatusCallback : ConnectivityManager.NetworkCallback() {
+    private fun notifyListeners() {
+        val snapshot = synchronized(listenersLock) {
+            cleanupListenersLocked()
+            listeners.mapNotNull { it.get() }
+        }
 
-        private val activeNetworks: MutableList<Network> = mutableListOf()
+        snapshot.forEach { listener ->
+            listener.onConnectionChange(isConnected)
+        }
+    }
+
+    private fun cleanupListenersLocked() {
+        listeners.removeAll { it.get() == null }
+    }
+
+    private inner class ConnectionStatusCallback : ConnectivityManager.NetworkCallback() {
+
+        override fun onAvailable(network: Network) {
+            val changed = synchronized(lock) {
+                activeNetworks.add(network)
+
+                connectivityManager.getNetworkCapabilities(network)?.let { capabilities ->
+                    if (capabilities.isValidInternet()) {
+                        validatedNetworks.add(network)
+                    }
+                }
+
+                updateConnectionStateLocked()
+            }
+
+            if (changed) {
+                notifyListeners()
+            }
+        }
 
         override fun onLost(network: Network) {
-            super.onLost(network)
-            activeNetworks.removeAll { activeNetwork -> activeNetwork == network }
-            hasConnection = activeNetworks.isNotEmpty()
-            updatedConnectionState()
+            val changed = synchronized(lock) {
+                activeNetworks.remove(network)
+                validatedNetworks.remove(network)
+                updateConnectionStateLocked()
+            }
+
+            if (changed) {
+                notifyListeners()
+            }
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-            super.onCapabilitiesChanged(network, networkCapabilities)
-            hasValidInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    && networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            updatedConnectionState()
-        }
+            val changed = synchronized(lock) {
+                if (networkCapabilities.isValidInternet()) {
+                    validatedNetworks.add(network)
+                } else {
+                    validatedNetworks.remove(network)
+                }
 
-        override fun onAvailable(network: Network) {
-            super.onAvailable(network)
-            if (activeNetworks.none { activeNetwork -> activeNetwork == network }) {
-                activeNetworks.add(network)
+                updateConnectionStateLocked()
             }
-            hasConnection = activeNetworks.isNotEmpty()
-            updatedConnectionState()
+
+            if (changed) {
+                notifyListeners()
+            }
         }
     }
 
-    private fun updatedConnectionState() {
-        val oldValue = isConnected
-        isConnected = hasConnection && hasValidInternet
-        if (oldValue != isConnected) {
-            listener?.onConnectionChange(isConnected)
+    companion object {
+        @Volatile
+        private var instance: ConnectionManager? = null
+
+        fun getInstance(context: Context): ConnectionManager {
+            return instance ?: synchronized(this) {
+                instance ?: ConnectionManager(context).also { instance = it }
+            }
         }
     }
 }

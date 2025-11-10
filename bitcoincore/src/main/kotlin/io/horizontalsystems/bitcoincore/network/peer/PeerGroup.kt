@@ -10,6 +10,7 @@ import io.horizontalsystems.bitcoincore.network.messages.InvMessage
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
+import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.Executors
@@ -43,7 +44,6 @@ class PeerGroup(
     var running = false
         private set
 
-    private val logger = Logger.getLogger("PeerGroup")
     private val peerGroupListeners = mutableListOf<Listener>()
     private val executorService = Executors.newCachedThreadPool()
     private val peerThreadPool = Executors.newCachedThreadPool()
@@ -53,6 +53,9 @@ class PeerGroup(
     private var peerCountToConnect: Int? = null // number of peers to connect to
     private val peerCountToHold = peerSize      // number of peers held
     private var peerCountConnected = 0          // number of peers connected to
+
+    private var lastLogTime = 0L
+    private val logIntervalMs = 60_000L
 
     fun start() {
         if (running) {
@@ -82,7 +85,11 @@ class PeerGroup(
     }
 
     fun addPeers(peers: List<String>) {
-        hostManager.addIps(peers)
+        hostManager.addIps(null, peers)
+    }
+
+    fun getPeerManager(): PeerManager {
+        return peerManager
     }
 
     //
@@ -104,19 +111,19 @@ class PeerGroup(
 
         when (e) {
             null -> {
-                logger.info("Peer ${peer.host} disconnected.")
+                Timber.tag(network.logTag).i("Peer ${peer.host} disconnected.")
                 hostManager.markSuccess(peer.host)
             }
 
             is PeerTimer.Error.Timeout -> {
-                logger.warning("Peer ${peer.host} disconnected. Warning: ${e.javaClass.simpleName}, ${e.message}.")
+                Timber.tag(network.logTag).w("Peer ${peer.host} disconnected. Warning: ${e.javaClass.simpleName}, ${e.message}.")
                 // since the peer can be normally interacted after awhile we should not remove it from list
                 // that is why we mark it as disconnected with no error
                 hostManager.markSuccess(peer.host)
             }
 
             else -> {
-                logger.warning("Peer ${peer.host} disconnected. Error: ${e.javaClass.simpleName}, ${e.message}.")
+                Timber.tag(network.logTag).w("Peer ${peer.host} disconnected. Error: ${e.javaClass.simpleName}, ${e.message}.")
                 hostManager.markFailed(peer.host)
             }
         }
@@ -143,9 +150,25 @@ class PeerGroup(
                     it.hostAddress
                 }
 
-            hostManager.addIps(peerIps)
+            hostManager.addIps(null, peerIps)
         } else if (message is InvMessage) {
             inventoryItemsHandler?.handleInventoryItems(peer, message.inventory)
+        }
+        logPeersStatusThrottled()
+    }
+
+    override fun onPongMessage() {
+        logPeersStatusThrottled()
+    }
+
+    private fun logPeersStatusThrottled() {
+        if(Timber.treeCount == 0) {
+            return
+        }
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastLogTime >= logIntervalMs) {
+            Timber.tag(network.logTag).d("Peers status: ${peerManager.peersCount} connected, ${peerManager.readyPears().size} ready, isSynced: ${peerManager.hasSyncedPeer()}")
+            lastLogTime = currentTime
         }
     }
 
@@ -176,7 +199,9 @@ class PeerGroup(
         if (peerCountToConnect > peerCountConnected && peerCountToHold > 1 && hostManager.hasFreshIps) {
             val sortedPeers = peerManager.sorted()
             if (sortedPeers.size >= peerCountToHold) {
-                sortedPeers.lastOrNull()?.close()
+                sortedPeers.lastOrNull()?.close(
+                    Peer.Error("Slowest peer")
+                )
             }
         }
     }

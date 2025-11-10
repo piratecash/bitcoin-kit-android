@@ -9,7 +9,6 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
-import java.util.logging.Logger
 import timber.log.Timber
 
 class Blockchain(
@@ -18,23 +17,59 @@ class Blockchain(
     private val dataListener: IBlockchainDataListener,
     private val logTag: String
 ) {
-    private val logger = Logger.getLogger("Blockchain")
-
     fun connect(merkleBlock: MerkleBlock): Block {
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
             Timber.tag(logTag).d("Block already exists in DB: hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}")
+
+            val header = merkleBlock.header
+            var needsUpdate = false
+
+            if (blockInDB.merkleRoot.isEmpty()) {
+                blockInDB.merkleRoot = header.merkleRoot.copyOf()
+                needsUpdate = true
+            }
+
+            if (blockInDB.version != header.version) {
+                blockInDB.version = header.version
+                needsUpdate = true
+            }
+
+            if (!blockInDB.previousBlockHash.contentEquals(header.previousBlockHeaderHash)) {
+                blockInDB.previousBlockHash = header.previousBlockHeaderHash.copyOf()
+                needsUpdate = true
+            }
+
+            if (blockInDB.timestamp != header.timestamp) {
+                blockInDB.timestamp = header.timestamp
+                needsUpdate = true
+            }
+
+            if (blockInDB.bits != header.bits) {
+                blockInDB.bits = header.bits
+                needsUpdate = true
+            }
+
+            if (blockInDB.nonce != header.nonce) {
+                blockInDB.nonce = header.nonce
+                needsUpdate = true
+            }
+
+            if (needsUpdate) {
+                storage.updateBlock(blockInDB)
+                Timber.tag(logTag).d("Block data refreshed from merkle block: hash=${merkleBlock.blockHash.toHexString()}")
+            }
+
             return blockInDB
         }
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
         if (parentBlock == null) {
-            logger.info("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans...")
-            Timber.tag(logTag).d("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
+            Timber.tag(logTag).i("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
             storage.addOrphanBlock(OrphanBlock(merkleBlock))
             // add to orphans with empty parent
             // Maybe we shouldn't disconnect the peer here since we will request parent block
-            throw BlockValidatorException.NoPreviousBlock(merkleBlock.header.previousBlockHeaderHash)
+            throw BlockValidatorException.OrphanBlock(merkleBlock.header.previousBlockHeaderHash)
         }
 
         val block = Block(merkleBlock, parentBlock)

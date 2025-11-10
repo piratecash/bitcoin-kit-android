@@ -17,6 +17,30 @@ import java.util.logging.Logger
 class ApiManager(private val host: String) {
     private val logger = Logger.getLogger("ApiManager")
 
+    companion object {
+        private const val MAX_RETRIES = 3
+        private const val INITIAL_BACKOFF_MS = 1000L
+    }
+
+    private fun <T> retryOnServerError(maxRetries: Int = MAX_RETRIES, operation: (attempt: Int) -> T): T {
+        var lastException: Exception? = null
+
+        for (attempt in 0 until maxRetries) {
+            try {
+                return operation(attempt)
+            } catch (e: ApiManagerException.Http500Exception) {
+                lastException = e
+                if (attempt < maxRetries - 1) {
+                    val backoffTime = INITIAL_BACKOFF_MS * (1 shl attempt) // Exponential: 1s, 2s, 4s
+                    logger.warning("Retry attempt ${attempt + 1}/$maxRetries after ${backoffTime}ms due to: ${e.message}")
+                    Thread.sleep(backoffTime)
+                }
+            }
+        }
+
+        throw lastException ?: ApiManagerException.Other("Retry failed without exception")
+    }
+
     @Throws
     fun get(resource: String): InputStream? {
         val url = "$host/$resource"
@@ -64,66 +88,82 @@ class ApiManager(private val host: String) {
     }
 
     fun doOkHttpGetAsString(uri: String): String? {
-        val url = "$host/$uri"
+        return retryOnServerError { attempt ->
+            val url = "$host/$uri"
 
-        try {
-            val httpClient: OkHttpClient = OkHttpClient.Builder()
-                .apply {
-                    connectTimeout(5000, TimeUnit.MILLISECONDS)
-                    readTimeout(60000, TimeUnit.MILLISECONDS)
-                }.build()
+            try {
+                val httpClient: OkHttpClient = OkHttpClient.Builder()
+                    .apply {
+                        connectTimeout(5000, TimeUnit.MILLISECONDS)
+                        readTimeout(60000, TimeUnit.MILLISECONDS)
+                    }.build()
 
-            httpClient.newCall(Request.Builder().url(url).build())
-                .execute()
-                .use { response ->
+                httpClient.newCall(Request.Builder().url(url).build())
+                    .execute()
+                    .use { response ->
 
-                    if (response.isSuccessful) {
-                        return response.body?.string()
+                        if (response.isSuccessful) {
+                            return@retryOnServerError response.body?.string()
+                        }
+
+                        when (response.code) {
+                            404 -> throw ApiManagerException.Http404Exception
+                            in 500..599 -> {
+                                logger.warning("Server error ${response.code} for URL: $url - ${response.message}")
+                                throw ApiManagerException.Http500Exception(url, response.code)
+                            }
+                            else -> {
+                                logger.warning("Unexpected error ${response.code} for URL: $url - ${response.message}")
+                                throw ApiManagerException.Other("Unexpected Error:$response")
+                            }
+                        }
                     }
-
-                    if (response.code == 404) {
-                        throw ApiManagerException.Http404Exception
-                    } else {
-                        throw ApiManagerException.Other("Unexpected Error:$response")
-                    }
-                }
-        } catch (e: ApiManagerException) {
-            throw e
-        } catch (e: Exception) {
-            throw ApiManagerException.Other("${e.javaClass.simpleName}: $host, ${e.localizedMessage}")
+            } catch (e: ApiManagerException) {
+                throw e
+            } catch (e: Exception) {
+                throw ApiManagerException.Other("${e.javaClass.simpleName}: $host, ${e.localizedMessage}")
+            }
         }
     }
 
     fun doOkHttpGet(uri: String): JsonValue {
-        val url = "$host/$uri"
+        return retryOnServerError { attempt ->
+            val url = "$host/$uri"
 
-        try {
-            val httpClient: OkHttpClient = OkHttpClient.Builder()
-                .apply {
-                    connectTimeout(5000, TimeUnit.MILLISECONDS)
-                    readTimeout(60000, TimeUnit.MILLISECONDS)
-                }.build()
+            try {
+                val httpClient: OkHttpClient = OkHttpClient.Builder()
+                    .apply {
+                        connectTimeout(5000, TimeUnit.MILLISECONDS)
+                        readTimeout(60000, TimeUnit.MILLISECONDS)
+                    }.build()
 
-            httpClient.newCall(Request.Builder().url(url).build())
-                .execute()
-                .use { response ->
+                httpClient.newCall(Request.Builder().url(url).build())
+                    .execute()
+                    .use { response ->
 
-                    if (response.isSuccessful) {
-                        response.body?.let {
-                            return Json.parse(it.string())
+                        if (response.isSuccessful) {
+                            response.body?.let {
+                                return@retryOnServerError Json.parse(it.string())
+                            }
+                        }
+
+                        when (response.code) {
+                            404 -> throw ApiManagerException.Http404Exception
+                            in 500..599 -> {
+                                logger.warning("Server error ${response.code} for URL: $url - ${response.message}")
+                                throw ApiManagerException.Http500Exception(url, response.code)
+                            }
+                            else -> {
+                                logger.warning("Unexpected error ${response.code} for URL: $url - ${response.message}")
+                                throw ApiManagerException.Other("Unexpected Error:$response")
+                            }
                         }
                     }
-
-                    if (response.code == 404) {
-                        throw ApiManagerException.Http404Exception
-                    } else {
-                        throw ApiManagerException.Other("Unexpected Error:$response")
-                    }
-                }
-        } catch (e: ApiManagerException) {
-            throw e
-        } catch (e: Exception) {
-            throw ApiManagerException.Other("${e.javaClass.simpleName}: $host, ${e.localizedMessage}")
+            } catch (e: ApiManagerException) {
+                throw e
+            } catch (e: Exception) {
+                throw ApiManagerException.Other("${e.javaClass.simpleName}: $host, ${e.localizedMessage}")
+            }
         }
     }
 
@@ -131,5 +171,9 @@ class ApiManager(private val host: String) {
 
 sealed class ApiManagerException : Exception() {
     object Http404Exception : ApiManagerException()
+    data class Http500Exception(val url: String, val responseCode: Int) : ApiManagerException() {
+        override val message: String
+            get() = "Server error $responseCode for URL: $url"
+    }
     class Other(override val message: String) : ApiManagerException()
 }

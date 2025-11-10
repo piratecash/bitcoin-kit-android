@@ -16,7 +16,8 @@ class MasternodeListSyncer(
     private val bitcoinCore: BitcoinCore,
     private val peerTaskFactory: PeerTaskFactory,
     private val masternodeListManager: MasternodeListManager,
-    private val initialBlockDownload: IInitialDownload
+    private val initialBlockDownload: IInitialDownload,
+    private val logTag: String
 ) : IPeerTaskHandler, IPeerSyncListener, PeerGroup.Listener {
 
     @Volatile
@@ -45,7 +46,7 @@ class MasternodeListSyncer(
                         val baseBlockHash = masternodeListManager.baseBlockHash
 
                         if (!blockHash.contentEquals(baseBlockHash)) {
-                            val task = peerTaskFactory.createRequestMasternodeListDiffTask(baseBlockHash, blockHash)
+                            val task = peerTaskFactory.createRequestMasternodeListDiffTask(baseBlockHash, blockHash, logTag)
                             syncedPeer.addTask(task)
 
                             workingPeer = syncedPeer

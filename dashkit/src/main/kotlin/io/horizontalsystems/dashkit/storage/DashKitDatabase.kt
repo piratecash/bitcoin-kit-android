@@ -14,7 +14,7 @@ import io.horizontalsystems.dashkit.models.Masternode
 import io.horizontalsystems.dashkit.models.MasternodeListState
 import io.horizontalsystems.dashkit.models.Quorum
 
-@Database(version = 5, exportSchema = false, entities = [
+@Database(version = 6, exportSchema = false, entities = [
     Masternode::class,
     Quorum::class,
     MasternodeListState::class,
@@ -72,7 +72,7 @@ interface InstantTransactionInputDao {
 
 @Dao
 interface MasternodeDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertAll(masternodes: List<Masternode>)
 
     @Query("SELECT * FROM Masternode")

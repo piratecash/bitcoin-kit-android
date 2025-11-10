@@ -55,6 +55,7 @@ interface IStorage {
     //  BlockHash
 
     fun getBlockHashesSortedBySequenceAndHeight(limit: Int): List<BlockHash>
+    fun hasBlockHash(headerHash: ByteArray): Boolean
     fun getBlockHashHeaderHashes(): List<ByteArray>
     fun getBlockHashHeaderHashes(except: List<ByteArray>): List<ByteArray>
     fun getLastBlockHash(): BlockHash?
@@ -203,7 +204,7 @@ interface IPeerAddressManager {
     val listener: IPeerAddressManagerListener?
     val hasFreshIps: Boolean
     fun getIp(): String?
-    fun addIps(ips: List<String>)
+    fun addIps(host: String?, ips: List<String>)
     fun addUnreachedHosts(host: String)
     fun markFailed(ip: String)
     fun markSuccess(ip: String)
@@ -215,8 +216,9 @@ interface IPeerAddressManagerListener {
 }
 
 interface IConnectionManager {
-    val listener: IConnectionManagerListener?
     val isConnected: Boolean
+    fun addListener(listener: IConnectionManagerListener)
+    fun removeListener(listener: IConnectionManagerListener)
     fun onEnterForeground()
     fun onEnterBackground()
 }

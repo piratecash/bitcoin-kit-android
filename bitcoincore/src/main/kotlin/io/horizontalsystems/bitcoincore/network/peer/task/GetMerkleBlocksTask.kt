@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.network.peer.task
 
 import io.horizontalsystems.bitcoincore.blocks.MerkleBlockExtractor
+import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.InventoryItem
@@ -78,12 +79,14 @@ class GetMerkleBlocksTask(
         }
 
         if (maxWarningCount < 1) {
-            listener?.onTaskFailed(this, PeerTooSlow(
+            listener?.onTaskFailed(
+                this, PeerTooSlow(
                     "Received ${receivedMerkleBlocks / totalWaitingTime} blocks, " +
                             "${receivedTransactions / totalWaitingTime} txs and $receivedBytes bytes per second; " +
                             "Required ${minMerkleBlocks / totalWaitingTime} blocks, " +
                             "${minTransactions / totalWaitingTime} txs or ${minReceiveBytes / totalWaitingTime} bytes per second"
-            ))
+                )
+            )
         }
 
         resumeWaiting()
@@ -118,7 +121,7 @@ class GetMerkleBlocksTask(
 
     private fun handleMerkleBlock(merkleBlock: MerkleBlock): Boolean {
         val blockHash = blockHashes.find { merkleBlock.blockHash.contentEquals(it.headerHash) }
-                ?: return false
+            ?: return false
 
         merkleBlock.height = if (blockHash.height > 0) blockHash.height else null
 
@@ -151,11 +154,16 @@ class GetMerkleBlocksTask(
             blockHashes.remove(it)
         }
 
+        @Suppress("SwallowedException")
         try {
 //            Timber.tag(logTag).d("Processing merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
             merkleBlockHandler.handleMerkleBlock(merkleBlock)
+        } catch (e: BlockValidatorException.OrphanBlock) {
+            Timber.tag(logTag)
+                .d("GetMerkleBlocksTask: Orphan merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
         } catch (e: Exception) {
-            Timber.tag(logTag).d("Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, error=${e.message}")
+            Timber.tag(logTag)
+                .d("Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, error=${e.message}")
             listener?.onTaskFailed(this, e)
         }
 

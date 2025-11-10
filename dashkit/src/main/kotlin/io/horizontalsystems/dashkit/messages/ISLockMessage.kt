@@ -8,15 +8,17 @@ import io.horizontalsystems.bitcoincore.network.messages.IMessageParser
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 
 class ISLockMessage(
-        val inputs: List<Outpoint>,
-        val txHash: ByteArray,
-        val sign: ByteArray,
-        val hash: ByteArray,
-        val requestId: ByteArray
+    val inputs: List<Outpoint>,
+    val txHash: ByteArray,
+    val sign: ByteArray,
+    val hash: ByteArray,
+    val requestId: ByteArray,
+    val version: Int = 0,
+    val cycleHash: ByteArray? = null
 ) : IMessage {
 
     override fun toString(): String {
-        return "ISLockMessage(hash=${hash.toReversedHex()}, txHash=${txHash.toReversedHex()})"
+        return "ISLockMessage(hash=${hash.toReversedHex()}, txHash=${txHash.toReversedHex()}, version=$version)"
     }
 }
 
@@ -35,15 +37,7 @@ class ISLockMessageParser : IMessageParser {
         val txHash = input.readBytes(32)
         val sign = input.readBytes(96)
 
-        val requestPayload = BitcoinOutput()
-        requestPayload.writeString("islock")
-        requestPayload.writeVarInt(inputsSize)
-        inputs.forEach {
-            requestPayload.write(it.txHash)
-            requestPayload.writeUnsignedInt(it.vout)
-        }
-
-        val requestId = HashUtils.doubleSha256(requestPayload.toByteArray())
+        val requestId = calculateRequestId(inputs)
 
         val hash = HashUtils.doubleSha256(payload)
 
@@ -51,4 +45,45 @@ class ISLockMessageParser : IMessageParser {
     }
 }
 
+class ISDLockMessageParser : IMessageParser {
+    override val command: String = "isdlock"
 
+    override fun parseMessage(input: BitcoinInputMarkable): IMessage {
+        input.mark()
+        val payload = input.readBytes(input.count)
+        input.reset()
+
+        val version = input.readUnsignedByte()
+        val inputsSize = input.readVarInt()
+        val inputs = List(inputsSize.toInt()) {
+            Outpoint(input)
+        }
+        val txHash = input.readBytes(32)
+        val cycleHash = input.readBytes(32)
+        val sign = input.readBytes(96)
+
+        val requestId = calculateRequestId(inputs)
+        val hash = HashUtils.doubleSha256(payload)
+
+        return ISLockMessage(
+            inputs = inputs,
+            txHash = txHash,
+            sign = sign,
+            hash = hash,
+            requestId = requestId,
+            version = version,
+            cycleHash = cycleHash
+        )
+    }
+}
+
+private fun calculateRequestId(inputs: List<Outpoint>): ByteArray {
+    val payload = BitcoinOutput()
+        .writeString("islock")
+        .writeVarInt(inputs.size.toLong())
+    inputs.forEach {
+        payload.write(it.txHash)
+        payload.writeUnsignedInt(it.vout)
+    }
+    return HashUtils.doubleSha256(payload.toByteArray())
+}

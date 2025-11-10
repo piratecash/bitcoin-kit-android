@@ -6,6 +6,7 @@ import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
 import io.horizontalsystems.bitcoincore.core.IApiSyncer
 import io.horizontalsystems.bitcoincore.core.IApiSyncerListener
 import io.horizontalsystems.bitcoincore.core.IBlockSyncListener
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IConnectionManagerListener
 import io.horizontalsystems.bitcoincore.core.IKitStateListener
 import io.horizontalsystems.bitcoincore.core.IStorage
@@ -13,7 +14,7 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import kotlin.math.max
 
 class SyncManager(
-    private val connectionManager: ConnectionManager,
+    private val connectionManager: IConnectionManager,
     private val apiSyncer: IApiSyncer,
     private val peerGroup: PeerGroup,
     private val storage: IStorage,

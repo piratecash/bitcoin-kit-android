@@ -85,6 +85,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.blockHash.getBlockHashesSortedSequenceHeight(limit)
     }
 
+    override fun hasBlockHash(headerHash: ByteArray): Boolean {
+        return store.blockHash.exists(headerHash)
+    }
+
     override fun getBlockHashHeaderHashes(): List<ByteArray> {
         return store.blockHash.allBlockHashes()
     }
@@ -230,6 +234,9 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun deleteBlocksWithoutTransactions(toHeight: Int) {
+        if (toHeight <= 0) {
+            return
+        }
         store.block.deleteBlocksWithoutTransactions(toHeight)
     }
 

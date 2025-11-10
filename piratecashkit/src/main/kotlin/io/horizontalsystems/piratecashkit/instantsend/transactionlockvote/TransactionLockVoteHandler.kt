@@ -54,7 +54,9 @@ class TransactionLockVoteHandler(
     private fun handle(lockVote: TransactionLockVoteMessage, instantInputs: List<InstantTransactionInput>) {
         lockVoteManager.addChecked(lockVote)
         // ignore votes for inputs which already has 6 votes
-        val input = instantInputs.firstOrNull { it.inputTxHash.contentEquals(lockVote.outpoint.txHash) }
+        val input = instantInputs.firstOrNull {
+            it.inputTxHash.contentEquals(lockVote.outpoint.txHash) && it.inputTxOutputIndex == lockVote.outpoint.vout
+        }
 
         if (input == null || input.voteCount >= requiredVoteCount) {
             return
@@ -62,7 +64,7 @@ class TransactionLockVoteHandler(
 
         try {
             lockVoteManager.validate(lockVote)
-            instantTransactionManager.updateInput(lockVote.outpoint.txHash, instantInputs)
+            instantTransactionManager.updateInput(lockVote.outpoint.txHash, lockVote.outpoint.vout, instantInputs)
 
             if (instantTransactionManager.isTransactionInstant(lockVote.txHash)) {
                 delegate?.onUpdateInstant(lockVote.txHash)

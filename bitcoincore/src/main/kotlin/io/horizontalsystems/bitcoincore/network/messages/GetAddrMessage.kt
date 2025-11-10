@@ -16,6 +16,10 @@ class GetAddrMessageParser : IMessageParser {
 class GetAddrMessageSerializer : IMessageSerializer {
     override val command: String = "getaddr"
     override fun serialize(message: IMessage): ByteArray? {
-        return ByteArray(0) // getaddr has no data
+        if (message !is GetAddrMessage) {
+            return null
+        }
+
+        return ByteArray(0)
     }
 } 

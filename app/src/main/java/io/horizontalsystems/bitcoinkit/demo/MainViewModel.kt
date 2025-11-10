@@ -3,10 +3,12 @@ package io.horizontalsystems.bitcoinkit.demo
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cash.p.dogecoinkit.DogecoinKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.exceptions.AddressFormatException
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.managers.SendValueErrors
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BitcoinSendInfo
@@ -25,7 +27,12 @@ import io.horizontalsystems.hodler.LockTimeInterval
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.piratecashkit.PirateCashKit
 import io.reactivex.disposables.CompositeDisposable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
@@ -43,8 +50,10 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
     val status = MutableLiveData<State>()
     val transactionRaw = MutableLiveData<String?>()
     val statusInfo = MutableLiveData<Map<String, Any>>()
+    val masternodeCount = MutableLiveData<Int>()
     lateinit var networkName: String
     private val disposables = CompositeDisposable()
+    private var statsJob: Job? = null
 
     private var started = false
         set(value) {
@@ -80,8 +89,12 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
         lastBlock.value = bitcoinKit.lastBlockInfo
         state.value = bitcoinKit.syncState
-
         started = false
+
+        scheduleNetworkStatsUpdate()
+        viewModelScope.launch {
+            refreshNetworkStats()
+        }
     }
 
     fun start() {
@@ -89,6 +102,7 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
         started = true
 
         bitcoinKit.start()
+        startStatsUpdates()
     }
 
     fun stop() {
@@ -96,13 +110,19 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
         started = false
 
         bitcoinKit.stop()
+        stopStatsUpdates()
     }
 
     fun clear() {
+        val wasRunning = statsJob?.isActive == true
+        stopStatsUpdates()
         bitcoinKit.stop()
         PirateCashKit.clear(App.instance, networkType, walletId)
 
         init()
+        if (wasRunning) {
+            startStatsUpdates()
+        }
     }
 
 
@@ -137,6 +157,7 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     override fun onKitStateUpdate(state: KitState) {
         this.state.postValue(state)
+        scheduleNetworkStatsUpdate()
     }
 
     val receiveAddressLiveData = MutableLiveData<String>()
@@ -194,7 +215,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                             sortType = TransactionDataSortType.Shuffle,
                             pluginData = getPluginData(),
                             rbfEnabled = true,
-                            dustThreshold = null,
                             changeToFirstInput = false,
                             filters = UtxoFilters()
                         )
@@ -227,7 +247,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                 feePriority.feeRate,
                 null,
                 getPluginData(),
-                null,
                 false,
                 UtxoFilters()
             )
@@ -241,6 +260,37 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
                 else -> e.message ?: "Maximum could not be calculated"
             }
         }
+    }
+
+    fun startStatsUpdates() {
+        if (statsJob?.isActive == true) return
+        statsJob = viewModelScope.launch {
+            refreshNetworkStats()
+            while (isActive) {
+                delay(1_000)
+                refreshNetworkStats()
+            }
+        }
+    }
+
+    fun stopStatsUpdates() {
+        statsJob?.cancel()
+        statsJob = null
+    }
+
+    private fun scheduleNetworkStatsUpdate() {
+        viewModelScope.launch {
+            refreshNetworkStats()
+        }
+    }
+
+    private suspend fun refreshNetworkStats() {
+        /*val (masternodes, quorums) = withContext(Dispatchers.IO) {
+            val masternodeTotal = bitcoinKit.masternodeCount()
+            val quorumTotal = bitcoinKit.quorumCount()
+            masternodeTotal to quorumTotal
+        }
+        masternodeCount.postValue(masternodes)*/
     }
 
     private fun updateFee() {
@@ -261,7 +311,6 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             feeRate = feePriority.feeRate,
             unspentOutputs = null,
             pluginData = getPluginData(),
-            dustThreshold = null,
             changeToFirstInput = false,
             filters = UtxoFilters()
         )
@@ -273,6 +322,11 @@ class MainViewModel : ViewModel(), PirateCashKit.Listener {
             pluginData[HodlerPlugin.id] = HodlerData(it)
         }
         return pluginData
+    }
+
+    override fun onCleared() {
+        stopStatsUpdates()
+        super.onCleared()
     }
 
     fun onRawTransactionClick(transactionHash: String) {

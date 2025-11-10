@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.apisync.blockchair
 
 import com.eclipsesource.json.Json
 import com.eclipsesource.json.JsonObject
+import com.eclipsesource.json.JsonValue
 import io.horizontalsystems.bitcoincore.apisync.model.AddressItem
 import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
@@ -88,7 +89,7 @@ class BlockchairApi(
         return BlockHeaderItem(hash.hexToByteArray().reversedArray(), height, timestamp!!)
     }
 
-    override fun broadcastTransaction(rawTransactionHex: String) {
+    override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
         val apiManager = ApiManager("https://api.blockchair.com")
         val url = "$chainId/push/transaction"
 
@@ -96,7 +97,7 @@ class BlockchairApi(
             this["data"] = Json.value(rawTransactionHex)
         }.toString()
 
-        apiManager.post(url, body)
+        return apiManager.post(url, body)
     }
 
     private fun fetchTransactions(
@@ -142,6 +143,10 @@ class BlockchairApi(
                 )
             }
         } catch (http404Exception: ApiManagerException.Http404Exception) {
+            Timber.d("Blockchair API: 404 for addresses ${addresses.joinToString(", ")}")
+            return Pair(emptyList(), emptyList())
+        } catch (http500Exception: ApiManagerException.Http500Exception) {
+            Timber.e("Blockchair API: Server error ${http500Exception.responseCode} for addresses ${addresses.joinToString(", ")} - ${http500Exception.message}")
             return Pair(emptyList(), emptyList())
         }
     }
@@ -181,6 +186,10 @@ class BlockchairApi(
             }
             return map
         } catch (http404Exception: ApiManagerException.Http404Exception) {
+            Timber.d("Blockchair API: 404 for block heights ${heights.joinToString(", ")}")
+            return emptyMap()
+        } catch (http500Exception: ApiManagerException.Http500Exception) {
+            Timber.e("Blockchair API: Server error ${http500Exception.responseCode} for block heights ${heights.joinToString(", ")} - ${http500Exception.message}")
             return emptyMap()
         }
     }

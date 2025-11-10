@@ -34,7 +34,6 @@ class OrphanBlock() {
     @PrimaryKey
     var headerHash: ByteArray = byteArrayOf()
 
-    @Ignore
     var merkleBlock: MerkleBlock? = null
 
     fun previousBlock(storage: IStorage): OrphanBlock? {

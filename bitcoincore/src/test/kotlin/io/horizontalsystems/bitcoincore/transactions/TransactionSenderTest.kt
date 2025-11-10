@@ -33,8 +33,9 @@ object TransactionSenderTest : Spek({
             initialBlockDownload,
             storage,
             timer,
-            SendType.P2P,
             mock(),
+            SendType.P2P,
+            allowBroadcastFromUnsyncedPeers = true
         )
     }
 
@@ -43,6 +44,7 @@ object TransactionSenderTest : Spek({
         context("when 0 synced peers") {
             beforeEach {
                 whenever(peerManager.peersCount).thenReturn(2)
+                whenever(peerManager.readyPears()).thenReturn(emptyList())
                 whenever(initialBlockDownload.syncedPeers).thenReturn(CopyOnWriteArrayList())
             }
 
@@ -51,7 +53,10 @@ object TransactionSenderTest : Spek({
                     transactionSender.canSendTransaction()
                     fail("Expected an Exception to be thrown")
                 } catch (e: PeerGroup.Error) {
-                    assertTrue(e.message == "peers not synced")
+                    assertTrue(e.message?.startsWith("Peers not synced") == true)
+                    assertTrue(e.message?.contains("connected=2") == true)
+                    assertTrue(e.message?.contains("synced=0") == true)
+                    assertTrue(e.message?.contains("ready=0") == true)
                 }
             }
         }
@@ -73,7 +78,10 @@ object TransactionSenderTest : Spek({
                     transactionSender.canSendTransaction()
                     fail("Expected an Exception to be thrown")
                 } catch (e: PeerGroup.Error) {
-                    assertTrue(e.message == "peers not synced")
+                    assertTrue(e.message?.startsWith("Peers not synced") == true)
+                    assertTrue(e.message?.contains("connected=2") == true)
+                    assertTrue(e.message?.contains("synced=2") == true)
+                    assertTrue(e.message?.contains("ready=0") == true)
                 }
             }
         }
@@ -126,6 +134,34 @@ object TransactionSenderTest : Spek({
 
             it("returns nothing") {
                 transactionSender.canSendTransaction()
+            }
+        }
+    }
+
+    describe("#canSendTransaction with unsynced broadcast") {
+
+        val transactionSenderUnsynced by memoized {
+            TransactionSender(
+                transactionSyncer,
+                peerManager,
+                initialBlockDownload,
+                storage,
+                timer,
+                mock(),
+                SendType.P2P,
+                allowBroadcastFromUnsyncedPeers = true
+            )
+        }
+
+        context("when ready peers exist but no synced peers") {
+            beforeEach {
+                whenever(peerManager.peersCount).thenReturn(2)
+                whenever(peerManager.readyPears()).thenReturn(listOf(peer1, peer2))
+                whenever(initialBlockDownload.syncedPeers).thenReturn(CopyOnWriteArrayList())
+            }
+
+            it("does not throw") {
+                transactionSenderUnsynced.canSendTransaction()
             }
         }
     }

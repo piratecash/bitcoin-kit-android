@@ -4,9 +4,14 @@ import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.cosantakit.messages.GetMasternodeListDiffMessage
 import io.horizontalsystems.cosantakit.messages.MasternodeListDiffMessage
+import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
-class RequestMasternodeListDiffTask(private val baseBlockHash: ByteArray, private val blockHash: ByteArray) : PeerTask() {
+class RequestMasternodeListDiffTask(
+    private val baseBlockHash: ByteArray,
+    private val blockHash: ByteArray,
+    private val logTag: String
+) : PeerTask() {
 
     var masternodeListDiffMessage: MasternodeListDiffMessage? = null
 
@@ -15,7 +20,8 @@ class RequestMasternodeListDiffTask(private val baseBlockHash: ByteArray, privat
     }
 
     override fun handleTimeout() {
-        listener?.onTaskFailed(this, Exception("RequestMasternodeListDiffTask Timeout"))
+        Timber.tag(logTag).d("RequestMasternodeListDiffTask: timeout")
+        listener?.onTaskCompleted(this)
     }
 
 
@@ -26,8 +32,9 @@ class RequestMasternodeListDiffTask(private val baseBlockHash: ByteArray, privat
 
     override fun handleMessage(message: IMessage): Boolean {
         if (message is MasternodeListDiffMessage
-                && message.baseBlockHash.contentEquals(baseBlockHash)
-                && message.blockHash.contentEquals(blockHash)) {
+            && message.baseBlockHash.contentEquals(baseBlockHash)
+            && message.blockHash.contentEquals(blockHash)
+        ) {
 
             masternodeListDiffMessage = message
 

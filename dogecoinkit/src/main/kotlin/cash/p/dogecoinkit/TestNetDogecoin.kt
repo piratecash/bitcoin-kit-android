@@ -13,6 +13,8 @@ class TestNetDogecoin : Network() {
     override var addressSegwitHrp: String = ""
     override var addressScriptVersion: Int = 0x16
     override var coinType: Int = 1
+    override val transactionVersion: Int = 1
+    override val usesLastBlockHeightAsLockTime: Boolean = false
     override val blockchairChainId: String = ""
 
     override val maxBlockSize = 1_000_000

@@ -1,5 +1,6 @@
 package io.horizontalsystems.cosantakit
 
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.IInventoryItemsHandler
 import io.horizontalsystems.bitcoincore.network.peer.IPeerTaskHandler
@@ -12,8 +13,10 @@ import io.horizontalsystems.cosantakit.instantsend.transactionlockvote.Transacti
 import io.horizontalsystems.cosantakit.messages.ISLockMessage
 import io.horizontalsystems.cosantakit.messages.TransactionLockVoteMessage
 import io.horizontalsystems.cosantakit.tasks.RequestInstantSendLocksTask
+import io.horizontalsystems.cosantakit.tasks.RequestInstantTransactionsTask
 import io.horizontalsystems.cosantakit.tasks.RequestTransactionLockRequestsTask
 import io.horizontalsystems.cosantakit.tasks.RequestTransactionLockVotesTask
+import timber.log.Timber
 import java.util.concurrent.Executors
 
 class InstantSend(
@@ -31,7 +34,7 @@ class InstantSend(
     override fun handleInventoryItems(peer: Peer, inventoryItems: List<InventoryItem>) {
         val transactionLockRequests = mutableListOf<ByteArray>()
         val transactionLockVotes = mutableListOf<ByteArray>()
-        val isLocks = mutableListOf<ByteArray>()
+        val isLocks = mutableListOf<InventoryItem>()
 
         inventoryItems.forEach { item ->
             when (item.type) {
@@ -41,8 +44,8 @@ class InstantSend(
                 InventoryType.MSG_TXLOCK_VOTE -> {
                     transactionLockVotes.add(item.hash)
                 }
-                InventoryType.MSG_ISLOCK -> {
-                    isLocks.add(item.hash)
+                InventoryType.MSG_ISLOCK, InventoryType.MSG_ISDLOCK -> {
+                    isLocks.add(item)
                 }
             }
         }
@@ -77,7 +80,13 @@ class InstantSend(
             }
             is RequestInstantSendLocksTask -> {
                 dispatchQueue.execute {
-                    handleInstantSendLocks(task.isLocks)
+                    handleInstantSendLocks(peer, task.isLocks)
+                }
+                true
+            }
+            is RequestInstantTransactionsTask -> {
+                dispatchQueue.execute {
+                    handleInstantTransactions(task.transactions)
                 }
                 true
             }
@@ -99,10 +108,19 @@ class InstantSend(
         }
     }
 
-    private fun handleInstantSendLocks(isLocks: List<ISLockMessage>) {
+    private fun handleInstantSendLocks(peer: Peer, isLocks: List<ISLockMessage>) {
         for (isLock in isLocks) {
-            instantSendLockHandler.handle(isLock)
+            instantSendLockHandler.handle(peer, isLock)
         }
+    }
+
+    private fun handleInstantTransactions(transactions: List<FullTransaction>) {
+        // Process transactions that were proactively requested for InstantSend
+        if (transactions.isNotEmpty()) {
+            val txHashes = transactions.joinToString(", ") { it.header.hash.toReversedHex() }
+            Timber.tag("COSANTA").d("Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes")
+        }
+        transactionSyncer.handleRelayed(transactions)
     }
 
     companion object {

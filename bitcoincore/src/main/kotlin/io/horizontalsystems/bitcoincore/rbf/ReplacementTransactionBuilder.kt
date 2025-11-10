@@ -37,7 +37,8 @@ class ReplacementTransactionBuilder(
     private val publicKeyManager: IPublicKeyManager,
     private val conflictsResolver: TransactionConflictsResolver,
     private val transactionSerializer: BaseTransactionSerializer,
-    private val lockTimeSetter: LockTimeSetter
+    private val lockTimeSetter: LockTimeSetter,
+    private val transactionVersion: Int
 ) {
 
     private fun replacementTransaction(
@@ -71,7 +72,7 @@ class ReplacementTransactionBuilder(
         val output = TransactionOutput(outputs.first())
         output.value = output.value - (minFee - fee)
 
-        if (output.value > dustCalculator.dust(output.scriptType, null)) {
+        if (output.value > dustCalculator.dust(output.scriptType)) {
             return Pair(listOf(output) + outputs.drop(1), fee)
         }
 
@@ -177,6 +178,7 @@ class ReplacementTransactionBuilder(
 
         return optimalReplacement?.let { (inputs, outputs, _) ->
             val mutableTransaction = MutableTransaction()
+            mutableTransaction.transaction.version = transactionVersion
             setInputs(
                 mutableTransaction = mutableTransaction,
                 originalInputs = originalFullInfo.inputs,
@@ -217,7 +219,7 @@ class ReplacementTransactionBuilder(
             )
         )
         do {
-            if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType, null)) {
+            if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType)) {
                 utxoCount++
                 continue
             }
@@ -248,6 +250,7 @@ class ReplacementTransactionBuilder(
 
         return optimalReplacement?.let { (inputs, outputs, _) ->
             val mutableTransaction = MutableTransaction()
+            mutableTransaction.transaction.version = transactionVersion
             setInputs(
                 mutableTransaction = mutableTransaction,
                 originalInputs = originalFullInfo.inputs,
@@ -380,7 +383,7 @@ class ReplacementTransactionBuilder(
             }
 
             is ReplacementType.Cancel -> {
-                val dustValue = dustCalculator.dust(type.address.scriptType, null).toLong()
+                val dustValue = dustCalculator.dust(type.address.scriptType).toLong()
                 val fixedOutputs = listOf(
                     TransactionOutput(
                         value = dustValue,

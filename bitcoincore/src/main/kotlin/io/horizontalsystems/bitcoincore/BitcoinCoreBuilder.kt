@@ -31,6 +31,7 @@ import io.horizontalsystems.bitcoincore.core.IApiSyncer
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.core.IHasher
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
+import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.core.IPlugin
 import io.horizontalsystems.bitcoincore.core.IPrivateWallet
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
@@ -154,6 +155,8 @@ class BitcoinCoreBuilder {
     private var requestUnknownBlocks = false
     private var sendType: BitcoinCore.SendType = BitcoinCore.SendType.P2P
     private var transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
+    private var allowBroadcastFromUnsyncedPeers = false
+    private var instantChecker: IInstantTransactionChecker? = null
 
     // parameters for signing
     private var iInputSigner: IInputSigner? = null
@@ -212,6 +215,16 @@ class BitcoinCoreBuilder {
 
     fun setSendType(sendType: BitcoinCore.SendType): BitcoinCoreBuilder {
         this.sendType = sendType
+        return this
+    }
+
+    fun setAllowBroadcastFromUnsyncedPeers(value: Boolean): BitcoinCoreBuilder {
+        allowBroadcastFromUnsyncedPeers = value
+        return this
+    }
+
+    fun setInstantChecker(instantChecker: IInstantTransactionChecker): BitcoinCoreBuilder {
+        this.instantChecker = instantChecker
         return this
     }
 
@@ -303,7 +316,7 @@ class BitcoinCoreBuilder {
         transactionInfoConverter.baseConverter = BaseTransactionInfoConverter(pluginManager)
 
         val unspentOutputProvider =
-            UnspentOutputProvider(storage, confirmationsThreshold, pluginManager)
+            UnspentOutputProvider(storage, confirmationsThreshold, pluginManager, instantChecker)
 
         val dataProvider = DataProvider(
             storage = storage,
@@ -312,7 +325,7 @@ class BitcoinCoreBuilder {
             logTag = network.logTag
         )
 
-        val connectionManager = ConnectionManager(context)
+        val connectionManager = ConnectionManager.getInstance(context)
 
         var privateWallet: IPrivateWallet? = null
         val publicKeyFetcher: IPublicKeyFetcher
@@ -433,6 +446,7 @@ class BitcoinCoreBuilder {
         val bloomFilterManager = BloomFilterManager()
 
         val peerManager = PeerManager()
+        peerManager.setAllowBroadcastFromUnsyncedPeers(allowBroadcastFromUnsyncedPeers)
 
         val networkMessageParser = NetworkMessageParser(network.magic)
         val networkMessageSerializer = NetworkMessageSerializer(network.magic)
@@ -533,10 +547,11 @@ class BitcoinCoreBuilder {
             blockSyncer.localDownloadedBestBlockHeight
         )
         apiSyncer.listener = syncManager
-        connectionManager.listener = syncManager
         blockSyncer.listener = syncManager
         initialDownload.listener = syncManager
         blockHashScanner.listener = syncManager
+
+        connectionManager.addListener(syncManager)
 
         val unspentOutputSelector = UnspentOutputSelectorChain(unspentOutputProvider)
         val pendingTransactionSyncer =
@@ -579,15 +594,16 @@ class BitcoinCoreBuilder {
                 dustCalculatorInstance,
                 transactionDataSorterFactory
             )
-            val lockTimeSetter = LockTimeSetter(storage)
+            val lockTimeSetter = LockTimeSetter(storage, network.usesLastBlockHeightAsLockTime)
             val transactionBuilder =
-                TransactionBuilder(recipientSetter, outputSetter, inputSetter, lockTimeSetter)
+                TransactionBuilder(recipientSetter, outputSetter, inputSetter, lockTimeSetter, network.transactionVersion)
             transactionFeeCalculator = TransactionFeeCalculator(
                 recipientSetter,
                 inputSetter,
                 addressConverter,
                 publicKeyManager,
                 purpose.scriptType,
+                network.transactionVersion,
             )
             val transactionSendTimer = TransactionSendTimer(60)
             val transactionSenderInstance = TransactionSender(
@@ -597,7 +613,8 @@ class BitcoinCoreBuilder {
                 storage = storage,
                 timer = transactionSendTimer,
                 sendType = sendType,
-                transactionSerializer = transactionSerializer
+                transactionSerializer = transactionSerializer,
+                allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers
             )
 
             dustCalculator = dustCalculatorInstance
@@ -624,7 +641,8 @@ class BitcoinCoreBuilder {
                 publicKeyManager = publicKeyManager,
                 conflictsResolver = conflictsResolver,
                 lockTimeSetter = lockTimeSetter,
-                transactionSerializer = transactionSerializer
+                transactionSerializer = transactionSerializer,
+                transactionVersion = network.transactionVersion,
             )
         }
 

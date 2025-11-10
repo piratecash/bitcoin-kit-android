@@ -80,12 +80,15 @@ class DataProvider(
                 storage.getFullTransactionInfo(inserted.map { TransactionWithBlock(it, block) }).map { transactionInfoConverter.transactionInfo(it) },
                 storage.getFullTransactionInfo(updated.map { TransactionWithBlock(it, block) }).map { transactionInfoConverter.transactionInfo(it) }
         )
-
         balanceUpdateSubject.onNext(true)
     }
 
     override fun onTransactionsDelete(hashes: List<String>) {
         listener?.onTransactionsDelete(hashes)
+        balanceUpdateSubject.onNext(true)
+    }
+
+    internal fun triggerBalanceUpdate() {
         balanceUpdateSubject.onNext(true)
     }
 
@@ -95,9 +98,19 @@ class DataProvider(
 
     fun transactions(fromUid: String?, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
         return Single.create { emitter ->
-            val fromTransaction = fromUid?.let { storage.getValidOrInvalidTransaction(it) }
-            val transactions = storage.getFullTransactionInfo(fromTransaction, type, limit)
-            emitter.onSuccess(transactions.map { transactionInfoConverter.transactionInfo(it) })
+            try {
+                val fromTransaction = fromUid?.let { storage.getValidOrInvalidTransaction(it) }
+                val transactions = storage.getFullTransactionInfo(fromTransaction, type, limit)
+                val result = transactions.map { transactionInfoConverter.transactionInfo(it) }
+
+                if (!emitter.isDisposed) {
+                    emitter.onSuccess(result)
+                }
+            } catch (e: Exception) {
+                if (!emitter.isDisposed) {
+                    emitter.onError(e)
+                }
+            }
         }
     }
 

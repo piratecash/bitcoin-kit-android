@@ -22,6 +22,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionMetadata
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.models.TransactionTypeConverter
+import io.horizontalsystems.bitcoincore.models.converters.MerkleBlockConverter
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_10_11
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_11_12
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_12_13
@@ -36,9 +37,10 @@ import io.horizontalsystems.bitcoincore.storage.migrations.Migration_20_21
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_25_26
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_26_27
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_27_28
+import io.horizontalsystems.bitcoincore.storage.migrations.Migration_28_29
 
 @Database(
-    version = 28, exportSchema = false, entities = [
+    version = 29, exportSchema = false, entities = [
         BlockchainState::class,
         PeerAddress::class,
         BlockHash::class,
@@ -56,7 +58,8 @@ import io.horizontalsystems.bitcoincore.storage.migrations.Migration_27_28
 )
 @TypeConverters(
     ScriptTypeConverter::class,
-    TransactionTypeConverter::class
+    TransactionTypeConverter::class,
+    MerkleBlockConverter::class
 )
 abstract class CoreDatabase : RoomDatabase() {
 
@@ -80,6 +83,7 @@ abstract class CoreDatabase : RoomDatabase() {
             return Room.databaseBuilder(context, CoreDatabase::class.java, dbName)
                 .allowMainThreadQueries()
                 .addMigrations(
+                    Migration_28_29,
                     Migration_27_28,
                     Migration_26_27,
                     Migration_25_26,
