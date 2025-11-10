@@ -81,11 +81,11 @@ class ISLockPeerValidator(
             )
         }
 
-        // Verify that the ISLock is identical (same hash)
+        // Note: Different quorums can create different ISLock hashes for the same transaction
+        // This is normal in Dash network. We accept all valid ISLocks for the same txHash.
         if (!isLock.hash.contentEquals(pending.isLock.hash)) {
             Timber.tag(logTag)
-                .w("Peer ${peer.host} sent different ISLock for tx $txHashKey (hash mismatch)")
-            return false
+                .d("Peer ${peer.host} sent ISLock with different hash for tx $txHashKey (different quorum)")
         }
 
         // Add confirmation from this peer
@@ -144,6 +144,16 @@ class ISLockPeerValidator(
         // Optional: Could remove confirmations from this peer if desired
         // For now, we keep them as they were legitimately received
         Timber.tag(logTag).d("Peer ${peer.host} disconnected (confirmations retained)")
+    }
+
+    /**
+     * Remove pending ISLock when it gets validated through another path (e.g., relayed lock)
+     */
+    fun removePending(txHash: ByteArray) {
+        val txHashKey = txHash.toReversedHex()
+        pendingISLocks.remove(txHashKey)?.let {
+            Timber.tag(logTag).d("Removed pending ISLock for tx $txHashKey (validated through alternative path)")
+        }
     }
 
     /**

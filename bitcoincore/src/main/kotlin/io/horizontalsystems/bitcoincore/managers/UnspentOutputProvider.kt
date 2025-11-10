@@ -73,7 +73,6 @@ class UnspentOutputProvider(
         if (confirmationsThreshold == 0) return unspentOutputs
 
         val lastBlockHeight = storage.lastBlock()?.height ?: 0
-
         return unspentOutputs.filter {
             // InstantSend locked transactions are immediately available
             if (instantChecker?.isTransactionInstant(it.transaction.hash) == true) {

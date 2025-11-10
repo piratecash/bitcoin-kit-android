@@ -70,14 +70,24 @@ class BlockchairApiSyncer(
         blockchain.insertLastBlock(header, blockHeaderItem.height)
     }
 
-    private fun scanSingle(): Single<Unit> = Single.create {
-        val allKeys = storage.getPublicKeys()
-        val stopHeight = storage.downloadedTransactionsBestBlockHeight()
-        fetchRecursive(allKeys, allKeys, stopHeight)
-        fetchLastBlock()
+    private fun scanSingle(): Single<Unit> = Single.create { emitter ->
+        try {
+            val allKeys = storage.getPublicKeys()
+            val stopHeight = storage.downloadedTransactionsBestBlockHeight()
+            fetchRecursive(allKeys, allKeys, stopHeight)
+            fetchLastBlock()
 
-        apiSyncStateManager.restored = true
-        listener?.onSyncSuccess()
+            apiSyncStateManager.restored = true
+            listener?.onSyncSuccess()
+
+            if (!emitter.isDisposed) {
+                emitter.onSuccess(Unit)
+            }
+        } catch (error: Throwable) {
+            if (!emitter.isDisposed) {
+                emitter.onError(error)
+            }
+        }
     }
 
     private fun fetchRecursive(

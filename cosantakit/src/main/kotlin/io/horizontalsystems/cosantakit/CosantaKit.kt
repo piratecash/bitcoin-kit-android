@@ -420,6 +420,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         bitcoinCore.listenerExecutor.execute {
             listener?.onTransactionsUpdate(listOf(), listOf(transactionInfo))
         }
+        bitcoinCore.refreshBalance()
     }
 
     companion object {

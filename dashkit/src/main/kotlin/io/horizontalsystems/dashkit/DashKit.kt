@@ -16,6 +16,7 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.ProofOfWorkValidator
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
@@ -88,6 +89,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
@@ -507,6 +509,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
     ) {
         // check for all new transactions if it's has instant lock
         inserted.map { it.transactionHash.hexToByteArray().reversedArray() }.forEach {
+            Timber.tag("DASH").d("Transaction inserted: ${it.toReversedHex()}")
             instantSend.handle(it)
         }
 
@@ -539,6 +542,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         bitcoinCore.listenerExecutor.execute {
             listener?.onTransactionsUpdate(listOf(), listOf(transactionInfo))
         }
+        bitcoinCore.refreshBalance()
     }
 
     fun masternodeCount(): Int =

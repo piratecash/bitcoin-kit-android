@@ -444,6 +444,10 @@ class BitcoinCore(
         watchedTransactionManager.add(filter, listener)
     }
 
+    fun refreshBalance() {
+        dataProvider.triggerBalanceUpdate()
+    }
+
     fun maximumSpendableValue(
         address: String?,
         memo: String?,

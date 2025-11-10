@@ -34,8 +34,10 @@ class BalanceFragment : Fragment() {
         super.onCreate(savedInstanceState)
 
         viewModel = activity?.let { ViewModelProvider(it).get(MainViewModel::class.java) } ?: return
+    }
 
-        viewModel.balance.observe(this, Observer { balance ->
+    private fun setupObservers() {
+        viewModel.balance.observe(viewLifecycleOwner, Observer { balance ->
             when (balance) {
                 null -> {
                     balanceValue.text = ""
@@ -49,7 +51,7 @@ class BalanceFragment : Fragment() {
         })
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-        viewModel.lastBlock.observe(this, Observer {
+        viewModel.lastBlock.observe(viewLifecycleOwner, Observer {
             it?.let { blockInfo ->
                 lastBlockValue.text = blockInfo.height.toString()
 
@@ -58,7 +60,7 @@ class BalanceFragment : Fragment() {
             }
         })
 
-        viewModel.state.observe(this, Observer { state ->
+        viewModel.state.observe(viewLifecycleOwner, Observer { state ->
             when (state) {
                 is BitcoinCore.KitState.Synced -> {
                     stateValue.text = "synced"
@@ -75,11 +77,11 @@ class BalanceFragment : Fragment() {
             }
         })
 
-        viewModel.masternodeCount.observe(this, Observer { count ->
+        viewModel.masternodeCount.observe(viewLifecycleOwner, Observer { count ->
             masternodeCountValue.text = count?.toString() ?: ""
         })
 
-        viewModel.status.observe(this, Observer {
+        viewModel.status.observe(viewLifecycleOwner, Observer {
             when (it) {
                 MainViewModel.State.STARTED -> {
                     startButton.isEnabled = false
@@ -92,12 +94,12 @@ class BalanceFragment : Fragment() {
             }
         })
 
-        viewModel.statusInfo.observe(this, Observer { statusInfo ->
+        viewModel.statusInfo.observe(viewLifecycleOwner, Observer { statusInfo ->
             activity?.let {
                 val dialog = AlertDialog.Builder(it)
-                        .setMessage(formatMapToString(statusInfo))
-                        .setTitle("Status Info")
-                        .create()
+                    .setMessage(formatMapToString(statusInfo))
+                    .setTitle("Status Info")
+                    .create()
                 dialog.show()
             }
         })
@@ -144,6 +146,8 @@ class BalanceFragment : Fragment() {
         buttonStatus.setOnClickListener {
             viewModel.showStatusInfo()
         }
+
+        setupObservers()
     }
 
     override fun onStart() {

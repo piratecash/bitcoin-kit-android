@@ -1,5 +1,6 @@
 package io.horizontalsystems.dashkit
 
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.IInventoryItemsHandler
 import io.horizontalsystems.bitcoincore.network.peer.IPeerTaskHandler
@@ -12,8 +13,10 @@ import io.horizontalsystems.dashkit.instantsend.transactionlockvote.TransactionL
 import io.horizontalsystems.dashkit.messages.ISLockMessage
 import io.horizontalsystems.dashkit.messages.TransactionLockVoteMessage
 import io.horizontalsystems.dashkit.tasks.RequestInstantSendLocksTask
+import io.horizontalsystems.dashkit.tasks.RequestInstantTransactionsTask
 import io.horizontalsystems.dashkit.tasks.RequestTransactionLockRequestsTask
 import io.horizontalsystems.dashkit.tasks.RequestTransactionLockVotesTask
+import timber.log.Timber
 import java.util.concurrent.Executors
 
 class InstantSend(
@@ -81,6 +84,12 @@ class InstantSend(
                 }
                 true
             }
+            is RequestInstantTransactionsTask -> {
+                dispatchQueue.execute {
+                    handleInstantTransactions(task.transactions)
+                }
+                true
+            }
             else -> false
         }
     }
@@ -103,6 +112,15 @@ class InstantSend(
         for (isLock in isLocks) {
             instantSendLockHandler.handle(peer, isLock)
         }
+    }
+
+    private fun handleInstantTransactions(transactions: List<FullTransaction>) {
+        // Process transactions that were proactively requested for InstantSend
+        if (transactions.isNotEmpty()) {
+            val txHashes = transactions.joinToString(", ") { it.header.hash.toReversedHex() }
+            Timber.tag("DASH").d("Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes")
+        }
+        transactionSyncer.handleRelayed(transactions)
     }
 
     companion object {

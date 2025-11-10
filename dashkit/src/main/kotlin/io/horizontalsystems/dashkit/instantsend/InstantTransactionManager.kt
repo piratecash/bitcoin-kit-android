@@ -1,6 +1,7 @@
 package io.horizontalsystems.dashkit.instantsend
 
 import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.dashkit.DashKitErrors
@@ -15,7 +16,7 @@ class InstantTransactionManager(
         private val state: InstantTransactionState
 ) : IInstantTransactionChecker {
     init {
-        state.instantTransactionHashes = storage.instantTransactionHashes().toMutableList()
+        state.clearAndAppend(storage.instantTransactionHashes())
     }
 
     fun instantTransactionInputs(txHash: ByteArray, instantTransaction: FullTransaction?): List<InstantTransactionInput> {
@@ -58,7 +59,7 @@ class InstantTransactionManager(
     }
 
     override fun isTransactionInstant(txHash: ByteArray): Boolean {
-        return state.instantTransactionHashes.any { it.contentEquals(txHash) }
+        return state.isInstant(txHash)
     }
 
     fun isTransactionExists(txHash: ByteArray): Boolean {

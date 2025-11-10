@@ -422,6 +422,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         bitcoinCore.listenerExecutor.execute {
             listener?.onTransactionsUpdate(listOf(), listOf(transactionInfo))
         }
+        bitcoinCore.refreshBalance()
     }
 
     companion object {
