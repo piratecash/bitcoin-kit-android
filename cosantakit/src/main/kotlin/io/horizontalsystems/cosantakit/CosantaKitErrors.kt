@@ -9,7 +9,7 @@ object CosantaKitErrors {
     }
 
     sealed class ISLockValidation : Exception() {
-        class SignatureNotValid : ISLockValidation()
+        class InvalidStructure : ISLockValidation()
         class QuorumNotFound : ISLockValidation()
     }
 }

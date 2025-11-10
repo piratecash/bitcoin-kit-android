@@ -1,5 +1,6 @@
 package io.horizontalsystems.piratecashkit
 
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.IInventoryItemsHandler
 import io.horizontalsystems.bitcoincore.network.peer.IPeerTaskHandler
@@ -12,8 +13,10 @@ import io.horizontalsystems.piratecashkit.instantsend.transactionlockvote.Transa
 import io.horizontalsystems.piratecashkit.messages.ISLockMessage
 import io.horizontalsystems.piratecashkit.messages.TransactionLockVoteMessage
 import io.horizontalsystems.piratecashkit.tasks.RequestInstantSendLocksTask
+import io.horizontalsystems.piratecashkit.tasks.RequestInstantTransactionsTask
 import io.horizontalsystems.piratecashkit.tasks.RequestTransactionLockRequestsTask
 import io.horizontalsystems.piratecashkit.tasks.RequestTransactionLockVotesTask
+import timber.log.Timber
 import java.util.concurrent.Executors
 
 class InstantSend(
@@ -81,7 +84,14 @@ class InstantSend(
 
             is RequestInstantSendLocksTask -> {
                 dispatchQueue.execute {
-                    handleInstantSendLocks(task.isLocks)
+                    handleInstantSendLocks(peer, task.isLocks)
+                }
+                true
+            }
+
+            is RequestInstantTransactionsTask -> {
+                dispatchQueue.execute {
+                    handleInstantTransactions(task.transactions)
                 }
                 true
             }
@@ -104,10 +114,19 @@ class InstantSend(
         }
     }
 
-    private fun handleInstantSendLocks(isLocks: List<ISLockMessage>) {
+    private fun handleInstantSendLocks(peer: Peer, isLocks: List<ISLockMessage>) {
         for (isLock in isLocks) {
-            instantSendLockHandler.handle(isLock)
+            instantSendLockHandler.handle(peer, isLock)
         }
+    }
+
+    private fun handleInstantTransactions(transactions: List<FullTransaction>) {
+        // Process transactions that were proactively requested for InstantSend
+        if (transactions.isNotEmpty()) {
+            val txHashes = transactions.joinToString(", ") { it.header.hash.toReversedHex() }
+            Timber.tag("PIRATE").d("Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes")
+        }
+        transactionSyncer.handleRelayed(transactions)
     }
 
     companion object {

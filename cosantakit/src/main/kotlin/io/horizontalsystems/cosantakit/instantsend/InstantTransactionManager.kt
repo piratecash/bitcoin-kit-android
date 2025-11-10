@@ -15,7 +15,7 @@ class InstantTransactionManager(
         private val state: InstantTransactionState
 ) : IInstantTransactionChecker {
     init {
-        state.instantTransactionHashes = storage.instantTransactionHashes().toMutableList()
+        state.clearAndAppend(storage.instantTransactionHashes())
     }
 
     fun instantTransactionInputs(txHash: ByteArray, instantTransaction: FullTransaction?): List<InstantTransactionInput> {
@@ -58,7 +58,7 @@ class InstantTransactionManager(
     }
 
     override fun isTransactionInstant(txHash: ByteArray): Boolean {
-        return state.instantTransactionHashes.any { it.contentEquals(txHash) }
+        return state.isInstant(txHash)
     }
 
     fun isTransactionExists(txHash: ByteArray): Boolean {

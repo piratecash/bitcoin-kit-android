@@ -37,6 +37,7 @@ import io.horizontalsystems.hdwalletkit.Mnemonic
 import io.horizontalsystems.piratecashkit.core.PirateCashTransactionInfoConverter
 import io.horizontalsystems.piratecashkit.core.SingleSha256Hasher
 import io.horizontalsystems.piratecashkit.instantsend.BLS
+import io.horizontalsystems.piratecashkit.instantsend.ISLockPeerValidator
 import io.horizontalsystems.piratecashkit.instantsend.InstantSendFactory
 import io.horizontalsystems.piratecashkit.instantsend.InstantSendLockValidator
 import io.horizontalsystems.piratecashkit.instantsend.InstantTransactionManager
@@ -320,13 +321,21 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         val bls = BLS()
         val transactionLockVoteValidator =
             TransactionLockVoteValidator(pirateCashStorage, singleHasher, bls)
-        val instantSendLockValidator = InstantSendLockValidator(quorumListManager, bls)
+        val instantSendLockValidator = InstantSendLockValidator(network.logTag)
 
         val transactionLockVoteManager = TransactionLockVoteManager(transactionLockVoteValidator)
         val instantSendLockManager = InstantSendLockManager(instantSendLockValidator)
 
+        val islockPeerValidator = ISLockPeerValidator(network.logTag)
+
         val instantSendLockHandler =
-            InstantSendLockHandler(instantTransactionManager, instantSendLockManager)
+            InstantSendLockHandler(
+                instantTransactionManager,
+                instantSendLockManager,
+                islockPeerValidator,
+                bitcoinCore.peerGroup.getPeerManager(),
+                network.logTag
+            )
         instantSendLockHandler.delegate = this
         val transactionLockVoteHandler =
             TransactionLockVoteHandler(instantTransactionManager, transactionLockVoteManager)

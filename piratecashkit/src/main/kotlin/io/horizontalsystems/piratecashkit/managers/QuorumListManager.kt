@@ -48,17 +48,6 @@ class QuorumListManager(
         storage.quorums = quorumSortedList.quorums
     }
 
-    fun getQuorum(quorumType: QuorumType, requestId: ByteArray): Quorum {
-        val typedQuorums = storage.getQuorumsByType(quorumType)
-
-        return typedQuorums.minWith(Comparator { quorum1, quorum2 ->
-            val orderingHash1 = orderingHash(quorum1, requestId)
-            val orderingHash2 = orderingHash(quorum2, requestId)
-
-            orderingHash1.compareTo(orderingHash2)
-        }) ?: throw PirateCashKitErrors.ISLockValidation.QuorumNotFound()
-    }
-
     private fun orderingHash(quorum: Quorum, requestId: ByteArray): HashBytes {
         val orderingPayload = BitcoinOutput()
                 .writeByte(quorum.type)

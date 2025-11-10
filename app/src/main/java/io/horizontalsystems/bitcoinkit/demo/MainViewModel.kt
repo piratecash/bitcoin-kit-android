@@ -34,7 +34,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainViewModel : ViewModel(), DashKit.Listener {
+class MainViewModel : ViewModel(), PirateCashKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -61,17 +61,17 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: DashKit
+    private lateinit var bitcoinKit: PirateCashKit
 
     private val walletId = "MyWallet"
-    private val networkType = DashKit.NetworkType.MainNet
+    private val networkType = PirateCashKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = DashKit(
+        bitcoinKit = PirateCashKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -117,7 +117,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
         val wasRunning = statsJob?.isActive == true
         stopStatsUpdates()
         bitcoinKit.stop()
-        DashKit.clear(App.instance, networkType, walletId)
+        PirateCashKit.clear(App.instance, networkType, walletId)
 
         init()
         if (wasRunning) {
@@ -135,7 +135,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
     }
 
     //
-    // DashKit Listener implementations
+    // PirateCashKit Listener implementations
     //
     override fun onTransactionsUpdate(
         inserted: List<TransactionInfo>,
@@ -285,12 +285,12 @@ class MainViewModel : ViewModel(), DashKit.Listener {
     }
 
     private suspend fun refreshNetworkStats() {
-        val (masternodes, quorums) = withContext(Dispatchers.IO) {
+        /*val (masternodes, quorums) = withContext(Dispatchers.IO) {
             val masternodeTotal = bitcoinKit.masternodeCount()
             val quorumTotal = bitcoinKit.quorumCount()
             masternodeTotal to quorumTotal
         }
-        masternodeCount.postValue(masternodes)
+        masternodeCount.postValue(masternodes)*/
     }
 
     private fun updateFee() {

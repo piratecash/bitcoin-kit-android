@@ -35,6 +35,7 @@ import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.cosantakit.core.CosantaTransactionInfoConverter
 import io.horizontalsystems.cosantakit.core.SingleSha256Hasher
 import io.horizontalsystems.cosantakit.instantsend.BLS
+import io.horizontalsystems.cosantakit.instantsend.ISLockPeerValidator
 import io.horizontalsystems.cosantakit.instantsend.InstantSendFactory
 import io.horizontalsystems.cosantakit.instantsend.InstantSendLockValidator
 import io.horizontalsystems.cosantakit.instantsend.InstantTransactionManager
@@ -318,13 +319,21 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         val bls = BLS()
         val transactionLockVoteValidator =
             TransactionLockVoteValidator(cosantaStorage, singleHasher, bls)
-        val instantSendLockValidator = InstantSendLockValidator(quorumListManager, bls)
+        val instantSendLockValidator = InstantSendLockValidator(network.logTag)
 
         val transactionLockVoteManager = TransactionLockVoteManager(transactionLockVoteValidator)
         val instantSendLockManager = InstantSendLockManager(instantSendLockValidator)
 
+        val islockPeerValidator = ISLockPeerValidator(network.logTag)
+
         val instantSendLockHandler =
-            InstantSendLockHandler(instantTransactionManager, instantSendLockManager)
+            InstantSendLockHandler(
+                instantTransactionManager,
+                instantSendLockManager,
+                islockPeerValidator,
+                bitcoinCore.peerGroup.getPeerManager(),
+                network.logTag
+            )
         instantSendLockHandler.delegate = this
         val transactionLockVoteHandler =
             TransactionLockVoteHandler(instantTransactionManager, transactionLockVoteManager)
