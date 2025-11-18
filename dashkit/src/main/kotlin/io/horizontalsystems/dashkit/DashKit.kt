@@ -130,6 +130,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         initWithEmptySeeds: Boolean = false
@@ -139,6 +140,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId,
         networkType,
         peerSize,
+        minConnectedPeerSize,
         syncMode,
         confirmationsThreshold,
         initWithEmptySeeds
@@ -150,6 +152,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         initWithEmptySeeds: Boolean = false
@@ -159,6 +162,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId = walletId,
         networkType = networkType,
         peerSize = peerSize,
+        minConnectedPeerSize = minConnectedPeerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
         initWithEmptySeeds = initWithEmptySeeds
@@ -170,6 +174,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         initWithEmptySeeds: Boolean = false,
@@ -182,6 +187,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId = walletId,
         networkType = networkType,
         peerSize = peerSize,
+        minConnectedPeerSize = minConnectedPeerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
         initWithEmptySeeds = initWithEmptySeeds,
@@ -195,6 +201,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         initWithEmptySeeds: Boolean = false,
@@ -207,6 +214,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId = walletId,
         networkType = networkType,
         peerSize = peerSize,
+        minConnectedPeerSize = minConnectedPeerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
         initWithEmptySeeds = initWithEmptySeeds,
@@ -222,6 +230,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
@@ -232,6 +241,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         walletId: String,
         networkType: NetworkType,
         peerSize: Int,
+        minConnectedPeerSize: Int,
         syncMode: SyncMode,
         confirmationsThreshold: Int,
         initWithEmptySeeds: Boolean,
@@ -312,6 +322,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .setNetwork(network)
             .setCheckpoint(checkpoint)
             .setPaymentAddressParser(paymentAddressParser)
+            .setMinConnectedPeerSize(minConnectedPeerSize)
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
@@ -569,6 +580,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
         const val defaultPeerSize: Int = 10
+        const val defaultMinConnectedPeerSize: Int = 2
         const val defaultConfirmationsThreshold: Int = 6
 
         private fun getDatabaseNameCore(

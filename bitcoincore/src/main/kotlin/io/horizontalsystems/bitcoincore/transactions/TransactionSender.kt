@@ -28,7 +28,8 @@ class TransactionSender(
     private val sendType: BitcoinCore.SendType,
     private val maxRetriesCount: Int = 3,
     private val retriesPeriod: Int = 60,
-    private val allowBroadcastFromUnsyncedPeers: Boolean
+    private val allowBroadcastFromUnsyncedPeers: Boolean,
+    private val minConnectedPeerSize: Int = DEFAULT_MIN_CONNECTED_PEER_SIZE
 ) : IPeerTaskHandler, TransactionSendTimer.Listener {
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
@@ -201,6 +202,6 @@ class TransactionSender(
     }
 
     companion object {
-        const val minConnectedPeerSize = 2
+        const val DEFAULT_MIN_CONNECTED_PEER_SIZE = 2
     }
 }

@@ -150,6 +150,7 @@ class BitcoinCoreBuilder {
     private var confirmationsThreshold = 6
     private var syncMode: BitcoinCore.SyncMode = BitcoinCore.SyncMode.Api()
     private var peerSize = 10
+    private var minConnectedPeerSize = TransactionSender.DEFAULT_MIN_CONNECTED_PEER_SIZE
     private val plugins = mutableListOf<IPlugin>()
     private var handleAddrMessage = true
     private var requestUnknownBlocks = false
@@ -228,11 +229,12 @@ class BitcoinCoreBuilder {
         return this
     }
 
-    fun setPeerSize(peerSize: Int): BitcoinCoreBuilder {
-        if (peerSize < TransactionSender.minConnectedPeerSize) {
-            throw Error("Peer size cannot be less than ${TransactionSender.minConnectedPeerSize}")
-        }
+    fun setMinConnectedPeerSize(minConnectedPeerSize: Int): BitcoinCoreBuilder {
+        this.minConnectedPeerSize = minConnectedPeerSize
+        return this
+    }
 
+    fun setPeerSize(peerSize: Int): BitcoinCoreBuilder {
         this.peerSize = peerSize
         return this
     }
@@ -293,6 +295,13 @@ class BitcoinCoreBuilder {
     }
 
     fun build(): BitcoinCore {
+        require(peerSize >= minConnectedPeerSize) {
+            "peerSize cannot be less than $minConnectedPeerSize"
+        }
+        require(minConnectedPeerSize > 0) {
+            "minConnectedPeerSize must be greater than zero"
+        }
+
         val context = checkNotNull(this.context)
         val extendedKey = this.extendedKey
         val watchAddressPublicKey = this.watchAddressPublicKey
@@ -614,7 +623,8 @@ class BitcoinCoreBuilder {
                 timer = transactionSendTimer,
                 sendType = sendType,
                 transactionSerializer = transactionSerializer,
-                allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers
+                allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers,
+                minConnectedPeerSize = minConnectedPeerSize
             )
 
             dustCalculator = dustCalculatorInstance

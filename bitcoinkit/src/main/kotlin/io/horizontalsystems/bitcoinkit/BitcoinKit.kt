@@ -71,6 +71,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. Default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. Default is 6 confirmations.
      * @param purpose which BIP algorithm to use for wallet generation. Default is BIP44.
@@ -82,10 +83,11 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose)
+    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, purpose)
 
 
     /**
@@ -95,6 +97,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. Default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. Default is 6 confirmations.
      * @param purpose which BIP algorithm to use for wallet generation. Default is BIP44.
@@ -105,10 +108,11 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold, null, null)
+    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, null, null)
 
     /**
      * @constructor Creates and initializes the BitcoinKit
@@ -118,6 +122,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      * @param iInputSigner Optional input signer for transaction signing.
@@ -130,6 +135,7 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
@@ -147,6 +153,7 @@ class BitcoinKit : AbstractKit {
             syncMode = syncMode,
             purpose = purpose,
             peerSize = peerSize,
+            minConnectedPeerSize = minConnectedPeerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
             iSchnorrInputSigner = iSchnorrInputSigner
@@ -160,6 +167,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
@@ -170,6 +178,7 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
     ) {
@@ -189,6 +198,7 @@ class BitcoinKit : AbstractKit {
             walletId = walletId,
             syncMode = syncMode,
             peerSize = peerSize,
+            minConnectedPeerSize = minConnectedPeerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = null,
             iSchnorrInputSigner = null
@@ -205,6 +215,7 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         syncMode: SyncMode,
         peerSize: Int,
+        minConnectedPeerSize: Int,
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?
@@ -229,6 +240,7 @@ class BitcoinKit : AbstractKit {
             .setNetwork(network)
             .setCheckpoint(checkpoint)
             .setPaymentAddressParser(paymentAddressParser)
+            .setMinConnectedPeerSize(minConnectedPeerSize)
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
@@ -355,6 +367,7 @@ class BitcoinKit : AbstractKit {
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
         const val defaultPeerSize: Int = 10
+        const val defaultMinConnectedPeerSize: Int = 2
         const val defaultConfirmationsThreshold: Int = 6
 
         /**
