@@ -26,7 +26,7 @@ class TransactionSender(
     private val timer: TransactionSendTimer,
     private val transactionSerializer: BaseTransactionSerializer,
     private val sendType: BitcoinCore.SendType,
-    private val maxRetriesCount: Int = 3,
+    private val maxRetriesCount: Int = 10,
     private val retriesPeriod: Int = 60,
     private val allowBroadcastFromUnsyncedPeers: Boolean,
     private val minConnectedPeerSize: Int = DEFAULT_MIN_CONNECTED_PEER_SIZE
