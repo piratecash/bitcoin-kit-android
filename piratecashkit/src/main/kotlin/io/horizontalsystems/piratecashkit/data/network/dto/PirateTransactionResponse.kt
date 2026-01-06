@@ -26,8 +26,6 @@ data class Tx(
     val tx_type: String? = null,
     val op_return: String? = null,
     val algo: String? = null,
-    @SerialName("__v")
-    val v: Int
 )
 
 @Serializable
