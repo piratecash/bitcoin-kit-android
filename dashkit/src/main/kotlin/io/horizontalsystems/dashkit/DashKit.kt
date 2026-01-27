@@ -332,6 +332,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .setApiSyncStateManager(apiSyncStateManager)
             .setTransactionInfoConverter(dashTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .apply {
                 if (iInputSigner != null && iSchnorrInputSigner != null) {
                     setSigners(iInputSigner, iSchnorrInputSigner)
