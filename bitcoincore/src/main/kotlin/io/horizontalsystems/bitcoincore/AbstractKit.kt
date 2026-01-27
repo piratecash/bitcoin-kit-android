@@ -318,4 +318,8 @@ abstract class AbstractKit {
         return bitcoinCore.replacementTransactionInfo(transactionHash, type)
     }
 
+    fun getTransactionsInSendQueue(): List<ByteArray> {
+        return bitcoinCore.getTransactionsInSendQueue()
+    }
+
 }
