@@ -169,6 +169,10 @@ class BitcoinCore(
         }
     }
 
+    fun getTransactionsInSendQueue(): List<ByteArray> {
+        return storage.getSentTransactionHashes()
+    }
+
     //
     // API methods
     //

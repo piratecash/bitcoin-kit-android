@@ -75,14 +75,15 @@ class TransactionCreator(
     }
 
     private fun processAndSend(transaction: FullTransaction): FullTransaction {
-        transactionSender.canSendTransaction()
-
+        // Always save the transaction first - don't block on peer availability
         try {
             processor.processCreated(transaction)
         } catch (ex: BloomFilterManager.BloomFilterExpired) {
             bloomFilterManager.regenerateBloomFilter()
         }
 
+        // Attempt to broadcast - if no peers available, transaction will be queued
+        // and automatically retried by TransactionSendTimer / SendTransactionsOnPeersSynced
         try {
             transactionSender.sendPendingTransactions()
         } catch (e: Exception) {

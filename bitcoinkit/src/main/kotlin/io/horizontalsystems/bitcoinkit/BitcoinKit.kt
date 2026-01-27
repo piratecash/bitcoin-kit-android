@@ -249,6 +249,7 @@ class BitcoinKit : AbstractKit {
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
             .setHandleAddrMessage(false)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .addPlugin(hodlerPlugin)
             .apply {
                 if(iInputSigner != null && iSchnorrInputSigner != null) {
