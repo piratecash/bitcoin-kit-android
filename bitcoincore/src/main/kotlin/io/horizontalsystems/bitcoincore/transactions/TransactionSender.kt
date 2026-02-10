@@ -91,9 +91,10 @@ class TransactionSender(
             return emptyList()
         }
 
+        val syncedPeerHosts = initialBlockDownload.syncedPeers.map { it.host }.toSet()
         val readyPeers = peerManager.readyPears()
             .filter { it != freeSyncedPeer }
-            .sortedBy { it.synced } // not synced first
+            .sortedBy { it.host in syncedPeerHosts } // not synced first
 
         if (readyPeers.size == 1) {
             return readyPeers
@@ -145,7 +146,9 @@ class TransactionSender(
             transactionSendStart(transaction)
 
             peers.forEach { peer ->
-                peer.addTask(SendTransactionTask(transaction))
+                val task = SendTransactionTask(transaction)
+                task.owner = this@TransactionSender
+                peer.addTask(task)
             }
         }
         return true
@@ -185,6 +188,8 @@ class TransactionSender(
     // IPeerTaskHandler
 
     override fun handleCompletedTask(peer: Peer, task: PeerTask): Boolean {
+        if (task.owner != null && task.owner !== this) return false
+
         return when (task) {
             is SendTransactionTask -> {
                 transactionSendSuccess(task.transaction)

@@ -8,7 +8,7 @@ interface IPeerTaskHandler {
 
 class PeerTaskHandlerChain : IPeerTaskHandler {
 
-    private val concreteHandlers = mutableListOf<IPeerTaskHandler>()
+    private val concreteHandlers = java.util.concurrent.CopyOnWriteArrayList<IPeerTaskHandler>()
 
     override fun handleCompletedTask(peer: Peer, task: PeerTask): Boolean {
         return concreteHandlers.any {

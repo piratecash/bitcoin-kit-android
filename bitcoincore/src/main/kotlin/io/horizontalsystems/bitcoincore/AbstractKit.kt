@@ -50,6 +50,10 @@ abstract class AbstractKit {
         bitcoinCore.stop()
     }
 
+    fun dispose() {
+        bitcoinCore.dispose()
+    }
+
     fun refresh() {
         bitcoinCore.refresh()
     }

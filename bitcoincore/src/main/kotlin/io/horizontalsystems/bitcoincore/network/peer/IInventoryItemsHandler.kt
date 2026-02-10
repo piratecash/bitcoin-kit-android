@@ -8,7 +8,7 @@ interface IInventoryItemsHandler {
 
 class InventoryItemsHandlerChain : IInventoryItemsHandler {
 
-    private val concreteHandlers = mutableListOf<IInventoryItemsHandler>()
+    private val concreteHandlers = java.util.concurrent.CopyOnWriteArrayList<IInventoryItemsHandler>()
 
     override fun handleInventoryItems(peer: Peer, inventoryItems: List<InventoryItem>) {
         concreteHandlers.forEach {

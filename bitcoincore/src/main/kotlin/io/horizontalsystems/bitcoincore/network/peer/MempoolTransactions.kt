@@ -5,15 +5,19 @@ import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.RequestTransactionsTask
 import io.horizontalsystems.bitcoincore.transactions.TransactionSender
 import io.horizontalsystems.bitcoincore.transactions.TransactionSyncer
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class MempoolTransactions(
         private val transactionSyncer: TransactionSyncer,
         private val transactionSender: TransactionSender?
 ) : IPeerTaskHandler, IInventoryItemsHandler, PeerGroup.Listener {
 
-    private val requestedTransactions = hashMapOf<String, MutableList<ByteArray>>()
+    private val requestedTransactions = ConcurrentHashMap<String, CopyOnWriteArrayList<ByteArray>>()
 
     override fun handleCompletedTask(peer: Peer, task: PeerTask): Boolean {
+        if (task.owner != null && task.owner !== this) return false
+
         return when (task) {
             is RequestTransactionsTask -> {
                 transactionSyncer.handleRelayed(task.transactions)
@@ -37,7 +41,9 @@ class MempoolTransactions(
         }
 
         if (transactionHashes.isNotEmpty()) {
-            peer.addTask(RequestTransactionsTask(transactionHashes))
+            val task = RequestTransactionsTask(transactionHashes)
+            task.owner = this
+            peer.addTask(task)
 
             addToRequestedTransactions(peer.host, transactionHashes)
         }
@@ -48,23 +54,12 @@ class MempoolTransactions(
     }
 
     private fun addToRequestedTransactions(peerHost: String, transactionHashes: List<ByteArray>) {
-        if (!requestedTransactions.containsKey(peerHost)) {
-            requestedTransactions[peerHost] = mutableListOf()
-        }
-
-        requestedTransactions[peerHost]?.addAll(transactionHashes)
+        requestedTransactions.getOrPut(peerHost) { CopyOnWriteArrayList() }.addAll(transactionHashes)
     }
 
     private fun removeFromRequestedTransactions(peerHost: String, transactionHashes: List<ByteArray>) {
-        transactionHashes.forEach { transactionHash ->
-            val i = requestedTransactions[peerHost]?.indexOfFirst {
-                it.contentEquals(transactionHash)
-            }
-
-            if (i != null && i != -1) {
-                requestedTransactions[peerHost]?.removeAt(i)
-            }
-        }
+        val list = requestedTransactions[peerHost] ?: return
+        list.removeIf { element -> transactionHashes.any { it.contentEquals(element) } }
     }
 
     private fun isTransactionRequested(hash: ByteArray): Boolean {

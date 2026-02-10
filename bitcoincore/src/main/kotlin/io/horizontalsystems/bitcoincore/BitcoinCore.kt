@@ -17,6 +17,8 @@ import io.horizontalsystems.bitcoincore.core.description
 import io.horizontalsystems.bitcoincore.core.scriptType
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
+import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
+import io.horizontalsystems.bitcoincore.managers.IBloomFilterProvider
 import io.horizontalsystems.bitcoincore.managers.IRestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.IUnspentOutputSelector
 import io.horizontalsystems.bitcoincore.managers.RestoreKeyConverterChain
@@ -106,6 +108,12 @@ class BitcoinCore(
     lateinit var initialDownload: IInitialDownload
     lateinit var unspentOutputSelector: UnspentOutputSelectorChain
     lateinit var watchedTransactionManager: WatchedTransactionManager
+    lateinit var bloomFilterManager: BloomFilterManager
+    var isShared = false
+
+    private val registeredPeerGroupListeners = java.util.concurrent.CopyOnWriteArrayList<PeerGroup.Listener>()
+    private val registeredBloomFilterProviders = java.util.concurrent.CopyOnWriteArrayList<IBloomFilterProvider>()
+    private var unregisteredFromSharedGroup = false
 
     val inventoryItemsHandlerChain = InventoryItemsHandlerChain()
     val peerTaskHandlerChain = PeerTaskHandlerChain()
@@ -138,7 +146,13 @@ class BitcoinCore(
     }
 
     fun addPeerGroupListener(listener: PeerGroup.Listener) {
+        registeredPeerGroupListeners.add(listener)
         peerGroup.addPeerGroupListener(listener)
+    }
+
+    fun addBloomFilterProvider(provider: IBloomFilterProvider) {
+        registeredBloomFilterProviders.add(provider)
+        bloomFilterManager.addBloomFilterProvider(provider)
     }
 
     fun prependUnspentOutputSelector(selector: IUnspentOutputSelector) {
@@ -184,6 +198,28 @@ class BitcoinCore(
         addressExtractor.stop()
         dataProvider.clear()
         syncManager.stop()
+
+        if (isShared) {
+            unregisterFromSharedGroup()
+        }
+    }
+
+    fun dispose() {
+        stop()
+    }
+
+    @Synchronized
+    private fun unregisterFromSharedGroup() {
+        if (unregisteredFromSharedGroup) return
+        unregisteredFromSharedGroup = true
+
+        peerGroup.removePeerTaskHandler(peerTaskHandlerChain)
+        peerGroup.removeInventoryItemsHandler(inventoryItemsHandlerChain)
+        registeredPeerGroupListeners.forEach { peerGroup.removePeerGroupListener(it) }
+        registeredPeerGroupListeners.clear()
+        registeredBloomFilterProviders.forEach { bloomFilterManager.removeBloomFilterProvider(it) }
+        registeredBloomFilterProviders.clear()
+        bloomFilterManager.regenerateBloomFilter()
     }
 
     fun refresh() {

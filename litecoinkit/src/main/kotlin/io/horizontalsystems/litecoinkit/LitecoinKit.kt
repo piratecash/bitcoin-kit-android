@@ -14,6 +14,7 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BitsValidator
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyTestNetDifficultyValidator
+import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
 import io.horizontalsystems.bitcoincore.core.purpose
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
@@ -21,10 +22,19 @@ import io.horizontalsystems.bitcoincore.managers.Bip49RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.Bip84RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.Bip86RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
+import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
+import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.network.messages.*
+import io.horizontalsystems.bitcoincore.network.peer.PeerAddressManager
+import io.horizontalsystems.bitcoincore.network.peer.PeerManager
+import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroup
+import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroupHolder
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
@@ -39,6 +49,7 @@ import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
 import io.horizontalsystems.litecoinkit.validators.LegacyDifficultyAdjustmentValidator
 import io.horizontalsystems.litecoinkit.validators.ProofOfWorkValidator
+import java.util.concurrent.ConcurrentHashMap
 
 class LitecoinKit : AbstractKit {
     enum class NetworkType {
@@ -66,8 +77,9 @@ class LitecoinKit : AbstractKit {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        purpose: Purpose = Purpose.BIP44
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose)
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder = sharedPeerGroupHolder)
 
     constructor(
         context: Context,
@@ -77,8 +89,9 @@ class LitecoinKit : AbstractKit {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        purpose: Purpose = Purpose.BIP44
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold)
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold, sharedPeerGroupHolder = sharedPeerGroupHolder)
 
     /**
      * @constructor Creates and initializes the BitcoinKit
@@ -100,7 +113,8 @@ class LitecoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
-        iSchnorrInputSigner: ISchnorrInputSigner? = null
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
     ) {
         network = network(networkType)
 
@@ -115,7 +129,8 @@ class LitecoinKit : AbstractKit {
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
+            iSchnorrInputSigner = iSchnorrInputSigner,
+            sharedPeerGroupHolder = sharedPeerGroupHolder
         )
     }
 
@@ -138,7 +153,8 @@ class LitecoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
-        iSchnorrInputSigner: ISchnorrInputSigner? = null
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
     ) {
         network = network(networkType)
 
@@ -157,7 +173,8 @@ class LitecoinKit : AbstractKit {
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
+            iSchnorrInputSigner = iSchnorrInputSigner,
+            sharedPeerGroupHolder = sharedPeerGroupHolder
         )
     }
 
@@ -172,7 +189,8 @@ class LitecoinKit : AbstractKit {
         peerSize: Int,
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
-        iSchnorrInputSigner: ISchnorrInputSigner?
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
     ): BitcoinCore {
         val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
         val storage = Storage(database)
@@ -205,6 +223,9 @@ class LitecoinKit : AbstractKit {
             .apply {
                 if(iInputSigner != null && iSchnorrInputSigner != null) {
                     setSigners(iInputSigner, iSchnorrInputSigner)
+                }
+                if (sharedPeerGroupHolder != null) {
+                    setSharedPeerGroupHolder(sharedPeerGroupHolder)
                 }
             }
             .build()
@@ -304,10 +325,92 @@ class LitecoinKit : AbstractKit {
         const val defaultPeerSize: Int = 10
         const val defaultConfirmationsThreshold: Int = 6
 
+        private val sharedGroups = ConcurrentHashMap<String, SharedPeerGroupHolder>()
+
+        @Synchronized
+        fun getOrCreateSharedPeerGroup(
+            context: Context,
+            walletId: String,
+            networkType: NetworkType,
+            peerSize: Int = defaultPeerSize
+        ): SharedPeerGroupHolder {
+            val key = "litecoin-${networkType.name}-$walletId"
+            return sharedGroups.getOrPut(key) {
+                val network = network(networkType)
+                val peerManager = PeerManager()
+                peerManager.setAllowBroadcastFromUnsyncedPeers(true)
+                val networkMessageParser = NetworkMessageParser(network.magic)
+                val networkMessageSerializer = NetworkMessageSerializer(network.magic)
+                val bloomFilterManager = BloomFilterManager()
+                val connectionManager = ConnectionManager.getInstance(context)
+
+                val sharedDbName = "Litecoin-Shared-${networkType.name}-$walletId"
+                val sharedDb = CoreDatabase.getInstance(context, sharedDbName)
+                val sharedStorage = Storage(sharedDb)
+                val peerAddressManager = PeerAddressManager(network, sharedStorage)
+
+                val peerGroup = SharedPeerGroup(
+                    hostManager = peerAddressManager,
+                    network = network,
+                    peerManager = peerManager,
+                    peerSize = peerSize,
+                    networkMessageParser = networkMessageParser,
+                    networkMessageSerializer = networkMessageSerializer,
+                    connectionManager = connectionManager,
+                    localDownloadedBestBlockHeight = 0,
+                    handleAddrMessage = true
+                )
+                peerAddressManager.listener = peerGroup
+
+                val blockHeaderHasher = DoubleSha256Hasher()
+                val transactionSerializer = BaseTransactionSerializer()
+
+                networkMessageParser.add(AddrMessageParser())
+                networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
+                networkMessageParser.add(InvMessageParser())
+                networkMessageParser.add(GetDataMessageParser())
+                networkMessageParser.add(PingMessageParser())
+                networkMessageParser.add(PongMessageParser())
+                networkMessageParser.add(TransactionMessageParser(transactionSerializer))
+                networkMessageParser.add(VerAckMessageParser())
+                networkMessageParser.add(VersionMessageParser())
+                networkMessageParser.add(RejectMessageParser())
+                networkMessageParser.add(GetAddrMessageParser())
+
+                networkMessageSerializer.add(FilterLoadMessageSerializer())
+                networkMessageSerializer.add(GetBlocksMessageSerializer())
+                networkMessageSerializer.add(InvMessageSerializer())
+                networkMessageSerializer.add(GetDataMessageSerializer())
+                networkMessageSerializer.add(MempoolMessageSerializer())
+                networkMessageSerializer.add(PingMessageSerializer())
+                networkMessageSerializer.add(PongMessageSerializer())
+                networkMessageSerializer.add(TransactionMessageSerializer(transactionSerializer))
+                networkMessageSerializer.add(VerAckMessageSerializer())
+                networkMessageSerializer.add(VersionMessageSerializer())
+                networkMessageSerializer.add(GetAddrMessageSerializer())
+
+                SharedPeerGroupHolder(
+                    peerGroup, peerManager, bloomFilterManager,
+                    networkMessageParser, networkMessageSerializer
+                )
+            }
+        }
+
+        @Synchronized
+        fun releaseSharedPeerGroup(walletId: String, networkType: NetworkType) {
+            val key = "litecoin-${networkType.name}-$walletId"
+            sharedGroups.remove(key)?.peerGroup?.forceStop()
+        }
+
         private fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode, purpose: Purpose): String =
             "Litecoin-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}-${purpose.name}"
 
         fun clear(context: Context, networkType: NetworkType, walletId: String) {
+            releaseSharedPeerGroup(walletId, networkType)
+            try {
+                val sharedDbName = "Litecoin-Shared-${networkType.name}-$walletId"
+                SQLiteDatabase.deleteDatabase(context.getDatabasePath(sharedDbName))
+            } catch (_: Exception) { }
             for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
                 for (purpose in Purpose.values())
                     try {
