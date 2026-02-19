@@ -563,7 +563,8 @@ class BitcoinCoreBuilder {
             peerGroup,
             storage,
             syncMode,
-            blockSyncer.localDownloadedBestBlockHeight
+            blockSyncer.localDownloadedBestBlockHeight,
+            peerSize
         )
         apiSyncer.listener = syncManager
         blockSyncer.listener = syncManager
@@ -571,6 +572,7 @@ class BitcoinCoreBuilder {
         blockHashScanner.listener = syncManager
 
         connectionManager.addListener(syncManager)
+        peerGroup.addPeerGroupListener(syncManager)
 
         val unspentOutputSelector = UnspentOutputSelectorChain(unspentOutputProvider)
         val pendingTransactionSyncer =

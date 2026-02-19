@@ -590,16 +590,20 @@ class BitcoinCore(
         return replacementTransactionBuilder?.replacementInfo(transactionHash, type)
     }
 
+    sealed class SyncSubstatus {
+        data class WaitingForPeers(val connected: Int, val required: Int) : SyncSubstatus()
+    }
+
     sealed class KitState {
         object Synced : KitState()
         class NotSynced(val exception: Throwable) : KitState()
-        class Syncing(val progress: Double) : KitState()
+        class Syncing(val progress: Double, val substatus: SyncSubstatus? = null) : KitState()
         class ApiSyncing(val transactions: Int) : KitState()
 
         override fun equals(other: Any?) = when {
             this is Synced && other is Synced -> true
             this is NotSynced && other is NotSynced -> exception == other.exception
-            this is Syncing && other is Syncing -> this.progress == other.progress
+            this is Syncing && other is Syncing -> this.progress == other.progress && this.substatus == other.substatus
             this is ApiSyncing && other is ApiSyncing -> this.transactions == other.transactions
             else -> false
         }
@@ -607,7 +611,10 @@ class BitcoinCore(
         override fun toString() = when (this) {
             is Synced -> "Synced"
             is NotSynced -> "NotSynced-${this.exception.javaClass.simpleName}"
-            is Syncing -> "Syncing-${(this.progress * 100).roundToInt() / 100.0}"
+            is Syncing -> {
+                val sub = this.substatus?.let { " ($it)" }.orEmpty()
+                "Syncing-${(this.progress * 100).roundToInt() / 100.0}$sub"
+            }
             is ApiSyncing -> "ApiSyncing-$transactions"
         }
 
@@ -615,6 +622,7 @@ class BitcoinCore(
             var result = javaClass.hashCode()
             if (this is Syncing) {
                 result = 31 * result + progress.hashCode()
+                result = 31 * result + (substatus?.hashCode() ?: 0)
             }
             if (this is NotSynced) {
                 result = 31 * result + exception.hashCode()
