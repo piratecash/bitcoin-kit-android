@@ -16,6 +16,7 @@ open class PeerTask {
 
     var requester: Requester? = null
     var listener: Listener? = null
+    var owner: Any? = null
     open val state: String = ""
 
     protected var lastActiveTime: Long? = null

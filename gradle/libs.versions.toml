@@ -6,6 +6,7 @@ constraintlayout = "2.1.4"
 core = "1.5.0"
 espressoCore = "3.2.0"
 guava = "33.5.0-android"
+hdWalletKitAndroid = "a74b51f"
 junit = "4.13.2"
 junitVersion = "1.1.1"
 kotlinxCoroutinesCore = "1.10.1"
@@ -31,6 +32,7 @@ core = { module = "androidx.test:core", version.ref = "core" }
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espressoCore" }
 ext-junit = { module = "androidx.test.ext:junit", version.ref = "junitVersion" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
+hd-wallet-kit-android = { module = "com.github.piratecash:hd-wallet-kit-android", version.ref = "hdWalletKitAndroid" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlin-stdlib-jdk7 = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk7", version.ref = "kotlinStdlibJdk7" }
 

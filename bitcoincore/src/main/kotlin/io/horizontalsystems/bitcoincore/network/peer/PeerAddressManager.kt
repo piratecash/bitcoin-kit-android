@@ -42,6 +42,7 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
         return peerAddress.ip
     }
 
+    @Synchronized
     override fun addIps(host: String?, ips: List<String>) {
         if (ips.isNotEmpty() && host != null) {
             checkedHosts.add(host)
@@ -55,6 +56,7 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
 
     override fun addUnreachedHosts(host: String) = storage.addUnreachedHosts(host)
 
+    @Synchronized
     override fun markFailed(ip: String) {
         state.remove(ip)
 
@@ -65,6 +67,7 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
         state.remove(ip)
     }
 
+    @Synchronized
     override fun markConnected(peer: Peer) {
         storage.markConnected(peer.host, peer.connectionTime)
     }

@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.transactions
 
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 
 class TransactionConflictsResolver(private val storage: IStorage) {
@@ -81,6 +82,9 @@ class TransactionConflictsResolver(private val storage: IStorage) {
 
     private fun getConflictingTransactionsForTransaction(transaction: FullTransaction): List<Transaction> {
         return transaction.inputs.mapNotNull { input ->
+            // Skip coinbase inputs - they all share the same null hash and shouldn't trigger conflicts
+            if (isCoinbaseInput(input)) return@mapNotNull null
+
             val conflictingTxHash = storage.getTransactionInput(input.previousOutputTxHash, input.previousOutputIndex)?.transactionHash
             when {
                 conflictingTxHash == null -> null
@@ -90,5 +94,16 @@ class TransactionConflictsResolver(private val storage: IStorage) {
         }.mapNotNull {
             storage.getTransaction(it)
         }
+    }
+
+    /**
+     * Checks if the input is a coinbase input (from a block reward transaction).
+     * Coinbase inputs have:
+     * - previousOutputTxHash = 32 bytes of zeros (null hash)
+     * - previousOutputIndex = 0xFFFFFFFF (4294967295 or -1 as signed long)
+     */
+    private fun isCoinbaseInput(input: TransactionInput): Boolean {
+        return input.previousOutputTxHash.all { it == 0.toByte() } &&
+                (input.previousOutputIndex == 4294967295L || input.previousOutputIndex == -1L)
     }
 }

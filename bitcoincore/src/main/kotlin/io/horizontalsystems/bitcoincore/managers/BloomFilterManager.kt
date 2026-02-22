@@ -13,7 +13,7 @@ class BloomFilterManager {
     var listener: Listener? = null
     var bloomFilter: BloomFilter? = null
 
-    private val bloomFilterProviders = mutableListOf<IBloomFilterProvider>()
+    private val bloomFilterProviders = java.util.concurrent.CopyOnWriteArrayList<IBloomFilterProvider>()
 
     init {
         regenerateBloomFilter()
@@ -37,6 +37,11 @@ class BloomFilterManager {
     fun addBloomFilterProvider(provider: IBloomFilterProvider) {
         provider.bloomFilterManager = this
         bloomFilterProviders.add(provider)
+    }
+
+    fun removeBloomFilterProvider(provider: IBloomFilterProvider) {
+        bloomFilterProviders.remove(provider)
+        provider.bloomFilterManager = null
     }
 }
 

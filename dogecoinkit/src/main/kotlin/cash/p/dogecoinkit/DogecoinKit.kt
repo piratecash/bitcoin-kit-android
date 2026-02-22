@@ -215,6 +215,7 @@ class DogecoinKit : AbstractKit {
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .apply {
                 if(iInputSigner != null && iSchnorrInputSigner != null) {
                     setSigners(iInputSigner, iSchnorrInputSigner)

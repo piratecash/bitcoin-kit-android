@@ -88,6 +88,7 @@ import io.horizontalsystems.bitcoincore.network.peer.MempoolTransactions
 import io.horizontalsystems.bitcoincore.network.peer.PeerAddressManager
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
+import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroupHolder
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
@@ -150,6 +151,7 @@ class BitcoinCoreBuilder {
     private var confirmationsThreshold = 6
     private var syncMode: BitcoinCore.SyncMode = BitcoinCore.SyncMode.Api()
     private var peerSize = 10
+    private var minConnectedPeerSize = TransactionSender.DEFAULT_MIN_CONNECTED_PEER_SIZE
     private val plugins = mutableListOf<IPlugin>()
     private var handleAddrMessage = true
     private var requestUnknownBlocks = false
@@ -157,6 +159,7 @@ class BitcoinCoreBuilder {
     private var transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
     private var allowBroadcastFromUnsyncedPeers = false
     private var instantChecker: IInstantTransactionChecker? = null
+    private var sharedPeerGroupHolder: SharedPeerGroupHolder? = null
 
     // parameters for signing
     private var iInputSigner: IInputSigner? = null
@@ -228,11 +231,12 @@ class BitcoinCoreBuilder {
         return this
     }
 
-    fun setPeerSize(peerSize: Int): BitcoinCoreBuilder {
-        if (peerSize < TransactionSender.minConnectedPeerSize) {
-            throw Error("Peer size cannot be less than ${TransactionSender.minConnectedPeerSize}")
-        }
+    fun setMinConnectedPeerSize(minConnectedPeerSize: Int): BitcoinCoreBuilder {
+        this.minConnectedPeerSize = minConnectedPeerSize
+        return this
+    }
 
+    fun setPeerSize(peerSize: Int): BitcoinCoreBuilder {
         this.peerSize = peerSize
         return this
     }
@@ -292,7 +296,19 @@ class BitcoinCoreBuilder {
         return this
     }
 
+    fun setSharedPeerGroupHolder(holder: SharedPeerGroupHolder): BitcoinCoreBuilder {
+        this.sharedPeerGroupHolder = holder
+        return this
+    }
+
     fun build(): BitcoinCore {
+        require(peerSize >= minConnectedPeerSize) {
+            "peerSize cannot be less than $minConnectedPeerSize"
+        }
+        require(minConnectedPeerSize > 0) {
+            "minConnectedPeerSize must be greater than zero"
+        }
+
         val context = checkNotNull(this.context)
         val extendedKey = this.extendedKey
         val watchAddressPublicKey = this.watchAddressPublicKey
@@ -442,14 +458,16 @@ class BitcoinCoreBuilder {
             invalidator
         )
 
-        val peerHostManager = PeerAddressManager(network, storage)
-        val bloomFilterManager = BloomFilterManager()
+        val isShared = sharedPeerGroupHolder != null
+        val peerHostManager = if (!isShared) PeerAddressManager(network, storage) else null
+        val bloomFilterManager = sharedPeerGroupHolder?.bloomFilterManager ?: BloomFilterManager()
 
-        val peerManager = PeerManager()
-        peerManager.setAllowBroadcastFromUnsyncedPeers(allowBroadcastFromUnsyncedPeers)
+        val peerManager = sharedPeerGroupHolder?.peerManager ?: PeerManager().also {
+            it.setAllowBroadcastFromUnsyncedPeers(allowBroadcastFromUnsyncedPeers)
+        }
 
-        val networkMessageParser = NetworkMessageParser(network.magic)
-        val networkMessageSerializer = NetworkMessageSerializer(network.magic)
+        val networkMessageParser = sharedPeerGroupHolder?.networkMessageParser ?: NetworkMessageParser(network.magic)
+        val networkMessageSerializer = sharedPeerGroupHolder?.networkMessageSerializer ?: NetworkMessageSerializer(network.magic)
 
         val blockchain = Blockchain(
             storage = storage,
@@ -466,8 +484,8 @@ class BitcoinCoreBuilder {
         )
 
 
-        val peerGroup = PeerGroup(
-            hostManager = peerHostManager,
+        val peerGroup = sharedPeerGroupHolder?.peerGroup ?: PeerGroup(
+            hostManager = peerHostManager!!,
             network = network,
             peerManager = peerManager,
             peerSize = peerSize,
@@ -476,8 +494,9 @@ class BitcoinCoreBuilder {
             connectionManager = connectionManager,
             localDownloadedBestBlockHeight = blockSyncer.localDownloadedBestBlockHeight,
             handleAddrMessage = handleAddrMessage
-        )
-        peerHostManager.listener = peerGroup
+        ).also {
+            peerHostManager.listener = it
+        }
 
         val blockHashScanHelper =
             if (watchAddressPublicKey == null) BlockHashScanHelper() else WatchAddressBlockHashScanHelper()
@@ -544,7 +563,8 @@ class BitcoinCoreBuilder {
             peerGroup,
             storage,
             syncMode,
-            blockSyncer.localDownloadedBestBlockHeight
+            blockSyncer.localDownloadedBestBlockHeight,
+            peerSize
         )
         apiSyncer.listener = syncManager
         blockSyncer.listener = syncManager
@@ -552,6 +572,7 @@ class BitcoinCoreBuilder {
         blockHashScanner.listener = syncManager
 
         connectionManager.addListener(syncManager)
+        peerGroup.addPeerGroupListener(syncManager)
 
         val unspentOutputSelector = UnspentOutputSelectorChain(unspentOutputProvider)
         val pendingTransactionSyncer =
@@ -614,7 +635,8 @@ class BitcoinCoreBuilder {
                 timer = transactionSendTimer,
                 sendType = sendType,
                 transactionSerializer = transactionSerializer,
-                allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers
+                allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers,
+                minConnectedPeerSize = minConnectedPeerSize
             )
 
             dustCalculator = dustCalculatorInstance
@@ -667,25 +689,27 @@ class BitcoinCoreBuilder {
 
         dataProvider.listener = bitcoinCore
         syncManager.listener = bitcoinCore
+        bitcoinCore.bloomFilterManager = bloomFilterManager
 
         val watchedTransactionManager = WatchedTransactionManager()
-        bloomFilterManager.addBloomFilterProvider(watchedTransactionManager)
-        bloomFilterManager.addBloomFilterProvider(bloomFilterProvider)
-        bloomFilterManager.addBloomFilterProvider(pendingOutpointsProvider)
-        bloomFilterManager.addBloomFilterProvider(irregularOutputFinder)
+        bitcoinCore.addBloomFilterProvider(watchedTransactionManager)
+        bitcoinCore.addBloomFilterProvider(bloomFilterProvider)
+        bitcoinCore.addBloomFilterProvider(pendingOutpointsProvider)
+        bitcoinCore.addBloomFilterProvider(irregularOutputFinder)
 
         bitcoinCore.watchedTransactionManager = watchedTransactionManager
         pendingTransactionProcessor.transactionListener = watchedTransactionManager
         blockTransactionProcessor.transactionListener = watchedTransactionManager
 
         bitcoinCore.peerGroup = peerGroup
+        bitcoinCore.isShared = isShared
         bitcoinCore.transactionSyncer = pendingTransactionSyncer
         bitcoinCore.networkMessageParser = networkMessageParser
         bitcoinCore.networkMessageSerializer = networkMessageSerializer
         bitcoinCore.unspentOutputSelector = unspentOutputSelector
 
-        peerGroup.peerTaskHandler = bitcoinCore.peerTaskHandlerChain
-        peerGroup.inventoryItemsHandler = bitcoinCore.inventoryItemsHandlerChain
+        peerGroup.addPeerTaskHandler(bitcoinCore.peerTaskHandlerChain)
+        peerGroup.addInventoryItemsHandler(bitcoinCore.inventoryItemsHandlerChain)
 
         bitcoinCore.prependAddressConverter(
             Base58AddressConverter(
@@ -694,36 +718,38 @@ class BitcoinCoreBuilder {
             )
         )
 
-        // this part can be moved to another place
+        // Message parsers/serializers and BloomFilterLoader are only created
+        // for non-shared PeerGroups. Shared ones have these set up already.
+        if (!isShared) {
+            bitcoinCore.addMessageParser(AddrMessageParser())
+                .addMessageParser(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
+                .addMessageParser(InvMessageParser())
+                .addMessageParser(GetDataMessageParser())
+                .addMessageParser(PingMessageParser())
+                .addMessageParser(PongMessageParser())
+                .addMessageParser(TransactionMessageParser(transactionSerializer))
+                .addMessageParser(VerAckMessageParser())
+                .addMessageParser(VersionMessageParser())
+                .addMessageParser(RejectMessageParser())
 
-        bitcoinCore.addMessageParser(AddrMessageParser())
-            .addMessageParser(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
-            .addMessageParser(InvMessageParser())
-            .addMessageParser(GetDataMessageParser())
-            .addMessageParser(PingMessageParser())
-            .addMessageParser(PongMessageParser())
-            .addMessageParser(TransactionMessageParser(transactionSerializer))
-            .addMessageParser(VerAckMessageParser())
-            .addMessageParser(VersionMessageParser())
-            .addMessageParser(RejectMessageParser())
+            bitcoinCore.addMessageSerializer(FilterLoadMessageSerializer())
+                .addMessageSerializer(GetBlocksMessageSerializer())
+                .addMessageSerializer(InvMessageSerializer())
+                .addMessageSerializer(GetDataMessageSerializer())
+                .addMessageSerializer(MempoolMessageSerializer())
+                .addMessageSerializer(PingMessageSerializer())
+                .addMessageSerializer(PongMessageSerializer())
+                .addMessageSerializer(TransactionMessageSerializer(transactionSerializer))
+                .addMessageSerializer(VerAckMessageSerializer())
+                .addMessageSerializer(VersionMessageSerializer())
 
-        bitcoinCore.addMessageSerializer(FilterLoadMessageSerializer())
-            .addMessageSerializer(GetBlocksMessageSerializer())
-            .addMessageSerializer(InvMessageSerializer())
-            .addMessageSerializer(GetDataMessageSerializer())
-            .addMessageSerializer(MempoolMessageSerializer())
-            .addMessageSerializer(PingMessageSerializer())
-            .addMessageSerializer(PongMessageSerializer())
-            .addMessageSerializer(TransactionMessageSerializer(transactionSerializer))
-            .addMessageSerializer(VerAckMessageSerializer())
-            .addMessageSerializer(VersionMessageSerializer())
+            networkMessageParser.add(GetAddrMessageParser())
+            networkMessageSerializer.add(GetAddrMessageSerializer())
 
-        networkMessageParser.add(GetAddrMessageParser())
-        networkMessageSerializer.add(GetAddrMessageSerializer())
-
-        val bloomFilterLoader = BloomFilterLoader(bloomFilterManager, peerManager)
-        bloomFilterManager.listener = bloomFilterLoader
-        bitcoinCore.addPeerGroupListener(bloomFilterLoader)
+            val bloomFilterLoader = BloomFilterLoader(bloomFilterManager, peerManager)
+            bloomFilterManager.listener = bloomFilterLoader
+            bitcoinCore.addPeerGroupListener(bloomFilterLoader)
+        }
 
         // todo: now this part cannot be moved to another place since bitcoinCore requires initialBlockDownload to be set. find solution to do so
         bitcoinCore.initialDownload = initialDownload

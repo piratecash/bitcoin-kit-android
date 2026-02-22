@@ -15,12 +15,20 @@ import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairBlockHashFe
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairTransactionProvider
 import io.horizontalsystems.bitcoincore.blocks.BlockMedianTimeHelper
 import io.horizontalsystems.bitcoincore.blocks.validators.*
+import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
 import io.horizontalsystems.bitcoincore.core.purpose
 import io.horizontalsystems.bitcoincore.managers.*
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.network.messages.*
+import io.horizontalsystems.bitcoincore.network.peer.PeerAddressManager
+import io.horizontalsystems.bitcoincore.network.peer.PeerManager
+import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroup
+import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroupHolder
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
@@ -33,6 +41,7 @@ import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
 import io.horizontalsystems.hdwalletkit.*
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hodler.HodlerPlugin
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  *
@@ -71,6 +80,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. Default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. Default is 6 confirmations.
      * @param purpose which BIP algorithm to use for wallet generation. Default is BIP44.
@@ -82,10 +92,12 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        purpose: Purpose = Purpose.BIP44
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose)
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder = sharedPeerGroupHolder)
 
 
     /**
@@ -95,6 +107,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. Default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. Default is 6 confirmations.
      * @param purpose which BIP algorithm to use for wallet generation. Default is BIP44.
@@ -105,10 +118,12 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
-        purpose: Purpose = Purpose.BIP44
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold, null, null)
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder)
 
     /**
      * @constructor Creates and initializes the BitcoinKit
@@ -118,6 +133,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      * @param iInputSigner Optional input signer for transaction signing.
@@ -130,10 +146,12 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
-        iSchnorrInputSigner: ISchnorrInputSigner? = null
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
     ) {
         network = network(networkType)
 
@@ -147,9 +165,11 @@ class BitcoinKit : AbstractKit {
             syncMode = syncMode,
             purpose = purpose,
             peerSize = peerSize,
+            minConnectedPeerSize = minConnectedPeerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
+            iSchnorrInputSigner = iSchnorrInputSigner,
+            sharedPeerGroupHolder = sharedPeerGroupHolder
         )
     }
 
@@ -160,6 +180,7 @@ class BitcoinKit : AbstractKit {
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param minConnectedPeerSize The minimum # of connected peers required to broadcast. Default is 2 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
@@ -170,8 +191,10 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
         syncMode: SyncMode = defaultSyncMode,
-        confirmationsThreshold: Int = defaultConfirmationsThreshold
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
     ) {
         network = network(networkType)
 
@@ -189,9 +212,11 @@ class BitcoinKit : AbstractKit {
             walletId = walletId,
             syncMode = syncMode,
             peerSize = peerSize,
+            minConnectedPeerSize = minConnectedPeerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = null,
-            iSchnorrInputSigner = null
+            iSchnorrInputSigner = null,
+            sharedPeerGroupHolder = sharedPeerGroupHolder
         )
     }
 
@@ -205,9 +230,11 @@ class BitcoinKit : AbstractKit {
         walletId: String,
         syncMode: SyncMode,
         peerSize: Int,
+        minConnectedPeerSize: Int,
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
-        iSchnorrInputSigner: ISchnorrInputSigner?
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
     ): BitcoinCore {
         val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
         val storage = Storage(database)
@@ -229,6 +256,7 @@ class BitcoinKit : AbstractKit {
             .setNetwork(network)
             .setCheckpoint(checkpoint)
             .setPaymentAddressParser(paymentAddressParser)
+            .setMinConnectedPeerSize(minConnectedPeerSize)
             .setPeerSize(peerSize)
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
@@ -237,10 +265,14 @@ class BitcoinKit : AbstractKit {
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
             .setHandleAddrMessage(false)
+            .setAllowBroadcastFromUnsyncedPeers(true)
             .addPlugin(hodlerPlugin)
             .apply {
                 if(iInputSigner != null && iSchnorrInputSigner != null) {
                     setSigners(iInputSigner, iSchnorrInputSigner)
+                }
+                if (sharedPeerGroupHolder != null) {
+                    setSharedPeerGroupHolder(sharedPeerGroupHolder)
                 }
             }
             .build()
@@ -355,7 +387,85 @@ class BitcoinKit : AbstractKit {
         val defaultNetworkType: NetworkType = NetworkType.MainNet
         val defaultSyncMode: SyncMode = SyncMode.Api()
         const val defaultPeerSize: Int = 10
+        const val defaultMinConnectedPeerSize: Int = 2
         const val defaultConfirmationsThreshold: Int = 6
+
+        private val sharedGroups = ConcurrentHashMap<String, SharedPeerGroupHolder>()
+
+        @Synchronized
+        fun getOrCreateSharedPeerGroup(
+            context: Context,
+            walletId: String,
+            networkType: NetworkType,
+            peerSize: Int = defaultPeerSize
+        ): SharedPeerGroupHolder {
+            val key = "bitcoin-${networkType.name}-$walletId"
+            return sharedGroups.getOrPut(key) {
+                val network = network(networkType)
+                val peerManager = PeerManager()
+                peerManager.setAllowBroadcastFromUnsyncedPeers(true)
+                val networkMessageParser = NetworkMessageParser(network.magic)
+                val networkMessageSerializer = NetworkMessageSerializer(network.magic)
+                val bloomFilterManager = BloomFilterManager()
+                val connectionManager = ConnectionManager.getInstance(context)
+
+                val sharedDbName = "Bitcoin-Shared-${networkType.name}-$walletId"
+                val sharedDb = CoreDatabase.getInstance(context, sharedDbName)
+                val sharedStorage = Storage(sharedDb)
+                val peerAddressManager = PeerAddressManager(network, sharedStorage)
+
+                val peerGroup = SharedPeerGroup(
+                    hostManager = peerAddressManager,
+                    network = network,
+                    peerManager = peerManager,
+                    peerSize = peerSize,
+                    networkMessageParser = networkMessageParser,
+                    networkMessageSerializer = networkMessageSerializer,
+                    connectionManager = connectionManager,
+                    localDownloadedBestBlockHeight = 0,
+                    handleAddrMessage = false
+                )
+                peerAddressManager.listener = peerGroup
+
+                val blockHeaderHasher = DoubleSha256Hasher()
+                val transactionSerializer = BaseTransactionSerializer()
+
+                networkMessageParser.add(AddrMessageParser())
+                networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
+                networkMessageParser.add(InvMessageParser())
+                networkMessageParser.add(GetDataMessageParser())
+                networkMessageParser.add(PingMessageParser())
+                networkMessageParser.add(PongMessageParser())
+                networkMessageParser.add(TransactionMessageParser(transactionSerializer))
+                networkMessageParser.add(VerAckMessageParser())
+                networkMessageParser.add(VersionMessageParser())
+                networkMessageParser.add(RejectMessageParser())
+                networkMessageParser.add(GetAddrMessageParser())
+
+                networkMessageSerializer.add(FilterLoadMessageSerializer())
+                networkMessageSerializer.add(GetBlocksMessageSerializer())
+                networkMessageSerializer.add(InvMessageSerializer())
+                networkMessageSerializer.add(GetDataMessageSerializer())
+                networkMessageSerializer.add(MempoolMessageSerializer())
+                networkMessageSerializer.add(PingMessageSerializer())
+                networkMessageSerializer.add(PongMessageSerializer())
+                networkMessageSerializer.add(TransactionMessageSerializer(transactionSerializer))
+                networkMessageSerializer.add(VerAckMessageSerializer())
+                networkMessageSerializer.add(VersionMessageSerializer())
+                networkMessageSerializer.add(GetAddrMessageSerializer())
+
+                SharedPeerGroupHolder(
+                    peerGroup, peerManager, bloomFilterManager,
+                    networkMessageParser, networkMessageSerializer
+                )
+            }
+        }
+
+        @Synchronized
+        fun releaseSharedPeerGroup(walletId: String, networkType: NetworkType) {
+            val key = "bitcoin-${networkType.name}-$walletId"
+            sharedGroups.remove(key)?.peerGroup?.forceStop()
+        }
 
         /**
          * Gets the name of the BitcoinKit database
@@ -376,6 +486,11 @@ class BitcoinKit : AbstractKit {
          * @param walletId The string wallet ID of the BitcoinKit.
          */
         fun clear(context: Context, networkType: NetworkType, walletId: String) {
+            releaseSharedPeerGroup(walletId, networkType)
+            try {
+                val sharedDbName = "Bitcoin-Shared-${networkType.name}-$walletId"
+                SQLiteDatabase.deleteDatabase(context.getDatabasePath(sharedDbName))
+            } catch (_: Exception) { }
             for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
                 for (purpose in Purpose.values()) try {
                     SQLiteDatabase.deleteDatabase(context.getDatabasePath(getDatabaseName(networkType, walletId, syncMode, purpose)))

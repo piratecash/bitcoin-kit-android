@@ -120,7 +120,7 @@ class CheckpointSyncer(
         }
 
         peerGroup.addPeerGroupListener(this)
-        peerGroup.peerTaskHandler = this
+        peerGroup.addPeerTaskHandler(this)
     }
 
     fun start() {

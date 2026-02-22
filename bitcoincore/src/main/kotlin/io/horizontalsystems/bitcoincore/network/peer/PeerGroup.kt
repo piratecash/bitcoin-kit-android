@@ -13,10 +13,10 @@ import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
-import java.util.logging.Logger
 
-class PeerGroup(
+open class PeerGroup(
     private val hostManager: IPeerAddressManager,
     private val network: Network,
     private val peerManager: PeerManager,
@@ -38,13 +38,30 @@ class PeerGroup(
         fun onPeerReady(peer: Peer) = Unit
     }
 
-    var inventoryItemsHandler: IInventoryItemsHandler? = null
-    var peerTaskHandler: IPeerTaskHandler? = null
+    private val inventoryItemsHandlers = CopyOnWriteArrayList<IInventoryItemsHandler>()
+    private val peerTaskHandlers = CopyOnWriteArrayList<IPeerTaskHandler>()
 
+    fun addInventoryItemsHandler(handler: IInventoryItemsHandler) {
+        inventoryItemsHandlers.add(handler)
+    }
+
+    fun removeInventoryItemsHandler(handler: IInventoryItemsHandler) {
+        inventoryItemsHandlers.remove(handler)
+    }
+
+    fun addPeerTaskHandler(handler: IPeerTaskHandler) {
+        peerTaskHandlers.add(handler)
+    }
+
+    fun removePeerTaskHandler(handler: IPeerTaskHandler) {
+        peerTaskHandlers.remove(handler)
+    }
+
+    @Volatile
     var running = false
         private set
 
-    private val peerGroupListeners = mutableListOf<Listener>()
+    private val peerGroupListeners = CopyOnWriteArrayList<Listener>()
     private val executorService = Executors.newCachedThreadPool()
     private val peerThreadPool = Executors.newCachedThreadPool()
 
@@ -57,7 +74,7 @@ class PeerGroup(
     private var lastLogTime = 0L
     private val logIntervalMs = 60_000L
 
-    fun start() {
+    open fun start() {
         if (running) {
             return
         }
@@ -68,7 +85,7 @@ class PeerGroup(
         connectPeersIfRequired()
     }
 
-    fun stop() {
+    open fun stop() {
         running = false
         peerManager.disconnectAll()
         peerGroupListeners.forEach { it.onStop() }
@@ -82,6 +99,10 @@ class PeerGroup(
 
     fun addPeerGroupListener(listener: Listener) {
         peerGroupListeners.add(listener)
+    }
+
+    fun removePeerGroupListener(listener: Listener) {
+        peerGroupListeners.remove(listener)
     }
 
     fun addPeers(peers: List<String>) {
@@ -152,7 +173,7 @@ class PeerGroup(
 
             hostManager.addIps(null, peerIps)
         } else if (message is InvMessage) {
-            inventoryItemsHandler?.handleInventoryItems(peer, message.inventory)
+            inventoryItemsHandlers.forEach { it.handleInventoryItems(peer, message.inventory) }
         }
         logPeersStatusThrottled()
     }
@@ -173,7 +194,7 @@ class PeerGroup(
     }
 
     override fun onTaskComplete(peer: Peer, task: PeerTask) {
-        peerTaskHandler?.handleCompletedTask(peer, task)
+        peerTaskHandlers.any { it.handleCompletedTask(peer, task) }
     }
 
     //

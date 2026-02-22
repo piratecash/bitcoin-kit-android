@@ -14,6 +14,9 @@ interface SentTransactionDao {
     @Query("select * from SentTransaction where hash = :hash limit 1")
     fun getTransaction(hash: ByteArray): SentTransaction?
 
+    @Query("select * from SentTransaction")
+    fun getAll(): List<SentTransaction>
+
     @Delete
     fun delete(transaction: SentTransaction)
 }

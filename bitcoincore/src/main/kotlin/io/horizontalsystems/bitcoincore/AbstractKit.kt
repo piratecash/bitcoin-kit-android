@@ -50,6 +50,10 @@ abstract class AbstractKit {
         bitcoinCore.stop()
     }
 
+    fun dispose() {
+        bitcoinCore.dispose()
+    }
+
     fun refresh() {
         bitcoinCore.refresh()
     }
@@ -316,6 +320,10 @@ abstract class AbstractKit {
         val address = bitcoinCore.address(receivePublicKey)
         val type = ReplacementType.Cancel(address, receivePublicKey)
         return bitcoinCore.replacementTransactionInfo(transactionHash, type)
+    }
+
+    fun getTransactionsInSendQueue(): List<ByteArray> {
+        return bitcoinCore.getTransactionsInSendQueue()
     }
 
 }

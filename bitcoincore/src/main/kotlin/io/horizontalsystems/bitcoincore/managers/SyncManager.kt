@@ -10,6 +10,7 @@ import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IConnectionManagerListener
 import io.horizontalsystems.bitcoincore.core.IKitStateListener
 import io.horizontalsystems.bitcoincore.core.IStorage
+import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import kotlin.math.max
 
@@ -19,8 +20,9 @@ class SyncManager(
     private val peerGroup: PeerGroup,
     private val storage: IStorage,
     private val syncMode: SyncMode,
-    bestBlockHeight: Int
-) : IApiSyncerListener, IConnectionManagerListener, IBlockSyncListener {
+    bestBlockHeight: Int,
+    private val peerSize: Int
+) : IApiSyncerListener, IConnectionManagerListener, IBlockSyncListener, PeerGroup.Listener {
 
     var listener: IKitStateListener? = null
 
@@ -57,7 +59,7 @@ class SyncManager(
     }
 
     private fun startPeerGroup() {
-        syncState = KitState.Syncing(0.0)
+        syncState = KitState.Syncing(0.0, BitcoinCore.SyncSubstatus.WaitingForPeers(0, peerSize))
         peerGroup.start()
     }
 
@@ -118,7 +120,9 @@ class SyncManager(
         if (peerGroup.running) {
             if (foundTransactionsCount > 0) {
                 foundTransactionsCount = 0
-                syncState = KitState.Syncing(0.0)
+                syncState = KitState.Syncing(0.0, BitcoinCore.SyncSubstatus.WaitingForPeers(
+                    peerGroup.getPeerManager().connected().size, peerSize
+                ))
                 peerGroup.refresh()
             } else {
                 syncState = KitState.Synced
@@ -181,5 +185,21 @@ class SyncManager(
 
     override fun onBlockSyncFinished() {
         syncState = KitState.Synced
+    }
+
+    //
+    // PeerGroup.Listener
+    //
+
+    override fun onPeerConnect(peer: Peer) = updateWaitingForPeersCount()
+
+    override fun onPeerDisconnect(peer: Peer, e: Exception?) = updateWaitingForPeersCount()
+
+    private fun updateWaitingForPeersCount() {
+        val state = syncState
+        if (state is KitState.Syncing && state.substatus is BitcoinCore.SyncSubstatus.WaitingForPeers) {
+            val connected = peerGroup.getPeerManager().connected().size
+            syncState = KitState.Syncing(0.0, BitcoinCore.SyncSubstatus.WaitingForPeers(connected, peerSize))
+        }
     }
 }
