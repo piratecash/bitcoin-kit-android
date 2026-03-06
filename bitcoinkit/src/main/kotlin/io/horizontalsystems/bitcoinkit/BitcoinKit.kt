@@ -287,11 +287,6 @@ class BitcoinKit : AbstractKit {
             Purpose.BIP44 -> {
                 bitcoinCore.addRestoreKeyConverter(Bip44RestoreKeyConverter(base58AddressConverter))
                 bitcoinCore.addRestoreKeyConverter(hodlerPlugin)
-
-                if (extendedKey != null) {
-                    bitcoinCore.addRestoreKeyConverter(Bip49RestoreKeyConverter(base58AddressConverter))
-                    bitcoinCore.addRestoreKeyConverter(Bip84RestoreKeyConverter(bech32AddressConverter))
-                }
             }
 
             Purpose.BIP49 -> {

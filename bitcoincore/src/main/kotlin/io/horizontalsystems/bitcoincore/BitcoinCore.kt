@@ -597,13 +597,13 @@ class BitcoinCore(
     sealed class KitState {
         object Synced : KitState()
         class NotSynced(val exception: Throwable) : KitState()
-        class Syncing(val progress: Double, val substatus: SyncSubstatus? = null) : KitState()
+        class Syncing(val progress: Double, val substatus: SyncSubstatus? = null, val maxBlockHeight: Int? = null) : KitState()
         class ApiSyncing(val transactions: Int) : KitState()
 
         override fun equals(other: Any?) = when {
             this is Synced && other is Synced -> true
             this is NotSynced && other is NotSynced -> exception == other.exception
-            this is Syncing && other is Syncing -> this.progress == other.progress && this.substatus == other.substatus
+            this is Syncing && other is Syncing -> this.progress == other.progress && this.substatus == other.substatus && this.maxBlockHeight == other.maxBlockHeight
             this is ApiSyncing && other is ApiSyncing -> this.transactions == other.transactions
             else -> false
         }
@@ -623,6 +623,7 @@ class BitcoinCore(
             if (this is Syncing) {
                 result = 31 * result + progress.hashCode()
                 result = 31 * result + (substatus?.hashCode() ?: 0)
+                result = 31 * result + (maxBlockHeight?.hashCode() ?: 0)
             }
             if (this is NotSynced) {
                 result = 31 * result + exception.hashCode()
