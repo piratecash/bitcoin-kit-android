@@ -1,0 +1,176 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "piratecashkit",
+    "version": "3b49e4c",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "piratecashkit-3b49e4c.aar",
+          "url": "piratecashkit-3b49e4c.aar",
+          "size": 290507,
+          "sha512": "ebce1effb9980762d4da0dd52ae54ff32c439c4cc16ac5b9602a48a9403a46097f0c46f17b0d1c9297be9a98b255ce08574e75ddb1fe0c4494da3039f67e842d",
+          "sha256": "1ec90275d42d211850a10a0fc0f95b40976e8680edd439296219132530455619",
+          "sha1": "31531561b665b3b8793ccada11f343804178df89",
+          "md5": "aa9742d89f35704c184380e8da7fc5da"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "com.eclipsesource.minimal-json",
+          "module": "minimal-json",
+          "version": {
+            "requires": "0.9.5"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "dashlib",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        },
+        {
+          "group": "de.sfuhrm",
+          "module": "saphir-hash-jca",
+          "version": {
+            "requires": "3.0.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.8.0"
+          }
+        },
+        {
+          "group": "org.bouncycastle",
+          "module": "bcprov-jdk15to18",
+          "version": {
+            "requires": "1.80"
+          }
+        },
+        {
+          "group": "com.github.all3fox",
+          "module": "lyra2",
+          "version": {
+            "requires": "1.3"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "piratecashkit-3b49e4c.aar",
+          "url": "piratecashkit-3b49e4c.aar",
+          "size": 290507,
+          "sha512": "ebce1effb9980762d4da0dd52ae54ff32c439c4cc16ac5b9602a48a9403a46097f0c46f17b0d1c9297be9a98b255ce08574e75ddb1fe0c4494da3039f67e842d",
+          "sha256": "1ec90275d42d211850a10a0fc0f95b40976e8680edd439296219132530455619",
+          "sha1": "31531561b665b3b8793ccada11f343804178df89",
+          "md5": "aa9742d89f35704c184380e8da7fc5da"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "piratecashkit-3b49e4c-sources.jar",
+          "url": "piratecashkit-3b49e4c-sources.jar",
+          "size": 289469,
+          "sha512": "a5e8b7383ecca0a7bb52cd4355359d31d4967108f8949cb1e249c3216d9fac38b1a85eb6969e1c994234f6f9bad6079093a2fbea088a9b602fc8b3b5ffd258b3",
+          "sha256": "d3717668044befd18cd0ca686ff4e234aadc6d32b80ed9a63040df94c576ea95",
+          "sha1": "262980e3a4af4d8ac7cf3db77828125e09c5fd7a",
+          "md5": "9bc1bed30b63f01c949b0272446d06ad"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "litecoinkit",
+    "version": "3b49e4c",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "litecoinkit-3b49e4c.aar",
+          "url": "litecoinkit-3b49e4c.aar",
+          "size": 29333,
+          "sha512": "80728c8d6d821a62e0176f82a8244be90ee90888320d8176a861ed4c5d235be5d42a25148d76d8be178099d842b0aba2bc5e6a6577989d996f52681bcc5bec22",
+          "sha256": "93089369537a37d48940edfbd331e47add8426765f8d48c76166aba6041fdf2a",
+          "sha1": "ea1e13faf97b6ed826d24a60041c610573c2011e",
+          "md5": "0c5e684b9c84d33d193b44c3ba7503b5"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk7",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "litecoinkit-3b49e4c.aar",
+          "url": "litecoinkit-3b49e4c.aar",
+          "size": 29333,
+          "sha512": "80728c8d6d821a62e0176f82a8244be90ee90888320d8176a861ed4c5d235be5d42a25148d76d8be178099d842b0aba2bc5e6a6577989d996f52681bcc5bec22",
+          "sha256": "93089369537a37d48940edfbd331e47add8426765f8d48c76166aba6041fdf2a",
+          "sha1": "ea1e13faf97b6ed826d24a60041c610573c2011e",
+          "md5": "0c5e684b9c84d33d193b44c3ba7503b5"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "litecoinkit-3b49e4c-sources.jar",
+          "url": "litecoinkit-3b49e4c-sources.jar",
+          "size": 37048,
+          "sha512": "a43efd6386d67e5881c7628e5b9c4ff9dba8cf5db1360ec6cc225f6d1a51330f596d89d0b90dcc605b5d61f7840e198774dd2fce4bdd372bcf86f64c8ed2b981",
+          "sha256": "383c7be54daa81b38a352fc8ca883416037a8bbefb0811aff79c4ec1c51d2d25",
+          "sha1": "c57933e2ef79cc8e54cdae922d90413b936ffd9b",
+          "md5": "b72c177c944724da705c5d47afce28ac"
+        }
+      ]
+    }
+  ]
+}

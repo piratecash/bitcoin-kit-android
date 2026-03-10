@@ -1,0 +1,127 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "bitcoincashkit",
+    "version": "3b49e4c",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincashkit-3b49e4c.aar",
+          "url": "bitcoincashkit-3b49e4c.aar",
+          "size": 78281,
+          "sha512": "c364d638e0d6db8084970643b46ee432df24517eb526a33773560d17f0b60299d835fd593ef4f88d094f5a71d687006275c3161b449ce1dcde5939054eb71d1b",
+          "sha256": "0753b6af766997d0465dd4737fae8ce5234c5e3488bd9ff85fb6b193a47509aa",
+          "sha1": "3ae452fccc0c5e75bea95a43fd00d62a5219b31d",
+          "md5": "06b0bf79def803d694239b7d7ad02e22"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3b49e4c"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincashkit-3b49e4c.aar",
+          "url": "bitcoincashkit-3b49e4c.aar",
+          "size": 78281,
+          "sha512": "c364d638e0d6db8084970643b46ee432df24517eb526a33773560d17f0b60299d835fd593ef4f88d094f5a71d687006275c3161b449ce1dcde5939054eb71d1b",
+          "sha256": "0753b6af766997d0465dd4737fae8ce5234c5e3488bd9ff85fb6b193a47509aa",
+          "sha1": "3ae452fccc0c5e75bea95a43fd00d62a5219b31d",
+          "md5": "06b0bf79def803d694239b7d7ad02e22"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "bitcoincashkit-3b49e4c-sources.jar",
+          "url": "bitcoincashkit-3b49e4c-sources.jar",
+          "size": 56585,
+          "sha512": "df356fde32526292259eb8a1b2e77bf293b11c36dcec638655b70d25fee3748a1f6bcc52f689d64176357e1582a42e57ca92375be904ad195f7f13cd9c34dbc7",
+          "sha256": "150b40b7cad3b03fa8e049f30173a222e765f720986e6e073197873cee7cd309",
+          "sha1": "ed4e057f5e92eb27609faf794f002d533b54ad9f",
+          "md5": "7b549d7a3d3f6738a5406f3eb337fce9"
+        }
+      ]
+    }
+  ]
+}
