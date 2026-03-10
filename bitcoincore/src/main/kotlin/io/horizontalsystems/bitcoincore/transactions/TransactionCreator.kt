@@ -1,6 +1,9 @@
 package io.horizontalsystems.bitcoincore.transactions
 
 import io.horizontalsystems.bitcoincore.core.IPluginData
+import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
+import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
+import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
@@ -9,6 +12,7 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.builder.MutableTransaction
 import io.horizontalsystems.bitcoincore.transactions.builder.TransactionBuilder
+import io.horizontalsystems.bitcoincore.transactions.builder.SignedTransactionData
 import io.horizontalsystems.bitcoincore.transactions.builder.TransactionSigner
 
 class TransactionCreator(
@@ -66,12 +70,32 @@ class TransactionCreator(
     }
 
     suspend fun create(mutableTransaction: MutableTransaction): FullTransaction {
-        transactionSigner.sign(mutableTransaction)
+        val signedData = transactionSigner.sign(mutableTransaction)
 
-        val fullTransaction = mutableTransaction.build(transactionSerializer)
+        val fullTransaction = if (signedData != null) {
+            buildFromSignedData(signedData, mutableTransaction)
+        } else {
+            mutableTransaction.build(transactionSerializer)
+        }
+
         processAndSend(fullTransaction)
-
         return fullTransaction
+    }
+
+    private fun buildFromSignedData(
+        signedData: SignedTransactionData,
+        mutableTransaction: MutableTransaction
+    ): FullTransaction {
+        val rawBytes = signedData.serializedTx.hexToByteArray()
+        val deserialized = transactionSerializer.deserialize(
+            BitcoinInputMarkable(rawBytes)
+        )
+        deserialized.header.apply {
+            status = Transaction.Status.NEW
+            isMine = true
+            isOutgoing = mutableTransaction.transaction.isOutgoing
+        }
+        return deserialized
     }
 
     private fun processAndSend(transaction: FullTransaction): FullTransaction {
