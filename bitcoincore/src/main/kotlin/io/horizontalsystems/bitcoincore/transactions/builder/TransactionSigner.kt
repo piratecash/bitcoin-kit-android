@@ -10,15 +10,14 @@ class TransactionSigner(
     private val ecdsaInputSigner: IInputSigner,
     private val schnorrInputSigner: ISchnorrInputSigner
 ) {
-    suspend fun sign(mutableTransaction: MutableTransaction) {
-        (ecdsaInputSigner as? IFullTransactionSigner)?.let { ecdsaInputSigner ->
-            ecdsaInputSigner.signFullTransaction(mutableTransaction)
-            return
+    suspend fun sign(mutableTransaction: MutableTransaction): SignedTransactionData? {
+        (ecdsaInputSigner as? IFullTransactionSigner)?.let { fullSigner ->
+            return fullSigner.signFullTransaction(mutableTransaction)
         }
 
         // Bunch sign added to support Tangem sdk
         if (mutableTransaction.inputsToSign.size > 1 && isAllOutputsOneType(mutableTransaction)) {
-            if (batchSign(mutableTransaction)) return
+            if (batchSign(mutableTransaction)) return null
         }
 
         mutableTransaction.inputsToSign.forEachIndexed { index, inputToSign ->
@@ -28,6 +27,8 @@ class TransactionSigner(
                 ecdsaSign(index, mutableTransaction)
             }
         }
+
+        return null
     }
 
     private suspend fun batchSign(mutableTransaction: MutableTransaction): Boolean {
