@@ -1,0 +1,148 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "dogecoinkit",
+    "version": "fadfbf9",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "fadfbf9"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "fadfbf9"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "dogecoinkit-fadfbf9.aar",
+          "url": "dogecoinkit-fadfbf9.aar",
+          "size": 41029,
+          "sha512": "b622444adae3aac6320b00b64705d9ad4f4ddf3991772ba49f10281f3015402b6b31fbab495cf4d659bf5a972e66713ef9a76e342f40e84b22002ae645e3a5ed",
+          "sha256": "43e9601953948b75778b49253c740968a68417c234626a2804523be2fd742821",
+          "sha1": "6c3db27252d0f1a4ab52e4b2a1568886a44ab158",
+          "md5": "2b6d77cb5f8621cb02cd1c90c13ca842"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk7",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-ktx",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "fadfbf9"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "fadfbf9"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "dogecoinkit-fadfbf9.aar",
+          "url": "dogecoinkit-fadfbf9.aar",
+          "size": 41029,
+          "sha512": "b622444adae3aac6320b00b64705d9ad4f4ddf3991772ba49f10281f3015402b6b31fbab495cf4d659bf5a972e66713ef9a76e342f40e84b22002ae645e3a5ed",
+          "sha256": "43e9601953948b75778b49253c740968a68417c234626a2804523be2fd742821",
+          "sha1": "6c3db27252d0f1a4ab52e4b2a1568886a44ab158",
+          "md5": "2b6d77cb5f8621cb02cd1c90c13ca842"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "dogecoinkit-fadfbf9-sources.jar",
+          "url": "dogecoinkit-fadfbf9-sources.jar",
+          "size": 57007,
+          "sha512": "3c3f06699eae46a7f6d1fff286a17a60209dd28fd718e292b74f214ac9936e2188f70fa973cb787c2bf2ee8fb1c8837b9c75732efc0ab592a760e9eafa84db8e",
+          "sha256": "6ee338abc68fe9359d47885824c9db1ed464759443bbdba809a682f6a0927bbc",
+          "sha1": "ec5b29dfa8d8e1a985d31994f0902b2a8b8fd5ad",
+          "md5": "148784c056db021e14db4c433e2c52b3"
+        }
+      ]
+    }
+  ]
+}
