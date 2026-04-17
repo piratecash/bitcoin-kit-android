@@ -636,7 +636,8 @@ class BitcoinCoreBuilder {
                 sendType = sendType,
                 transactionSerializer = transactionSerializer,
                 allowBroadcastFromUnsyncedPeers = allowBroadcastFromUnsyncedPeers,
-                minConnectedPeerSize = minConnectedPeerSize
+                minConnectedPeerSize = minConnectedPeerSize,
+                logTag = network.logTag,
             )
 
             dustCalculator = dustCalculatorInstance
@@ -766,6 +767,7 @@ class BitcoinCoreBuilder {
         transactionSender?.let {
             bitcoinCore.addPeerSyncListener(SendTransactionsOnPeersSynced(transactionSender))
             bitcoinCore.addPeerTaskHandler(transactionSender)
+            bitcoinCore.addPeerGroupListener(transactionSender)
         }
 
         if (transactionSizeCalculator != null && dustCalculator != null) {
