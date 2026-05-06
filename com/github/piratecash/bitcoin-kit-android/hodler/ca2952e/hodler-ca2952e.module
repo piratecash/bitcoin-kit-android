@@ -1,0 +1,96 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "hodler",
+    "version": "ca2952e",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "hodler-ca2952e.aar",
+          "url": "hodler-ca2952e.aar",
+          "size": 15678,
+          "sha512": "bf56227bb655aeb02ceebcf0e4b06d1a29903dafa4ffe975a7ef4580cb0620ccd474413e37ce2a40aea69775b94df5e115daad78c4e0f8d0152b9ba34a1b7be8",
+          "sha256": "a7f8d56c8a075b8c900af1d608976ea7e34999ad8e68139c3eb6250abd3397a2",
+          "sha1": "466a035f27ce924caac500de9447240698d0998e",
+          "md5": "8209193744a721336fd51640b42335d8"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk7",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "ca2952e"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "hodler-ca2952e.aar",
+          "url": "hodler-ca2952e.aar",
+          "size": 15678,
+          "sha512": "bf56227bb655aeb02ceebcf0e4b06d1a29903dafa4ffe975a7ef4580cb0620ccd474413e37ce2a40aea69775b94df5e115daad78c4e0f8d0152b9ba34a1b7be8",
+          "sha256": "a7f8d56c8a075b8c900af1d608976ea7e34999ad8e68139c3eb6250abd3397a2",
+          "sha1": "466a035f27ce924caac500de9447240698d0998e",
+          "md5": "8209193744a721336fd51640b42335d8"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "hodler-ca2952e-sources.jar",
+          "url": "hodler-ca2952e-sources.jar",
+          "size": 18287,
+          "sha512": "2631e13fe6aa525036bba28935e3ce79d4b1a776bcc54842e51d346bdc620459557e847fb9773bb655dc07f3d82f1c4340e6f9f52231fad92206f8709dc0d9da",
+          "sha256": "a800f5d1c20fa251df4d24495bd202ce3584cc9fb1daf03231533266d2f61370",
+          "sha1": "f733ec12e5ad32c5da39c71638962633dc8e152b",
+          "md5": "3fd468a8979086b1a94a3f9c1dfe1609"
+        }
+      ]
+    }
+  ]
+}

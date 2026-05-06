@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>dogecoinkit</artifactId>
   <versioning>
-    <latest>a54f47e</latest>
-    <release>a54f47e</release>
+    <latest>ca2952e</latest>
+    <release>ca2952e</release>
     <versions>
-      <version>a54f47e</version>
+      <version>ca2952e</version>
     </versions>
-    <lastUpdated>20260506115609</lastUpdated>
+    <lastUpdated>20260506154432</lastUpdated>
   </versioning>
 </metadata>
