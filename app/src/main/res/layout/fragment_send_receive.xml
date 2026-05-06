@@ -14,7 +14,7 @@
 
         <TextView
             android:id="@+id/receiveAddressText"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_marginTop="8dp"
@@ -26,15 +26,54 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <RadioGroup
+            android:id="@+id/receiveTypeGroup"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="8dp"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toStartOf="@+id/receiveAddressButton"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/receiveAddressText">
+
+            <RadioButton
+                android:id="@+id/radioReceivePublic"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Public" />
+
+            <RadioButton
+                android:id="@+id/radioReceiveMweb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MWEB" />
+
+        </RadioGroup>
+
         <Button
             android:id="@+id/receiveAddressButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="36dp"
+            android:layout_marginTop="8dp"
             android:layout_marginEnd="20dp"
             android:text="Receive"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toBottomOf="@+id/receiveAddressText" />
+
+        <TextView
+            android:id="@+id/mwebStatusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:text="MWEB disabled"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/receiveTypeGroup" />
 
         <View
             android:id="@+id/divider"
@@ -46,7 +85,7 @@
             android:background="?android:attr/listDivider"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/receiveAddressButton" />
+            app:layout_constraintTop_toBottomOf="@+id/mwebStatusText" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/sendAddressLayout"
@@ -168,6 +207,48 @@
         </RadioGroup>
 
         <TextView
+            android:id="@+id/sendSourceTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="16dp"
+            android:text="Send source:"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/feePriorityTitle" />
+
+        <RadioGroup
+            android:id="@+id/sendSourceGroup"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:orientation="horizontal"
+            app:layout_constraintBottom_toBottomOf="@+id/sendSourceTitle"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/sendSourceTitle"
+            app:layout_constraintTop_toTopOf="@+id/sendSourceTitle">
+
+            <RadioButton
+                android:id="@+id/radioSendAuto"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Auto" />
+
+            <RadioButton
+                android:id="@+id/radioSendPublic"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Public" />
+
+            <RadioButton
+                android:id="@+id/radioSendMweb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="MWEB" />
+
+        </RadioGroup>
+
+        <TextView
             android:id="@+id/lockTimeIntervalTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -175,7 +256,7 @@
             android:layout_marginTop="24dp"
             android:text="Lock for period"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/feePriorityTitle" />
+            app:layout_constraintTop_toBottomOf="@+id/sendSourceTitle" />
 
         <Spinner
             android:id="@+id/lockTimePeriodValue"

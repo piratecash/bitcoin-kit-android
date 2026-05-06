@@ -42,19 +42,19 @@ abstract class AbstractKit {
     val watchAccount: Boolean
         get() = bitcoinCore.watchAccount
 
-    fun start() {
+    open fun start() {
         bitcoinCore.start()
     }
 
-    fun stop() {
+    open fun stop() {
         bitcoinCore.stop()
     }
 
-    fun dispose() {
+    open fun dispose() {
         bitcoinCore.dispose()
     }
 
-    fun refresh() {
+    open fun refresh() {
         bitcoinCore.refresh()
     }
 

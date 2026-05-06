@@ -33,6 +33,7 @@ import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.models.UsedAddress
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.IMessageParser
@@ -341,6 +342,37 @@ class BitcoinCore(
 
     suspend fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
         return transactionCreator?.create(unspentOutput, address, memo, feeRate, sortType, rbfEnabled) ?: throw CoreError.ReadOnlyCore
+    }
+
+    suspend fun signRawTransaction(
+        rawTransaction: ByteArray,
+        unspentOutputs: List<UnspentOutput>,
+    ): FullTransaction {
+        return transactionCreator?.signRawTransaction(rawTransaction, unspentOutputs) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun serializeTransaction(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
+        return transactionCreator?.serialize(transaction, withWitness) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun processCreatedTransaction(transaction: FullTransaction): FullTransaction {
+        return transactionCreator?.processCreated(transaction) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun processCreatedTransactionLocally(transaction: FullTransaction): FullTransaction {
+        return transactionCreator?.processCreatedLocally(transaction) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun transactionOutput(value: Long, address: String): TransactionOutput {
+        val converted = addressConverter.convert(address)
+        return TransactionOutput(
+            value = value,
+            index = 0,
+            script = converted.lockingScript,
+            type = converted.scriptType,
+            address = converted.stringValue,
+            lockingScriptPayload = converted.lockingScriptPayload,
+        )
     }
 
     fun receiveAddress(): String {
