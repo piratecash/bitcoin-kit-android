@@ -1,0 +1,155 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "dashkit",
+    "version": "3cd5d1b",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3cd5d1b"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "dashkit-3cd5d1b.aar",
+          "url": "dashkit-3cd5d1b.aar",
+          "size": 234253,
+          "sha512": "29b994d4e35fb729ba7539bab20c5c4f93ec1ff8221e65b817c2d0a926a7c5f6f3fa29f0f0505d3b9aac63aa1fd6bdcb6787d386622e0e0d3b4e446cd9c4fee3",
+          "sha256": "da32f0d860c61b2b494c922e160a05555388aa4860bd68186132d95e9a7cd931",
+          "sha1": "d26b4da5ee88aba67546b4c742b3e63fa5968a44",
+          "md5": "cc2d352eb453ab2c172cdd6a4eaaa622"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "com.eclipsesource.minimal-json",
+          "module": "minimal-json",
+          "version": {
+            "requires": "0.9.5"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "dashlib",
+          "version": {
+            "requires": "3cd5d1b"
+          }
+        },
+        {
+          "group": "de.sfuhrm",
+          "module": "saphir-hash-jca",
+          "version": {
+            "requires": "3.0.6"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3cd5d1b"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "dashkit-3cd5d1b.aar",
+          "url": "dashkit-3cd5d1b.aar",
+          "size": 234253,
+          "sha512": "29b994d4e35fb729ba7539bab20c5c4f93ec1ff8221e65b817c2d0a926a7c5f6f3fa29f0f0505d3b9aac63aa1fd6bdcb6787d386622e0e0d3b4e446cd9c4fee3",
+          "sha256": "da32f0d860c61b2b494c922e160a05555388aa4860bd68186132d95e9a7cd931",
+          "sha1": "d26b4da5ee88aba67546b4c742b3e63fa5968a44",
+          "md5": "cc2d352eb453ab2c172cdd6a4eaaa622"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "dashkit-3cd5d1b-sources.jar",
+          "url": "dashkit-3cd5d1b-sources.jar",
+          "size": 277501,
+          "sha512": "18c746eec0a6588c5b02a5b39a5f77dd95bb0e176cf46f59e560f74282b262fcd386d853c9276b4c665a26f120c53df68c46028980c20d855a351149f9f4b568",
+          "sha256": "7363433b10ca5036f1caa859b42b64b6e6a4bd0ffe4b0630e3b52edde4a77a13",
+          "sha1": "0bad159989fabf03d8fda5ad426fbe76896243aa",
+          "md5": "cfd767f7b69a43ab3446fe1adc0bfbdc"
+        }
+      ]
+    }
+  ]
+}

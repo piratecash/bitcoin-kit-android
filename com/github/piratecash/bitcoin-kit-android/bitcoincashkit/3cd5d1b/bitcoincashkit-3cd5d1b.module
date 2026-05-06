@@ -1,0 +1,127 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "bitcoincashkit",
+    "version": "3cd5d1b",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3cd5d1b"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincashkit-3cd5d1b.aar",
+          "url": "bitcoincashkit-3cd5d1b.aar",
+          "size": 79714,
+          "sha512": "a77dcf852e74bafe52251fd6d2184424b90cd225c28d1dde82ecbdcf81d8c431085e44c7e1b3fdd3ff633a4033f6f6016c06fc2bd16a7f22b85b5864e6b1674a",
+          "sha256": "8a5467d5fc8ab4bad2d7d4d1d41f6a43b86b58089ff01d57906fa78b2c813d49",
+          "sha1": "4ed264eaf2473a90189e321d4de7eb29aa511e6b",
+          "md5": "2509851b0f62210b0e766d9572ed7b43"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "3cd5d1b"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincashkit-3cd5d1b.aar",
+          "url": "bitcoincashkit-3cd5d1b.aar",
+          "size": 79714,
+          "sha512": "a77dcf852e74bafe52251fd6d2184424b90cd225c28d1dde82ecbdcf81d8c431085e44c7e1b3fdd3ff633a4033f6f6016c06fc2bd16a7f22b85b5864e6b1674a",
+          "sha256": "8a5467d5fc8ab4bad2d7d4d1d41f6a43b86b58089ff01d57906fa78b2c813d49",
+          "sha1": "4ed264eaf2473a90189e321d4de7eb29aa511e6b",
+          "md5": "2509851b0f62210b0e766d9572ed7b43"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "bitcoincashkit-3cd5d1b-sources.jar",
+          "url": "bitcoincashkit-3cd5d1b-sources.jar",
+          "size": 57460,
+          "sha512": "671d3a6e6934a3e1717fff1d87fb4a6a6cd2085ff3d6283699e99c483995bf7bda0db92c2255069c34e46a5af3a4b303b937ffbd47e076ffb357d6ff0fe9421a",
+          "sha256": "20b7729c2b4b5806522ef3268e94d199d821b0987874c25a49cd2ae60c4b8927",
+          "sha1": "00e659df5b81831e48ce3abfe4bd6c19f4ae27d3",
+          "md5": "4f1c99126963f5d3fc9441df95a7f23d"
+        }
+      ]
+    }
+  ]
+}
