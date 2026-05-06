@@ -33,6 +33,8 @@ internal class LitecoinMwebEngine(
     private val peerAddress: String? = null,
     private val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
     private val spentPollIntervalMillis: Long = SPENT_POLL_INTERVAL_MILLIS,
+    private val localTransactionTtlMillis: Long = LOCAL_TRANSACTION_TTL_MILLIS,
+    private val currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
 ) {
     interface Listener {
         fun onMwebBalanceUpdate(balance: MwebBalance) = Unit
@@ -71,6 +73,8 @@ internal class LitecoinMwebEngine(
     private var nativeVersion: String = ""
     @Volatile
     private var utxos: List<MwebUtxo> = emptyList()
+    @Volatile
+    private var transactionsCache: List<MwebTransaction>? = null
     @Volatile
     private var started = false
     private val utxoSynchronizer = MwebUtxoSynchronizer(
@@ -276,17 +280,19 @@ internal class LitecoinMwebEngine(
                 rawTransaction = rawTransaction,
                 outputIds = createResult.outputIds,
             )
-            val timestamp = System.currentTimeMillis()
-            storage.savePendingTransaction(
-                MwebPendingTransaction(
+            val timestamp = currentTimeMillisProvider()
+            val selectedMwebOutputIds = prepared.selectedMwebUtxos.map { it.outputId }
+            storage.saveBroadcastResult(
+                pendingTransaction = MwebPendingTransaction(
                     rawTransaction = result.rawTransaction,
                     createdOutputIds = result.outputIds,
                     canonicalTransactionHash = result.canonicalTransactionHash,
                     timestamp = timestamp,
-                )
+                ),
+                localTransaction = localTransaction(request, prepared, result, timestamp / 1_000),
+                spentOutputIds = selectedMwebOutputIds,
             )
-            outgoingTransaction(request, prepared, result, timestamp / 1_000)?.let(storage::saveOutgoingTransaction)
-            utxoSynchronizer.markSpent(prepared.selectedMwebUtxos.map { it.outputId })
+            applyUtxoSnapshot(utxoSynchronizer.loadSnapshot())
             result
         }
     }
@@ -344,7 +350,11 @@ internal class LitecoinMwebEngine(
      */
     fun transactions(): List<MwebTransaction> {
         return runOnIoBlocking {
-            stateMutex.withLock { transactionsLocked() }
+            transactionsCache?.takeIf { cached -> cached.none { it.pending } }?.let { return@runOnIoBlocking it }
+
+            val knownUtxos = stateMutex.withLock { utxos }
+            transactions(storage.localTransactions(), knownUtxos)
+                .also { transactionsCache = it }
         }
     }
 
@@ -386,16 +396,34 @@ internal class LitecoinMwebEngine(
         }
     }
 
-    private fun transactionsLocked(): List<MwebTransaction> {
-        val outgoingTransactions = storage.outgoingTransactions()
-        val locallyCreatedOutputIds = outgoingTransactions
+    private fun transactions(
+        localTransactions: List<MwebTransaction>,
+        knownUtxos: List<MwebUtxo>,
+    ): List<MwebTransaction> {
+        val visibleLocalTransactions = pruneStaleLocalTransactions(localTransactions, knownUtxos)
+        val locallyCreatedOutputIds = visibleLocalTransactions
             .flatMap { it.outputIds }
             .toSet()
-        val incomingTransactions = utxos
+        val incomingTransactions = knownUtxos
             .filter { it.addressIndex > 0 && it.outputId !in locallyCreatedOutputIds }
             .map { it.incomingTransaction() }
-        val transactions = incomingTransactions + outgoingTransactions.map { it.withStatusFrom(utxos) }
+        val transactions = incomingTransactions + visibleLocalTransactions.map { it.withStatusFrom(knownUtxos) }
         return transactions.sortedWith(compareByDescending<MwebTransaction> { it.timestamp }.thenByDescending { it.uid })
+    }
+
+    private fun pruneStaleLocalTransactions(
+        localTransactions: List<MwebTransaction>,
+        knownUtxos: List<MwebUtxo>,
+    ): List<MwebTransaction> {
+        val now = currentTimeMillisProvider()
+        val staleBeforeMillis = (now - localTransactionTtlMillis).coerceAtLeast(0)
+        storage.deletePendingTransactionsOlderThan(staleBeforeMillis)
+
+        val staleUids = localTransactions
+            .filter { it.isStale(now / 1_000, knownUtxos) }
+            .map { it.uid }
+        storage.deleteOutgoingTransactions(staleUids)
+        return localTransactions.filter { it.uid !in staleUids }
     }
 
     private fun MwebUtxo.incomingTransaction(): MwebTransaction {
@@ -420,24 +448,36 @@ internal class LitecoinMwebEngine(
         return copy(
             height = createdUtxo?.height ?: height,
             timestamp = createdUtxo?.blockTime?.takeIf { it > 0 } ?: timestamp,
-            pending = createdUtxo == null && height == null,
+            pending = pending && outputIds.isNotEmpty() && createdUtxo == null && height == null,
         )
     }
 
-    private fun outgoingTransaction(
+    private fun MwebTransaction.isStale(now: Long, knownUtxos: List<MwebUtxo>): Boolean {
+        if (!pending || height != null || outputIds.isEmpty()) return false
+        if (knownUtxos.any { it.outputId in outputIds }) return false
+
+        return now - timestamp >= localTransactionTtlMillis / 1_000
+    }
+
+    private fun localTransaction(
         request: MwebSendRequest,
         prepared: PreparedMwebTransaction,
         result: MwebSendResult,
         timestamp: Long,
-    ): MwebTransaction? {
+    ): MwebTransaction {
         val kind = when (request) {
-            is MwebSendRequest.PublicToMweb -> return null
+            is MwebSendRequest.PublicToMweb -> MwebTransactionKind.PublicToMweb
             is MwebSendRequest.MwebToPublic -> MwebTransactionKind.MwebToPublic
             is MwebSendRequest.MwebToMweb -> MwebTransactionKind.MwebToMweb
         }
+        val type = when (request) {
+            is MwebSendRequest.PublicToMweb -> MwebTransactionType.Incoming
+            is MwebSendRequest.MwebToPublic,
+            is MwebSendRequest.MwebToMweb -> MwebTransactionType.Outgoing
+        }
         return MwebTransaction(
-            uid = "mweb-outgoing:${result.canonicalTransactionHash ?: result.outputIds.firstOrNull() ?: timestamp}",
-            type = MwebTransactionType.Outgoing,
+            uid = "mweb-${type.name.lowercase()}:${result.canonicalTransactionHash ?: result.outputIds.firstOrNull() ?: timestamp}",
+            type = type,
             kind = kind,
             amount = request.value,
             fee = prepared.normalFee + prepared.mwebFee,
@@ -447,7 +487,7 @@ internal class LitecoinMwebEngine(
             inputOutputIds = prepared.selectedMwebUtxos.map { it.outputId },
             height = null,
             timestamp = timestamp,
-            pending = true,
+            pending = result.outputIds.isNotEmpty(),
         )
     }
 
@@ -486,6 +526,7 @@ internal class LitecoinMwebEngine(
     private fun applyUtxoSnapshot(snapshot: MwebUtxoSnapshot, notify: Boolean = true) {
         utxos = snapshot.utxos
         balance = snapshot.balance
+        transactionsCache = null
         if (!notify) return
 
         coroutineScope.launch(dispatcherProvider.callback) {
@@ -506,6 +547,7 @@ internal class LitecoinMwebEngine(
 
     companion object {
         private const val SPENT_POLL_INTERVAL_MILLIS = 60_000L
+        private const val LOCAL_TRANSACTION_TTL_MILLIS = 24 * 60 * 60 * 1_000L
 
         fun clear(context: Context, networkType: LitecoinKit.NetworkType, walletId: String) {
             MwebFiles.clear(context.applicationContext, networkType, walletId)

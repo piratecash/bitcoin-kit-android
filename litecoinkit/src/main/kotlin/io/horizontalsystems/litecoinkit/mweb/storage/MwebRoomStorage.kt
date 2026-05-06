@@ -68,12 +68,31 @@ class MwebRoomStorage(
         database.pendingTransactionDao.save(pendingTransaction.toEntity())
     }
 
-    fun outgoingTransactions(): List<MwebTransaction> {
-        return database.outgoingTransactionDao.outgoingTransactions().map { it.toTransaction() }
+    fun localTransactions(): List<MwebTransaction> {
+        return database.outgoingTransactionDao.outgoingTransactions().mapNotNull { it.toTransaction() }
     }
 
-    fun saveOutgoingTransaction(transaction: MwebTransaction) {
-        database.outgoingTransactionDao.save(transaction.toOutgoingEntity())
+    fun saveBroadcastResult(
+        pendingTransaction: MwebPendingTransaction,
+        localTransaction: MwebTransaction?,
+        spentOutputIds: List<String>,
+    ) {
+        database.runInTransaction {
+            database.pendingTransactionDao.save(pendingTransaction.toEntity())
+            localTransaction?.let { database.outgoingTransactionDao.save(it.toOutgoingEntity()) }
+            if (spentOutputIds.isNotEmpty()) {
+                database.utxoDao.markSpent(spentOutputIds)
+            }
+        }
+    }
+
+    fun deleteOutgoingTransactions(uids: List<String>) {
+        if (uids.isEmpty()) return
+        database.outgoingTransactionDao.delete(uids)
+    }
+
+    fun deletePendingTransactionsOlderThan(timestamp: Long) {
+        database.pendingTransactionDao.deleteOlderThan(timestamp)
     }
 
     private fun MwebAddressEntity.toRecord(): MwebAddressRecord {
@@ -134,14 +153,17 @@ class MwebRoomStorage(
         )
     }
 
-    private fun MwebOutgoingTransactionEntity.toTransaction(): MwebTransaction {
+    private fun MwebOutgoingTransactionEntity.toTransaction(): MwebTransaction? {
+        val transactionType = safeValueOf<MwebTransactionType>(type) ?: return null
+        val transactionKind = safeValueOf<MwebTransactionKind>(kind) ?: return null
+
         return MwebTransaction(
             uid = uid,
-            type = MwebTransactionType.Outgoing,
-            kind = MwebTransactionKind.valueOf(kind),
+            type = transactionType,
+            kind = transactionKind,
             amount = amount,
             fee = fee,
-            address = destinationAddress,
+            address = destinationAddress?.takeIf { it.isNotBlank() },
             canonicalTransactionHash = canonicalTransactionHash,
             outputIds = createdOutputIds,
             inputOutputIds = spentOutputIds,
@@ -154,14 +176,19 @@ class MwebRoomStorage(
     private fun MwebTransaction.toOutgoingEntity(): MwebOutgoingTransactionEntity {
         return MwebOutgoingTransactionEntity(
             uid = uid,
+            type = type.name,
             kind = kind.name,
             amount = amount,
-            fee = fee ?: 0,
-            destinationAddress = address.orEmpty(),
+            fee = fee,
+            destinationAddress = address,
             canonicalTransactionHash = canonicalTransactionHash,
             createdOutputIds = outputIds,
             spentOutputIds = inputOutputIds,
             timestamp = timestamp,
         )
+    }
+
+    private inline fun <reified T : Enum<T>> safeValueOf(value: String): T? {
+        return enumValues<T>().firstOrNull { it.name == value }
     }
 }

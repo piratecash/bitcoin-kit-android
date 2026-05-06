@@ -292,18 +292,26 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun send_publicToMweb_doesNotSaveOutgoingTransaction() = runBlocking {
+    fun send_publicToMweb_savesIncomingLocalTransaction() = runBlocking {
+        val destination = mwebDestination()
         val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
         val engine = engineWith(FakeDaemonClient())
         engine.start()
 
         engine.send(
-            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            request = MwebSendRequest.PublicToMweb(destination, 1_000, 1),
             publicOptions = publicOptions(),
             publicTransactionBridge = bridge,
         )
 
-        assertTrue(engine.transactions().none { it.type == MwebTransactionType.Outgoing })
+        val transaction = engine.transactions().single()
+        assertEquals(MwebTransactionType.Incoming, transaction.type)
+        assertEquals(MwebTransactionKind.PublicToMweb, transaction.kind)
+        assertEquals(1_000L, transaction.amount)
+        assertEquals(destination, transaction.address)
+        assertEquals("test-transaction", transaction.canonicalTransactionHash)
+        assertEquals(listOf("created-output"), transaction.outputIds)
+        assertTrue(transaction.pending)
     }
 
     @Test
@@ -326,6 +334,80 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(11, outgoing.height)
         assertEquals(1_100L, outgoing.timestamp)
         assertFalse(outgoing.pending)
+    }
+
+    @Test
+    fun transactions_publicToMwebCreatedOutput_updatesLocalTransactionWithoutDuplicateIncoming() = runBlocking {
+        val destination = mwebDestination()
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.PublicToMweb(destination, 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        daemonClient.emitUtxo(MwebUtxo("created-output", destination, 2, 1_000, 11, 1_100, spent = false))
+        waitUntil { engine.mwebUtxos().any { it.outputId == "created-output" } }
+
+        val transactions = engine.transactions()
+        val transaction = transactions.single()
+        assertEquals(MwebTransactionType.Incoming, transaction.type)
+        assertEquals(MwebTransactionKind.PublicToMweb, transaction.kind)
+        assertEquals(11, transaction.height)
+        assertEquals(1_100L, transaction.timestamp)
+        assertFalse(transaction.pending)
+    }
+
+    @Test
+    fun transactions_mwebToPublicWithoutCreatedMwebOutput_doesNotStayPending() = runBlocking {
+        val bridge = FakePublicTransactionBridge()
+        val engine = engineWith(
+            daemonClient = FakeDaemonClient(
+                status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100, 95, 1_000, spent = false)),
+                dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+                createdOutputIds = emptyList(),
+            ),
+        )
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        val transaction = engine.transactions().first { it.kind == MwebTransactionKind.MwebToPublic }
+        assertEquals(MwebTransactionKind.MwebToPublic, transaction.kind)
+        assertEquals(emptyList<String>(), transaction.outputIds)
+        assertFalse(transaction.pending)
+    }
+
+    @Test
+    fun transactions_stalePendingLocalTransaction_prunesTransactionAndPendingRaw() = runBlocking {
+        var now = 1_000_000L
+        val destination = mwebDestination()
+        val engine = engineWith(
+            daemonClient = FakeDaemonClient(
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+                dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            ),
+            localTransactionTtlMillis = 1_000L,
+            currentTimeMillisProvider = { now },
+        )
+        engine.start()
+        engine.send(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+
+        assertEquals(1, engine.transactions().count { it.type == MwebTransactionType.Outgoing })
+        assertEquals(1, engine.pendingTransactions().size)
+
+        now += 2_000L
+
+        assertTrue(engine.transactions().none { it.type == MwebTransactionType.Outgoing })
+        assertTrue(engine.pendingTransactions().isEmpty())
     }
 
     @Test
@@ -480,6 +562,8 @@ class LitecoinMwebEngineLifecycleTest {
     private fun engineWith(
         daemonClient: MwebDaemonClient,
         spentPollIntervalMillis: Long = 60_000L,
+        localTransactionTtlMillis: Long = 24 * 60 * 60 * 1_000L,
+        currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
     ): LitecoinMwebEngine {
         val walletId = "mweb-test-${System.nanoTime()}"
         walletIds.add(walletId)
@@ -490,6 +574,8 @@ class LitecoinMwebEngineLifecycleTest {
             dispatcherProvider = dispatcherProvider,
             daemonClientFactory = { _: MwebDaemonConfig -> daemonClient },
             spentPollIntervalMillis = spentPollIntervalMillis,
+            localTransactionTtlMillis = localTransactionTtlMillis,
+            currentTimeMillisProvider = currentTimeMillisProvider,
         )
         engines.add(engine)
         return engine
@@ -501,6 +587,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val streamUtxos: List<MwebUtxo> = emptyList(),
         spentOutputIds: List<String> = emptyList(),
         private val dryRunRawTransaction: ByteArray? = null,
+        private val createdOutputIds: List<String> = listOf("created-output"),
     ) : MwebDaemonClient {
         private val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         var spentOutputIds: List<String> = spentOutputIds
@@ -560,7 +647,7 @@ class LitecoinMwebEngineLifecycleTest {
             createRequests.add(CreateRequest(rawTransaction, dryRun))
             return MwebCreateResult(
                 rawTransaction = dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction,
-                outputIds = listOf("created-output"),
+                outputIds = createdOutputIds,
             )
         }
 

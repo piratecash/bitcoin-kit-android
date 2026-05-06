@@ -48,6 +48,9 @@ interface MwebPendingTransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(pendingTransaction: MwebPendingTransactionEntity)
+
+    @Query("DELETE FROM MwebPendingTransaction WHERE timestamp < :timestamp")
+    fun deleteOlderThan(timestamp: Long)
 }
 
 @Dao
@@ -57,4 +60,7 @@ interface MwebOutgoingTransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(transaction: MwebOutgoingTransactionEntity)
+
+    @Query("DELETE FROM MwebOutgoingTransaction WHERE uid IN (:uids)")
+    fun delete(uids: List<String>)
 }

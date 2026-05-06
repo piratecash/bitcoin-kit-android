@@ -70,10 +70,11 @@ data class MwebPendingTransactionEntity(
 @Entity(tableName = "MwebOutgoingTransaction")
 data class MwebOutgoingTransactionEntity(
     @PrimaryKey val uid: String,
+    val type: String,
     val kind: String,
     val amount: Long,
-    val fee: Long,
-    val destinationAddress: String,
+    val fee: Long?,
+    val destinationAddress: String?,
     val canonicalTransactionHash: String?,
     val createdOutputIds: List<String>,
     val spentOutputIds: List<String>,
