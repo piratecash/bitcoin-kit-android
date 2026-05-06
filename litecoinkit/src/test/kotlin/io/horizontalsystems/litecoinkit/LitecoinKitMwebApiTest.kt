@@ -73,6 +73,14 @@ class LitecoinKitMwebApiTest {
         }
     }
 
+    @Test
+    fun clearMweb_publicKitActive_doesNotClearPublicData() {
+        val walletId = walletId()
+        litecoinKit(walletId = walletId)
+
+        LitecoinKit.clearMweb(context, LitecoinKit.NetworkType.MainNet, walletId)
+    }
+
     private fun litecoinKit(
         walletId: String = walletId(),
         mwebConfig: MwebConfig? = null,

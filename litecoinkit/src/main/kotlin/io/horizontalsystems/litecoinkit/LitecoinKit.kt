@@ -781,6 +781,16 @@ class LitecoinKit : AbstractKit {
             }
         }
 
+        /**
+         * Deletes only MWEB scan storage and daemon data for [walletId].
+         *
+         * Use this when the MWEB restore point changes without resetting public
+         * Litecoin BIP44/BIP49/BIP84/BIP86 databases.
+         */
+        fun clearMweb(context: Context, networkType: NetworkType, walletId: String) {
+            LitecoinMwebEngine.clear(context, networkType, walletId)
+        }
+
         private fun network(networkType: NetworkType) = when (networkType) {
             NetworkType.MainNet -> MainNetLitecoin()
             NetworkType.TestNet -> TestNetLitecoin()
