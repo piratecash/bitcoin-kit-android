@@ -8,6 +8,7 @@ import io.horizontalsystems.litecoinkit.mweb.MwebPendingTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebSendInfo
 import io.horizontalsystems.litecoinkit.mweb.MwebSendResult
 import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
+import io.horizontalsystems.litecoinkit.mweb.MwebTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 
 /** Selects canonical Litecoin or MWEB receive address generation. */
@@ -78,4 +79,5 @@ data class LitecoinMwebState(
     val debugInfo: MwebDebugInfo,
     val utxos: List<MwebUtxo>,
     val pendingTransactions: List<MwebPendingTransaction>,
+    val transactions: List<MwebTransaction>,
 )

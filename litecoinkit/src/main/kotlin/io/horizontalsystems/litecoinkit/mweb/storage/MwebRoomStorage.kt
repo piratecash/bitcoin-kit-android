@@ -1,6 +1,9 @@
 package io.horizontalsystems.litecoinkit.mweb.storage
 
 import io.horizontalsystems.litecoinkit.mweb.MwebPendingTransaction
+import io.horizontalsystems.litecoinkit.mweb.MwebTransaction
+import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
+import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
 import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressRecord
@@ -65,6 +68,14 @@ class MwebRoomStorage(
         database.pendingTransactionDao.save(pendingTransaction.toEntity())
     }
 
+    fun outgoingTransactions(): List<MwebTransaction> {
+        return database.outgoingTransactionDao.outgoingTransactions().map { it.toTransaction() }
+    }
+
+    fun saveOutgoingTransaction(transaction: MwebTransaction) {
+        database.outgoingTransactionDao.save(transaction.toOutgoingEntity())
+    }
+
     private fun MwebAddressEntity.toRecord(): MwebAddressRecord {
         return MwebAddressRecord(index = index, address = address, used = used)
     }
@@ -119,6 +130,37 @@ class MwebRoomStorage(
             rawTransaction = rawTransaction,
             createdOutputIds = createdOutputIds,
             canonicalTransactionHash = canonicalTransactionHash,
+            timestamp = timestamp,
+        )
+    }
+
+    private fun MwebOutgoingTransactionEntity.toTransaction(): MwebTransaction {
+        return MwebTransaction(
+            uid = uid,
+            type = MwebTransactionType.Outgoing,
+            kind = MwebTransactionKind.valueOf(kind),
+            amount = amount,
+            fee = fee,
+            address = destinationAddress,
+            canonicalTransactionHash = canonicalTransactionHash,
+            outputIds = createdOutputIds,
+            inputOutputIds = spentOutputIds,
+            height = null,
+            timestamp = timestamp,
+            pending = true,
+        )
+    }
+
+    private fun MwebTransaction.toOutgoingEntity(): MwebOutgoingTransactionEntity {
+        return MwebOutgoingTransactionEntity(
+            uid = uid,
+            kind = kind.name,
+            amount = amount,
+            fee = fee ?: 0,
+            destinationAddress = address.orEmpty(),
+            canonicalTransactionHash = canonicalTransactionHash,
+            createdOutputIds = outputIds,
+            spentOutputIds = inputOutputIds,
             timestamp = timestamp,
         )
     }

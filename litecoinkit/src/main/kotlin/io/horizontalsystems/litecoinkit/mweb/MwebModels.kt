@@ -157,6 +157,34 @@ data class MwebPendingTransaction(
     }
 }
 
+/** User-visible MWEB transaction history item. */
+data class MwebTransaction(
+    val uid: String,
+    val type: MwebTransactionType,
+    val kind: MwebTransactionKind,
+    val amount: Long,
+    val fee: Long?,
+    val address: String?,
+    val canonicalTransactionHash: String?,
+    val outputIds: List<String>,
+    val inputOutputIds: List<String>,
+    val height: Int?,
+    val timestamp: Long,
+    val pending: Boolean,
+)
+
+enum class MwebTransactionType {
+    Incoming,
+    Outgoing,
+}
+
+enum class MwebTransactionKind {
+    Incoming,
+    PublicToMweb,
+    MwebToPublic,
+    MwebToMweb,
+}
+
 /**
  * MWEB output known to the wallet. `address` can be empty for daemon records
  * that do not map to a locally cached receive/change address.

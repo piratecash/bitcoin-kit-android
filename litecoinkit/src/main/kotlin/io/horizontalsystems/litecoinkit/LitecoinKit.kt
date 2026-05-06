@@ -284,6 +284,7 @@ class LitecoinKit : AbstractKit {
                 debugInfo = engine.debugInfo(),
                 utxos = engine.mwebUtxos(),
                 pendingTransactions = engine.pendingTransactions(),
+                transactions = engine.transactions(),
             )
         }
 

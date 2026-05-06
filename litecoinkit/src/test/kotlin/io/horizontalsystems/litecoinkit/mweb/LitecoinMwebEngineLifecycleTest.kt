@@ -26,6 +26,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -202,6 +203,129 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertTrue(engine.mwebUtxos().first().spent)
         assertEquals(MwebBalance(confirmed = 0, unconfirmed = 0), engine.balance)
+    }
+
+    @Test
+    fun transactions_receiveUtxo_returnsIncoming() {
+        val engine = engineWith(
+            FakeDaemonClient(
+                streamUtxos = listOf(MwebUtxo("receive-output", "receive-address", 2, 123, 10, 1_000, spent = false)),
+            )
+        )
+
+        engine.start()
+        waitUntil { engine.transactions().isNotEmpty() }
+
+        val transaction = engine.transactions().single()
+        assertEquals("mweb-incoming:receive-output", transaction.uid)
+        assertEquals(MwebTransactionType.Incoming, transaction.type)
+        assertEquals(MwebTransactionKind.Incoming, transaction.kind)
+        assertEquals(123L, transaction.amount)
+        assertEquals("receive-address", transaction.address)
+        assertEquals(listOf("receive-output"), transaction.outputIds)
+        assertEquals(10, transaction.height)
+        assertEquals(1_000L, transaction.timestamp)
+        assertFalse(transaction.pending)
+    }
+
+    @Test
+    fun transactions_changeUtxo_doesNotReturnIncoming() {
+        val engine = engineWith(
+            FakeDaemonClient(
+                streamUtxos = listOf(MwebUtxo("change-output", "", 0, 123, 10, 1_000, spent = false)),
+            )
+        )
+
+        engine.start()
+        waitUntil { engine.mwebUtxos().isNotEmpty() }
+
+        assertTrue(engine.transactions().isEmpty())
+    }
+
+    @Test
+    fun send_mwebToMweb_savesOutgoingTransaction() = runBlocking {
+        val destination = mwebDestination()
+        val engine = engineWith(
+            FakeDaemonClient(
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+                dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            )
+        )
+        engine.start()
+
+        engine.send(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+
+        val transaction = engine.transactions().first { it.type == MwebTransactionType.Outgoing }
+        assertEquals(MwebTransactionKind.MwebToMweb, transaction.kind)
+        assertEquals(50L, transaction.amount)
+        assertEquals(0L, transaction.fee)
+        assertEquals(destination, transaction.address)
+        assertEquals("test-transaction", transaction.canonicalTransactionHash)
+        assertEquals(listOf("created-output"), transaction.outputIds)
+        assertEquals(listOf(SELECTED_OUTPUT_ID), transaction.inputOutputIds)
+        assertTrue(transaction.pending)
+    }
+
+    @Test
+    fun send_mwebToPublic_savesOutgoingTransactionWithCanonicalHash() = runBlocking {
+        val bridge = FakePublicTransactionBridge()
+        val engine = engineWith(
+            FakeDaemonClient(
+                status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100, 95, 1_000, spent = false)),
+                dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            )
+        )
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        val transaction = engine.transactions().first { it.type == MwebTransactionType.Outgoing }
+        assertEquals(MwebTransactionKind.MwebToPublic, transaction.kind)
+        assertEquals(50L, transaction.amount)
+        assertEquals(PUBLIC_DESTINATION, transaction.address)
+        assertEquals("test-transaction", transaction.canonicalTransactionHash)
+    }
+
+    @Test
+    fun send_publicToMweb_doesNotSaveOutgoingTransaction() = runBlocking {
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val engine = engineWith(FakeDaemonClient())
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertTrue(engine.transactions().none { it.type == MwebTransactionType.Outgoing })
+    }
+
+    @Test
+    fun transactions_createdOutputFromOutgoing_doesNotReturnIncoming() = runBlocking {
+        val destination = mwebDestination()
+        val daemonClient = FakeDaemonClient(
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+        daemonClient.emitUtxo(MwebUtxo("created-output", destination, 2, 50, 11, 1_100, spent = false))
+        waitUntil { engine.mwebUtxos().any { it.outputId == "created-output" } }
+
+        val transactions = engine.transactions()
+        val outgoing = transactions.first { it.type == MwebTransactionType.Outgoing }
+        assertFalse(transactions.any { it.uid == "mweb-incoming:created-output" })
+        assertEquals(11, outgoing.height)
+        assertEquals(1_100L, outgoing.timestamp)
+        assertFalse(outgoing.pending)
     }
 
     @Test
@@ -388,6 +512,7 @@ class LitecoinMwebEngineLifecycleTest {
         var stopCount = 0
             private set
         private var streamed = false
+        private var utxoHandler: ((MwebUtxo) -> Unit)? = null
         private var utxoErrorHandler: ((Throwable) -> Unit)? = null
 
         override fun start(statusTimeoutMillis: Long): MwebDaemonStatus {
@@ -412,12 +537,17 @@ class LitecoinMwebEngineLifecycleTest {
 
         override fun utxos(fromHeight: Int, onUtxo: (MwebUtxo) -> Unit, onError: (Throwable) -> Unit): Closeable {
             utxoFromHeights.add(fromHeight)
+            utxoHandler = onUtxo
             utxoErrorHandler = onError
             if (!streamed) {
                 streamUtxos.forEach(onUtxo)
                 streamed = true
             }
             return Closeable { closedUtxoStreams += 1 }
+        }
+
+        fun emitUtxo(utxo: MwebUtxo) {
+            utxoHandler?.invoke(utxo)
         }
 
         fun emitUtxoError(error: Throwable) {

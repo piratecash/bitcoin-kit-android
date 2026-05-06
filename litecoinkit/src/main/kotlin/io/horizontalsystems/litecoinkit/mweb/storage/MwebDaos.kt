@@ -49,3 +49,12 @@ interface MwebPendingTransactionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(pendingTransaction: MwebPendingTransactionEntity)
 }
+
+@Dao
+interface MwebOutgoingTransactionDao {
+    @Query("SELECT * FROM MwebOutgoingTransaction ORDER BY timestamp DESC, uid DESC")
+    fun outgoingTransactions(): List<MwebOutgoingTransactionEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun save(transaction: MwebOutgoingTransactionEntity)
+}

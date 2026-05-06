@@ -276,14 +276,16 @@ internal class LitecoinMwebEngine(
                 rawTransaction = rawTransaction,
                 outputIds = createResult.outputIds,
             )
+            val timestamp = System.currentTimeMillis()
             storage.savePendingTransaction(
                 MwebPendingTransaction(
                     rawTransaction = result.rawTransaction,
                     createdOutputIds = result.outputIds,
                     canonicalTransactionHash = result.canonicalTransactionHash,
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = timestamp,
                 )
             )
+            outgoingTransaction(request, prepared, result, timestamp / 1_000)?.let(storage::saveOutgoingTransaction)
             utxoSynchronizer.markSpent(prepared.selectedMwebUtxos.map { it.outputId })
             result
         }
@@ -334,6 +336,18 @@ internal class LitecoinMwebEngine(
         }
     }
 
+    /**
+     * Returns user-visible MWEB history built from local sends and received UTXOs.
+     *
+     * This is a synchronous wrapper over blocking storage/state work; do not call from
+     * Android main thread.
+     */
+    fun transactions(): List<MwebTransaction> {
+        return runOnIoBlocking {
+            stateMutex.withLock { transactionsLocked() }
+        }
+    }
+
     private fun createDaemonClient(): MwebDaemonClient {
         return MwebDaemonErrorMapper.map {
             daemonClientFactory.create(
@@ -370,6 +384,71 @@ internal class LitecoinMwebEngine(
                 client.create(rawTemplate, feeRate, dryRun = true).rawTransaction
             }
         }
+    }
+
+    private fun transactionsLocked(): List<MwebTransaction> {
+        val outgoingTransactions = storage.outgoingTransactions()
+        val locallyCreatedOutputIds = outgoingTransactions
+            .flatMap { it.outputIds }
+            .toSet()
+        val incomingTransactions = utxos
+            .filter { it.addressIndex > 0 && it.outputId !in locallyCreatedOutputIds }
+            .map { it.incomingTransaction() }
+        val transactions = incomingTransactions + outgoingTransactions.map { it.withStatusFrom(utxos) }
+        return transactions.sortedWith(compareByDescending<MwebTransaction> { it.timestamp }.thenByDescending { it.uid })
+    }
+
+    private fun MwebUtxo.incomingTransaction(): MwebTransaction {
+        return MwebTransaction(
+            uid = "mweb-incoming:$outputId",
+            type = MwebTransactionType.Incoming,
+            kind = MwebTransactionKind.Incoming,
+            amount = value,
+            fee = null,
+            address = address.takeIf { it.isNotBlank() },
+            canonicalTransactionHash = null,
+            outputIds = listOf(outputId),
+            inputOutputIds = emptyList(),
+            height = height.takeIf { it > 0 },
+            timestamp = blockTime,
+            pending = !confirmed,
+        )
+    }
+
+    private fun MwebTransaction.withStatusFrom(knownUtxos: List<MwebUtxo>): MwebTransaction {
+        val createdUtxo = knownUtxos.firstOrNull { it.outputId in outputIds && it.confirmed }
+        return copy(
+            height = createdUtxo?.height ?: height,
+            timestamp = createdUtxo?.blockTime?.takeIf { it > 0 } ?: timestamp,
+            pending = createdUtxo == null && height == null,
+        )
+    }
+
+    private fun outgoingTransaction(
+        request: MwebSendRequest,
+        prepared: PreparedMwebTransaction,
+        result: MwebSendResult,
+        timestamp: Long,
+    ): MwebTransaction? {
+        val kind = when (request) {
+            is MwebSendRequest.PublicToMweb -> return null
+            is MwebSendRequest.MwebToPublic -> MwebTransactionKind.MwebToPublic
+            is MwebSendRequest.MwebToMweb -> MwebTransactionKind.MwebToMweb
+        }
+        return MwebTransaction(
+            uid = "mweb-outgoing:${result.canonicalTransactionHash ?: result.outputIds.firstOrNull() ?: timestamp}",
+            type = MwebTransactionType.Outgoing,
+            kind = kind,
+            amount = request.value,
+            fee = prepared.normalFee + prepared.mwebFee,
+            address = request.address,
+            canonicalTransactionHash = result.canonicalTransactionHash,
+            outputIds = result.outputIds,
+            inputOutputIds = prepared.selectedMwebUtxos.map { it.outputId },
+            height = null,
+            timestamp = timestamp,
+            pending = true,
+        )
     }
 
     private suspend fun signPublicInputs(
