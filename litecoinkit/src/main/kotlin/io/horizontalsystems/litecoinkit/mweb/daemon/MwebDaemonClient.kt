@@ -12,6 +12,9 @@ interface MwebDaemonClient {
     fun start(statusTimeoutMillis: Long = DEFAULT_STATUS_TIMEOUT_MILLIS): MwebDaemonStatus
     fun stop()
     fun status(statusTimeoutMillis: Long = DEFAULT_STATUS_TIMEOUT_MILLIS): MwebDaemonStatus
+    /**
+     * Returns addresses for the inclusive index range.
+     */
     fun addresses(fromIndex: Int, toIndex: Int): List<String>
     fun utxos(fromHeight: Int, onUtxo: (MwebUtxo) -> Unit, onError: (Throwable) -> Unit): Closeable
     fun spent(outputIds: List<String>): List<String>

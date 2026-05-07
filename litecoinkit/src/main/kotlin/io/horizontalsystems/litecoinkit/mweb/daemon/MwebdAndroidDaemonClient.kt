@@ -61,7 +61,12 @@ private class MwebdAndroidDaemonClient(
 
     override fun addresses(fromIndex: Int, toIndex: Int): List<String> {
         val addresses = requireDaemon()
-            .addresses(config.accountKeys.scanSecret, config.accountKeys.spendPublicKey, fromIndex.toLong(), toIndex.toLong())
+            .addresses(
+                config.accountKeys.scanSecret,
+                config.accountKeys.spendPublicKey,
+                fromIndex.toLong(),
+                toIndex.toMwebdExclusiveToIndex(),
+            )
             .toKotlinList()
         addresses.forEachIndexed { offset, address ->
             addressIndexes[address] = fromIndex + offset
@@ -178,3 +183,5 @@ private class MwebdAndroidDaemonClient(
         const val THREAD_NAME = "litecoin-mwebd"
     }
 }
+
+internal fun Int.toMwebdExclusiveToIndex(): Long = toLong() + 1L

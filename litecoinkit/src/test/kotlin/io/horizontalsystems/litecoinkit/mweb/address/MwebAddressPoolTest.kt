@@ -33,6 +33,14 @@ class MwebAddressPoolTest {
     }
 
     @Test
+    fun addresses_changeAndFirstReceiveRange_requestsInclusiveRange() {
+        val addresses = addressPool.addresses(0, 1)
+
+        assertEquals(listOf(daemonClient.addressAt(0), daemonClient.addressAt(1)), addresses)
+        assertEquals(listOf(0 to 1), daemonClient.addressRequests)
+    }
+
+    @Test
     fun addresses_cachedRange_requestsOnlyMissingTail() {
         addressPool.receiveAddress()
         val addresses = addressPool.addresses(1, 3)
