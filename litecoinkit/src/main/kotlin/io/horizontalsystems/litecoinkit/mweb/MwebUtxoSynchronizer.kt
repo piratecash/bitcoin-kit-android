@@ -1,6 +1,7 @@
 package io.horizontalsystems.litecoinkit.mweb
 
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
+import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,6 +22,7 @@ internal class MwebUtxoSynchronizer(
     private val activeClientProvider: () -> MwebDaemonClient?,
     private val isActiveClient: (MwebDaemonClient) -> Boolean,
     private val onNativeUnavailable: () -> Unit,
+    private val onStatus: (MwebDaemonStatus) -> Unit,
     private val onSnapshot: (MwebUtxoSnapshot) -> Unit,
 ) {
     private var spentPollJob: Job? = null
@@ -61,6 +63,7 @@ internal class MwebUtxoSynchronizer(
             client.utxos(
                 fromHeight = syncStateProvider().mwebUtxosHeight.takeIf { it > 0 } ?: restoreHeight,
                 onUtxo = ::onUtxo,
+                onComplete = { onUtxoStreamComplete(client) },
                 onError = ::onUtxoStreamError,
             )
         }
@@ -111,6 +114,20 @@ internal class MwebUtxoSynchronizer(
                 val client = activeClient ?: return@withLock
                 if (!isActiveClient(client)) return@withLock
                 startUtxoStream(client)
+            }
+        }
+    }
+
+    private fun onUtxoStreamComplete(streamClient: MwebDaemonClient) {
+        coroutineScope.launch {
+            stateMutex.withLock {
+                if (!isActiveClient(streamClient)) return@withLock
+
+                val status = MwebDaemonErrorMapper.mapSuspend {
+                    streamClient.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
+                }
+                onStatus(status)
+                onSnapshot(loadSnapshot())
             }
         }
     }

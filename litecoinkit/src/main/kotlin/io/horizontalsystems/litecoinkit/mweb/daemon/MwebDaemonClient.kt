@@ -16,7 +16,12 @@ interface MwebDaemonClient {
      * Returns addresses for the inclusive index range.
      */
     fun addresses(fromIndex: Int, toIndex: Int): List<String>
-    fun utxos(fromHeight: Int, onUtxo: (MwebUtxo) -> Unit, onError: (Throwable) -> Unit): Closeable
+    fun utxos(
+        fromHeight: Int,
+        onUtxo: (MwebUtxo) -> Unit,
+        onComplete: () -> Unit,
+        onError: (Throwable) -> Unit,
+    ): Closeable
     fun spent(outputIds: List<String>): List<String>
     fun create(rawTransaction: ByteArray, feeRate: Int, dryRun: Boolean): MwebCreateResult
     fun broadcast(rawTransaction: ByteArray): String

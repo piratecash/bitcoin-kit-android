@@ -77,6 +77,7 @@ private class MwebdAndroidDaemonClient(
     override fun utxos(
         fromHeight: Int,
         onUtxo: (MwebUtxo) -> Unit,
+        onComplete: () -> Unit,
         onError: (Throwable) -> Unit,
     ): Closeable {
         val subscription = requireDaemon().subscribeUtxos(
@@ -95,7 +96,9 @@ private class MwebdAndroidDaemonClient(
                     onError(MwebError.SyncFailure(IllegalStateException(message)))
                 }
 
-                override fun onComplete() = Unit
+                override fun onComplete() {
+                    onComplete()
+                }
             },
         )
         return Closeable { subscription.close() }

@@ -87,6 +87,7 @@ internal class LitecoinMwebEngine(
         activeClientProvider = { daemonClient },
         isActiveClient = { client -> started && daemonClient === client },
         onNativeUnavailable = { started = false },
+        onStatus = { status -> applyStatus(status) },
         onSnapshot = { snapshot -> applyUtxoSnapshot(snapshot) },
     )
 

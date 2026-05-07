@@ -67,7 +67,12 @@ class MwebAddressPoolTest {
             return (fromIndex..toIndex).map { addressAt(it) }
         }
 
-        override fun utxos(fromHeight: Int, onUtxo: (MwebUtxo) -> Unit, onError: (Throwable) -> Unit): Closeable {
+        override fun utxos(
+            fromHeight: Int,
+            onUtxo: (MwebUtxo) -> Unit,
+            onComplete: () -> Unit,
+            onError: (Throwable) -> Unit,
+        ): Closeable {
             return Closeable { }
         }
 

@@ -127,6 +127,36 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun start_emptyUtxoStreamComplete_updatesUtxoSyncHeight() {
+        val completeStatus = MwebDaemonStatus(
+            syncState = MwebSyncState(
+                blockHeaderHeight = 100,
+                mwebHeaderHeight = 100,
+                mwebUtxosHeight = 100,
+            ),
+            nativeVersion = "test-native",
+        )
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 0), nativeVersion = "test-native"),
+            completeStatus = completeStatus,
+            completeUtxoStream = true,
+        )
+        val engine = engineWith(daemonClient)
+        val syncUpdates = mutableListOf<MwebSyncState>()
+        engine.addListener(object : LitecoinMwebEngine.Listener {
+            override fun onMwebSyncStateUpdate(state: MwebSyncState) {
+                syncUpdates.add(state)
+            }
+        })
+
+        engine.start()
+        waitUntil { engine.syncState == completeStatus.syncState }
+
+        assertEquals(completeStatus.syncState, engine.syncState)
+        assertEquals(completeStatus.syncState, syncUpdates.last())
+    }
+
+    @Test
     fun refresh_spentOutputs_marksSpentAndUpdatesBalance() {
         val daemonClient = FakeDaemonClient(
             streamUtxos = listOf(MwebUtxo("spent-output", "address", 1, 100, 10, 1_000, spent = false)),
@@ -583,6 +613,8 @@ class LitecoinMwebEngineLifecycleTest {
 
     private class FakeDaemonClient(
         private val status: MwebDaemonStatus = MwebDaemonStatus(MwebSyncState(0, 0, 0), nativeVersion = "test"),
+        private val completeStatus: MwebDaemonStatus? = null,
+        private val completeUtxoStream: Boolean = false,
         private val startError: Throwable? = null,
         private val streamUtxos: List<MwebUtxo> = emptyList(),
         spentOutputIds: List<String> = emptyList(),
@@ -599,6 +631,7 @@ class LitecoinMwebEngineLifecycleTest {
         var stopCount = 0
             private set
         private var streamed = false
+        private var streamCompleted = false
         private var utxoHandler: ((MwebUtxo) -> Unit)? = null
         private var utxoErrorHandler: ((Throwable) -> Unit)? = null
 
@@ -611,7 +644,9 @@ class LitecoinMwebEngineLifecycleTest {
             stopCount += 1
         }
 
-        override fun status(statusTimeoutMillis: Long): MwebDaemonStatus = status
+        override fun status(statusTimeoutMillis: Long): MwebDaemonStatus {
+            return if (streamCompleted) completeStatus ?: status else status
+        }
 
         override fun addresses(fromIndex: Int, toIndex: Int): List<String> {
             return (fromIndex..toIndex).map { index ->
@@ -622,12 +657,21 @@ class LitecoinMwebEngineLifecycleTest {
             }
         }
 
-        override fun utxos(fromHeight: Int, onUtxo: (MwebUtxo) -> Unit, onError: (Throwable) -> Unit): Closeable {
+        override fun utxos(
+            fromHeight: Int,
+            onUtxo: (MwebUtxo) -> Unit,
+            onComplete: () -> Unit,
+            onError: (Throwable) -> Unit,
+        ): Closeable {
             utxoFromHeights.add(fromHeight)
             utxoHandler = onUtxo
             utxoErrorHandler = onError
             if (!streamed) {
                 streamUtxos.forEach(onUtxo)
+                if (completeUtxoStream) {
+                    streamCompleted = true
+                    onComplete()
+                }
                 streamed = true
             }
             return Closeable { closedUtxoStreams += 1 }
