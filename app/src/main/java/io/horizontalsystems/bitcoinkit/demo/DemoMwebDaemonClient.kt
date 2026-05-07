@@ -52,7 +52,13 @@ private class DemoMwebDaemonClient(
         }
     }
 
-    override fun utxos(fromHeight: Int, onUtxo: (MwebUtxo) -> Unit, onError: (Throwable) -> Unit): Closeable {
+    override fun utxos(
+        fromHeight: Int,
+        onUtxo: (MwebUtxo) -> Unit,
+        onComplete: () -> Unit,
+        onError: (Throwable) -> Unit,
+    ): Closeable {
+        onComplete()
         return Closeable { }
     }
 
