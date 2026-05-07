@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>hodler</artifactId>
   <versioning>
-    <latest>ca2952e</latest>
-    <release>ca2952e</release>
+    <latest>9183c63</latest>
+    <release>9183c63</release>
     <versions>
-      <version>ca2952e</version>
+      <version>9183c63</version>
     </versions>
-    <lastUpdated>20260506154433</lastUpdated>
+    <lastUpdated>20260507060237</lastUpdated>
   </versioning>
 </metadata>
