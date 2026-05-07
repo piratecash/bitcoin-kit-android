@@ -18,6 +18,7 @@ internal class MwebUtxoSynchronizer(
     private val stateMutex: Mutex,
     private val restoreHeight: Int,
     private val spentPollIntervalMillis: Long,
+    private val statusPollIntervalMillis: Long,
     private val syncStateProvider: () -> MwebSyncState,
     private val activeClientProvider: () -> MwebDaemonClient?,
     private val isActiveClient: (MwebDaemonClient) -> Boolean,
@@ -25,10 +26,13 @@ internal class MwebUtxoSynchronizer(
     private val onStatus: (MwebDaemonStatus) -> Unit,
     private val onSnapshot: (MwebUtxoSnapshot) -> Unit,
 ) {
+    private var statusPollJob: Job? = null
     private var spentPollJob: Job? = null
     private var utxoStream: Closeable? = null
 
     fun stop() {
+        statusPollJob?.cancel()
+        statusPollJob = null
         spentPollJob?.cancel()
         spentPollJob = null
         closeUtxoStream()
@@ -37,6 +41,24 @@ internal class MwebUtxoSynchronizer(
     fun refresh(client: MwebDaemonClient) {
         refreshSpentOutputs(client)
         startUtxoStream(client)
+    }
+
+    fun startStatusPolling(client: MwebDaemonClient) {
+        statusPollJob?.cancel()
+        statusPollJob = coroutineScope.launch {
+            while (isActive) {
+                delay(statusPollIntervalMillis)
+                stateMutex.withLock {
+                    if (!isActiveClient(client)) return@withLock
+
+                    try {
+                        refreshStatus(client)
+                    } catch (error: MwebError) {
+                        handlePollingError(error)
+                    }
+                }
+            }
+        }
     }
 
     fun startSpentPolling(client: MwebDaemonClient) {
@@ -50,7 +72,7 @@ internal class MwebUtxoSynchronizer(
                     try {
                         refreshSpentOutputs(client)
                     } catch (error: MwebError) {
-                        handleSpentPollError(error)
+                        handlePollingError(error)
                     }
                 }
             }
@@ -77,6 +99,13 @@ internal class MwebUtxoSynchronizer(
         if (spentOutputIds.isEmpty()) return
 
         markSpent(spentOutputIds)
+    }
+
+    private fun refreshStatus(client: MwebDaemonClient) {
+        val status = MwebDaemonErrorMapper.map {
+            client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
+        }
+        onStatus(status)
     }
 
     fun markSpent(outputIds: List<String>) {
@@ -142,7 +171,7 @@ internal class MwebUtxoSynchronizer(
         )
     }
 
-    private fun handleSpentPollError(error: MwebError) {
+    private fun handlePollingError(error: MwebError) {
         if (error !is MwebError.NativeUnavailable) return
 
         onNativeUnavailable()

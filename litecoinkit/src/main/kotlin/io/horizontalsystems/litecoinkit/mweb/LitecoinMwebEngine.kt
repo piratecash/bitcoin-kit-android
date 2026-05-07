@@ -33,6 +33,7 @@ internal class LitecoinMwebEngine(
     private val peerAddress: String? = null,
     private val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
     private val spentPollIntervalMillis: Long = SPENT_POLL_INTERVAL_MILLIS,
+    private val statusPollIntervalMillis: Long = STATUS_POLL_INTERVAL_MILLIS,
     private val localTransactionTtlMillis: Long = LOCAL_TRANSACTION_TTL_MILLIS,
     private val currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
 ) {
@@ -83,6 +84,7 @@ internal class LitecoinMwebEngine(
         stateMutex = stateMutex,
         restoreHeight = restoreHeight,
         spentPollIntervalMillis = spentPollIntervalMillis,
+        statusPollIntervalMillis = statusPollIntervalMillis,
         syncStateProvider = { syncState },
         activeClientProvider = { daemonClient },
         isActiveClient = { client -> started && daemonClient === client },
@@ -124,10 +126,11 @@ internal class LitecoinMwebEngine(
                 daemonClient = client
                 started = true
                 addressPool().addresses(MwebAddressPool.CHANGE_INDEX, MwebAddressPool.FIRST_RECEIVE_INDEX)
-                utxoSynchronizer.refreshSpentOutputs(client)
-                utxoSynchronizer.startSpentPolling(client)
-                utxoSynchronizer.startUtxoStream(client)
                 applyStatus(status)
+                utxoSynchronizer.refreshSpentOutputs(client)
+                utxoSynchronizer.startUtxoStream(client)
+                utxoSynchronizer.startStatusPolling(client)
+                utxoSynchronizer.startSpentPolling(client)
             }
         }
     }
@@ -548,6 +551,7 @@ internal class LitecoinMwebEngine(
 
     companion object {
         private const val SPENT_POLL_INTERVAL_MILLIS = 60_000L
+        private const val STATUS_POLL_INTERVAL_MILLIS = 5_000L
         private const val LOCAL_TRANSACTION_TTL_MILLIS = 24 * 60 * 60 * 1_000L
 
         fun clear(context: Context, networkType: LitecoinKit.NetworkType, walletId: String) {

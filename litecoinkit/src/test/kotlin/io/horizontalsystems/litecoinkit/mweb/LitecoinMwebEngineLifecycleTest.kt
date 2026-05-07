@@ -155,10 +155,33 @@ class LitecoinMwebEngineLifecycleTest {
         })
 
         engine.start()
-        waitUntil { engine.syncState == expectedSyncState }
+        waitUntil {
+            engine.syncState == expectedSyncState &&
+                syncUpdates.lastOrNull() == expectedSyncState
+        }
 
         assertEquals(expectedSyncState, engine.syncState)
         assertEquals(expectedSyncState, syncUpdates.last())
+    }
+
+    @Test
+    fun statusPoll_emptyOpenUtxoStream_updatesUtxoSyncHeight() {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 0), nativeVersion = "test-native"),
+        )
+        val engine = engineWith(daemonClient, statusPollIntervalMillis = 10)
+        val expectedSyncState = MwebSyncState(
+            blockHeaderHeight = 100,
+            mwebHeaderHeight = 100,
+            mwebUtxosHeight = 100,
+        )
+
+        engine.start()
+        daemonClient.status = MwebDaemonStatus(expectedSyncState, nativeVersion = "test-native")
+        waitUntil { engine.syncState == expectedSyncState }
+
+        assertEquals(expectedSyncState, engine.syncState)
+        assertTrue(engine.mwebUtxos().isEmpty())
     }
 
     @Test
@@ -597,6 +620,7 @@ class LitecoinMwebEngineLifecycleTest {
     private fun engineWith(
         daemonClient: MwebDaemonClient,
         spentPollIntervalMillis: Long = 60_000L,
+        statusPollIntervalMillis: Long = 60_000L,
         localTransactionTtlMillis: Long = 24 * 60 * 60 * 1_000L,
         currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
     ): LitecoinMwebEngine {
@@ -609,6 +633,7 @@ class LitecoinMwebEngineLifecycleTest {
             dispatcherProvider = dispatcherProvider,
             daemonClientFactory = { _: MwebDaemonConfig -> daemonClient },
             spentPollIntervalMillis = spentPollIntervalMillis,
+            statusPollIntervalMillis = statusPollIntervalMillis,
             localTransactionTtlMillis = localTransactionTtlMillis,
             currentTimeMillisProvider = currentTimeMillisProvider,
         )
@@ -617,7 +642,7 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     private class FakeDaemonClient(
-        private val status: MwebDaemonStatus = MwebDaemonStatus(MwebSyncState(0, 0, 0), nativeVersion = "test"),
+        status: MwebDaemonStatus = MwebDaemonStatus(MwebSyncState(0, 0, 0), nativeVersion = "test"),
         private val completeStatus: MwebDaemonStatus? = null,
         private val completeUtxoStream: Boolean = false,
         private val startError: Throwable? = null,
@@ -627,6 +652,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val createdOutputIds: List<String> = listOf("created-output"),
     ) : MwebDaemonClient {
         private val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
+        var status: MwebDaemonStatus = status
         var spentOutputIds: List<String> = spentOutputIds
         val utxoFromHeights = mutableListOf<Int>()
         val createRequests = mutableListOf<CreateRequest>()
