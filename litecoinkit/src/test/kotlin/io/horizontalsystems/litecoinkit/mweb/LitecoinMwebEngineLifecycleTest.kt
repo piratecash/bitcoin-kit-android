@@ -128,17 +128,22 @@ class LitecoinMwebEngineLifecycleTest {
 
     @Test
     fun start_emptyUtxoStreamComplete_updatesUtxoSyncHeight() {
-        val completeStatus = MwebDaemonStatus(
+        val daemonCompleteStatus = MwebDaemonStatus(
             syncState = MwebSyncState(
                 blockHeaderHeight = 100,
                 mwebHeaderHeight = 100,
-                mwebUtxosHeight = 100,
+                mwebUtxosHeight = 0,
             ),
             nativeVersion = "test-native",
         )
+        val expectedSyncState = MwebSyncState(
+            blockHeaderHeight = 100,
+            mwebHeaderHeight = 100,
+            mwebUtxosHeight = 100,
+        )
         val daemonClient = FakeDaemonClient(
             status = MwebDaemonStatus(MwebSyncState(100, 100, 0), nativeVersion = "test-native"),
-            completeStatus = completeStatus,
+            completeStatus = daemonCompleteStatus,
             completeUtxoStream = true,
         )
         val engine = engineWith(daemonClient)
@@ -150,10 +155,10 @@ class LitecoinMwebEngineLifecycleTest {
         })
 
         engine.start()
-        waitUntil { engine.syncState == completeStatus.syncState }
+        waitUntil { engine.syncState == expectedSyncState }
 
-        assertEquals(completeStatus.syncState, engine.syncState)
-        assertEquals(completeStatus.syncState, syncUpdates.last())
+        assertEquals(expectedSyncState, engine.syncState)
+        assertEquals(expectedSyncState, syncUpdates.last())
     }
 
     @Test

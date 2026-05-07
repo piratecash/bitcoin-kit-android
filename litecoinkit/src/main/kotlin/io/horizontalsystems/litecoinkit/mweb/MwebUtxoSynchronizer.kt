@@ -126,10 +126,20 @@ internal class MwebUtxoSynchronizer(
                 val status = MwebDaemonErrorMapper.mapSuspend {
                     streamClient.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
                 }
-                onStatus(status)
+                onStatus(status.completedUtxoScan())
                 onSnapshot(loadSnapshot())
             }
         }
+    }
+
+    private fun MwebDaemonStatus.completedUtxoScan(): MwebDaemonStatus {
+        val currentState = syncState
+        val completedHeight = minOf(currentState.blockHeaderHeight, currentState.mwebHeaderHeight)
+        return copy(
+            syncState = currentState.copy(
+                mwebUtxosHeight = maxOf(currentState.mwebUtxosHeight, completedHeight),
+            ),
+        )
     }
 
     private fun handleSpentPollError(error: MwebError) {
