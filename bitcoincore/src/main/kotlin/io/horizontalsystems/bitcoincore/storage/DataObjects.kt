@@ -32,7 +32,7 @@ open class FullTransaction(
     val header: Transaction,
     val inputs: List<TransactionInput>,
     val outputs: List<TransactionOutput>,
-    transactionSerializer: BaseTransactionSerializer,
+    transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer(),
     forceHashUpdate: Boolean = true
 ) {
 
@@ -167,4 +167,3 @@ class FullTransactionInfo(
         get() = FullTransaction(header, inputs.map { it.input }, outputs, transactionSerializer)
 
 }
-

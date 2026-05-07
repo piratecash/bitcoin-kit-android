@@ -172,4 +172,17 @@ object TransactionCreatorTest : Spek({
             }
         }
     }
+
+    describe("#processCreatedLocally") {
+        beforeEachTest {
+            doNothing().whenever(processor).processCreated(any())
+        }
+
+        it("saves transaction without broadcasting through public peers") {
+            transactionCreator.processCreatedLocally(mockTransaction)
+
+            verify(processor).processCreated(mockTransaction)
+            verify(transactionSender, never()).sendPendingTransactions()
+        }
+    }
 })

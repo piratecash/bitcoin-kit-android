@@ -46,4 +46,17 @@ class TransactionSizeCalculatorTest {
         assertEquals(31, calculator.outputSize(P2WPKH))
         assertEquals(32, calculator.outputSize(P2WPKHSH))
     }
+
+    @Test
+    fun transactionSize_unknownOutput_usesActualLockingScriptSize() {
+        val previousOutputs = outputs(listOf(P2WPKH))
+        val mwebOutput = TransactionOutput(
+            value = 1,
+            index = 0,
+            script = ByteArray(66),
+            type = ScriptType.UNKNOWN,
+        )
+
+        assertEquals(154, calculator.transactionSize(previousOutputs, listOf(mwebOutput)))
+    }
 }

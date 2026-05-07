@@ -161,7 +161,7 @@ class SyncManager(
         syncState = if (progress >= 1) {
             KitState.Synced
         } else {
-            KitState.Syncing(progress)
+            KitState.Syncing(progress, maxBlockHeight = maxBlockHeight)
         }
     }
 

@@ -33,6 +33,7 @@ import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
+import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.models.UsedAddress
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.IMessageParser
@@ -343,6 +344,37 @@ class BitcoinCore(
         return transactionCreator?.create(unspentOutput, address, memo, feeRate, sortType, rbfEnabled) ?: throw CoreError.ReadOnlyCore
     }
 
+    suspend fun signRawTransaction(
+        rawTransaction: ByteArray,
+        unspentOutputs: List<UnspentOutput>,
+    ): FullTransaction {
+        return transactionCreator?.signRawTransaction(rawTransaction, unspentOutputs) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun serializeTransaction(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
+        return transactionCreator?.serialize(transaction, withWitness) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun processCreatedTransaction(transaction: FullTransaction): FullTransaction {
+        return transactionCreator?.processCreated(transaction) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun processCreatedTransactionLocally(transaction: FullTransaction): FullTransaction {
+        return transactionCreator?.processCreatedLocally(transaction) ?: throw CoreError.ReadOnlyCore
+    }
+
+    fun transactionOutput(value: Long, address: String): TransactionOutput {
+        val converted = addressConverter.convert(address)
+        return TransactionOutput(
+            value = value,
+            index = 0,
+            script = converted.lockingScript,
+            type = converted.scriptType,
+            address = converted.stringValue,
+            lockingScriptPayload = converted.lockingScriptPayload,
+        )
+    }
+
     fun receiveAddress(): String {
         return addressConverter.convert(publicKeyManager.receivePublicKey(), purpose.scriptType).stringValue
     }
@@ -597,13 +629,13 @@ class BitcoinCore(
     sealed class KitState {
         object Synced : KitState()
         class NotSynced(val exception: Throwable) : KitState()
-        class Syncing(val progress: Double, val substatus: SyncSubstatus? = null) : KitState()
+        class Syncing(val progress: Double, val substatus: SyncSubstatus? = null, val maxBlockHeight: Int? = null) : KitState()
         class ApiSyncing(val transactions: Int) : KitState()
 
         override fun equals(other: Any?) = when {
             this is Synced && other is Synced -> true
             this is NotSynced && other is NotSynced -> exception == other.exception
-            this is Syncing && other is Syncing -> this.progress == other.progress && this.substatus == other.substatus
+            this is Syncing && other is Syncing -> this.progress == other.progress && this.substatus == other.substatus && this.maxBlockHeight == other.maxBlockHeight
             this is ApiSyncing && other is ApiSyncing -> this.transactions == other.transactions
             else -> false
         }
@@ -623,6 +655,7 @@ class BitcoinCore(
             if (this is Syncing) {
                 result = 31 * result + progress.hashCode()
                 result = 31 * result + (substatus?.hashCode() ?: 0)
+                result = 31 * result + (maxBlockHeight?.hashCode() ?: 0)
             }
             if (this is NotSynced) {
                 result = 31 * result + exception.hashCode()

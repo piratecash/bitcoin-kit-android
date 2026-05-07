@@ -3,6 +3,15 @@
 buildscript {
     ext.kotlin_version = '2.0.21'
     ext.room_version = '2.6.1'
+    ext.shortSha = providers.environmentVariable("SHORT_SHA")
+        .orElse(provider {
+            def process = new ProcessBuilder("git", "rev-parse", "--short=7", "HEAD")
+                .directory(rootDir)
+                .redirectErrorStream(true)
+                .start()
+            process.inputStream.text.trim() ?: "unknown"
+        })
+        .get()
     repositories {
         google()
         mavenCentral()
@@ -25,6 +34,65 @@ allprojects {
         google()
         mavenCentral()
         maven { url "https://jitpack.io" }
+    }
+}
+
+def libraryModules = [
+    'bitcoincore', 'bitcoinkit', 'bitcoincashkit', 'litecoinkit',
+    'dashkit', 'dashlib', 'dogecoinkit', 'cosantakit', 'piratecashkit',
+    'ecashkit', 'hodler'
+]
+
+subprojects { sub ->
+    if (libraryModules.contains(sub.name)) {
+        sub.afterEvaluate {
+            sub.publishing {
+                publications.withType(MavenPublication).configureEach {
+                    groupId = "com.github.piratecash.bitcoin-kit-android"
+                    artifactId = sub.name
+                    version = rootProject.ext.shortSha
+                }
+                repositories {
+                    maven {
+                        name = "local"
+                        url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+tasks.register('generateRootPom') {
+    def repoDir = rootProject.layout.buildDirectory.dir("maven-repo/com/github/piratecash/bitcoin-kit-android/${rootProject.ext.shortSha}")
+    outputs.dir(repoDir)
+    doLast {
+        def dir = repoDir.get().asFile
+        dir.mkdirs()
+        def deps = libraryModules.collect { mod ->
+            """    <dependency>
+      <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
+      <artifactId>${mod}</artifactId>
+      <version>${rootProject.ext.shortSha}</version>
+      <type>aar</type>
+    </dependency>"""
+        }.join('\n')
+
+        new File(dir, "bitcoin-kit-android-${rootProject.ext.shortSha}.pom").text = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.github.piratecash</groupId>
+  <artifactId>bitcoin-kit-android</artifactId>
+  <version>${rootProject.ext.shortSha}</version>
+  <packaging>pom</packaging>
+  <dependencies>
+${deps}
+  </dependencies>
+</project>
+"""
     }
 }
 

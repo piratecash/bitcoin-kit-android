@@ -41,7 +41,7 @@ class PublicKeyManager(
     }
 
     override fun getPublicKeyByPath(path: String): PublicKey {
-        val parts = path.split("/").map { it.toInt() }
+        val parts = path.parsePublicKeyPath { Error.InvalidPath }
 
         if (parts.size != 3) throw Error.InvalidPath
 
