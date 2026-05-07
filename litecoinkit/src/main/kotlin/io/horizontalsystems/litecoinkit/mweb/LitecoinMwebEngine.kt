@@ -501,10 +501,7 @@ internal class LitecoinMwebEngine(
         publicTransactionBridge: MwebPublicTransactionBridge?,
     ): ByteArray {
         if (selectedPublicUtxos.isEmpty()) return rawTransaction
-
-        val bridge = requirePublicBridge(publicTransactionBridge)
-        val signedTransaction = bridge.sign(rawTransaction, selectedPublicUtxos)
-        return bridge.serialize(bridge.processCreated(signedTransaction))
+        return requirePublicBridge(publicTransactionBridge).signPublicInputs(rawTransaction, selectedPublicUtxos)
     }
 
     private fun requirePublicBridge(publicTransactionBridge: MwebPublicTransactionBridge?): MwebPublicTransactionBridge {

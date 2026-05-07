@@ -18,8 +18,11 @@ import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonConfig
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebCreateResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -44,6 +47,7 @@ class LitecoinMwebEngineLifecycleTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val walletIds = mutableListOf<String>()
     private val engines = mutableListOf<LitecoinMwebEngine>()
+    private val publicPegInSenders = mutableListOf<MwebPublicPegInSender>()
     private val ioDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val dispatcherProvider = CoroutineMwebDispatcherProvider(io = ioDispatcher, callback = ImmediateDispatcher)
     private val transactionSerializer = BaseTransactionSerializer()
@@ -51,6 +55,7 @@ class LitecoinMwebEngineLifecycleTest {
     @After
     fun tearDown() {
         engines.forEach { engine -> engine.dispose() }
+        publicPegInSenders.forEach { sender -> sender.stop() }
         walletIds.forEach { walletId ->
             LitecoinMwebEngine.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
         }
@@ -587,6 +592,142 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun publicPegInSender_sendInfoWithoutEngine_preparesPublicToMweb() {
+        val daemonClient = FakeDaemonClient()
+        val sender = publicPegInSender(daemonClient)
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+
+        val sendInfo = sender.sendInfo(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertEquals(1, sendInfo.selectedPublicUtxos.size)
+        assertTrue(sendInfo.selectedMwebUtxos.isEmpty())
+        assertTrue(daemonClient.createRequests.any { it.dryRun })
+    }
+
+    @Test
+    fun publicPegInSender_sendWithoutEngine_signsAndBroadcastsPublicToMweb() = runBlocking {
+        val signedRaw = byteArrayOf(9, 8, 7, 6)
+        val daemonClient = FakeDaemonClient()
+        val sender = publicPegInSender(daemonClient)
+        val bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            signedRawTransaction = signedRaw,
+        )
+
+        val result = sender.send(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertEquals("test-transaction", result.canonicalTransactionHash)
+        assertEquals(listOf("created-output"), result.outputIds)
+        assertEquals(1, bridge.signCalls.size)
+        assertEquals(1, daemonClient.startCount)
+        assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
+    }
+
+    @Test
+    fun publicPegInSender_concurrentSendInfo_serializesOperations() = runBlocking {
+        val sender = publicPegInSender(FakeDaemonClient())
+        val bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            spendableDelayMillis = 50,
+        )
+        val jobs = List(2) {
+            async(Dispatchers.Default) {
+                sender.sendInfo(
+                    request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                    publicOptions = publicOptions(),
+                    publicTransactionBridge = bridge,
+                )
+            }
+        }
+
+        jobs.awaitAll()
+
+        assertEquals(1, bridge.maxConcurrentSpendableCalls)
+    }
+
+    @Test
+    fun publicPegInSender_clearWhileStarted_throwsUntilStopped() {
+        val walletId = walletId("mweb-public-pegin-clear-test")
+        val sender = publicPegInSender(FakeDaemonClient(), walletId)
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        sender.sendInfo(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertThrows(IllegalStateException::class.java) {
+            MwebFiles.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+        }
+
+        sender.stop()
+        MwebFiles.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+    }
+
+    @Test
+    fun publicPegInSender_stopDeletesPublicSendDataDir() {
+        val walletId = walletId("mweb-public-pegin-stop-test")
+        val sender = publicPegInSender(FakeDaemonClient(), walletId)
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        sender.sendInfo(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        val dataDir = MwebFiles.publicSendDaemonDataDir(context, LitecoinKit.NetworkType.MainNet, walletId)
+        dataDir.mkdirs()
+
+        sender.stop()
+
+        assertFalse(dataDir.exists())
+    }
+
+    @Test
+    fun publicPegInSender_daemonCrashDropsClientForNextAttempt() {
+        val walletId = walletId("mweb-public-pegin-crash-test")
+        val crashedClient = FakeDaemonClient(createError = IllegalStateException("boom"))
+        val recoveredClient = FakeDaemonClient()
+        val clients = mutableListOf(crashedClient, recoveredClient)
+        val sender = MwebPublicPegInSender(
+            context = context,
+            walletId = walletId,
+            networkType = LitecoinKit.NetworkType.MainNet,
+            addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet),
+            config = MwebPublicSendConfig(
+                dispatcherProvider = dispatcherProvider,
+                daemonClientFactory = { clients.removeAt(0) },
+            ),
+        ).also(publicPegInSenders::add)
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+
+        assertThrows(MwebError.DaemonCrashed::class.java) {
+            sender.sendInfo(
+                request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                publicOptions = publicOptions(),
+                publicTransactionBridge = bridge,
+            )
+        }
+
+        val sendInfo = sender.sendInfo(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertEquals(1, sendInfo.selectedPublicUtxos.size)
+        assertEquals(1, crashedClient.stopCount)
+        assertEquals(1, recoveredClient.startCount)
+    }
+
+    @Test
     fun sendInfo_publicToMwebWithoutCallerBridge_throwsNativeUnavailable() {
         val engine = engineWith(FakeDaemonClient())
         engine.start()
@@ -650,6 +791,7 @@ class LitecoinMwebEngineLifecycleTest {
         spentOutputIds: List<String> = emptyList(),
         private val dryRunRawTransaction: ByteArray? = null,
         private val createdOutputIds: List<String> = listOf("created-output"),
+        private val createError: Throwable? = null,
     ) : MwebDaemonClient {
         private val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         var status: MwebDaemonStatus = status
@@ -657,6 +799,8 @@ class LitecoinMwebEngineLifecycleTest {
         val utxoFromHeights = mutableListOf<Int>()
         val createRequests = mutableListOf<CreateRequest>()
         val broadcastRawTransactions = mutableListOf<ByteArray>()
+        var startCount = 0
+            private set
         var closedUtxoStreams = 0
             private set
         var stopCount = 0
@@ -667,6 +811,7 @@ class LitecoinMwebEngineLifecycleTest {
         private var utxoErrorHandler: ((Throwable) -> Unit)? = null
 
         override fun start(statusTimeoutMillis: Long): MwebDaemonStatus {
+            startCount += 1
             startError?.let { throw it }
             return status
         }
@@ -720,6 +865,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         override fun create(rawTransaction: ByteArray, feeRate: Int, dryRun: Boolean): MwebCreateResult {
             createRequests.add(CreateRequest(rawTransaction, dryRun))
+            createError?.let { throw it }
             return MwebCreateResult(
                 rawTransaction = dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction,
                 outputIds = createdOutputIds,
@@ -735,18 +881,35 @@ class LitecoinMwebEngineLifecycleTest {
     private class FakePublicTransactionBridge(
         private val publicUtxos: List<UnspentOutput> = emptyList(),
         private val signedRawTransaction: ByteArray = byteArrayOf(1),
+        private val spendableDelayMillis: Long = 0,
     ) : MwebPublicTransactionBridge {
         private val transactionSerializer = BaseTransactionSerializer()
         val signCalls = mutableListOf<SignCall>()
         val outputCalls = mutableListOf<String>()
+        var maxConcurrentSpendableCalls = 0
+            private set
+        private var activeSpendableCalls = 0
         var spendableCalls = 0
             private set
         var processCreatedCount = 0
             private set
 
         override fun spendableUtxos(options: MwebPublicSendOptions): List<UnspentOutput> {
-            spendableCalls += 1
-            return publicUtxos
+            synchronized(this) {
+                spendableCalls += 1
+                activeSpendableCalls += 1
+                maxConcurrentSpendableCalls = maxOf(maxConcurrentSpendableCalls, activeSpendableCalls)
+            }
+            return try {
+                if (spendableDelayMillis > 0) {
+                    Thread.sleep(spendableDelayMillis)
+                }
+                publicUtxos
+            } finally {
+                synchronized(this) {
+                    activeSpendableCalls -= 1
+                }
+            }
         }
 
         override fun output(value: Long, address: String): TransactionOutput {
@@ -806,6 +969,26 @@ class LitecoinMwebEngineLifecycleTest {
             rbfEnabled = false,
             filters = UtxoFilters(),
         )
+    }
+
+    private fun publicPegInSender(
+        daemonClient: FakeDaemonClient,
+        walletId: String = walletId("mweb-public-pegin-test"),
+    ): MwebPublicPegInSender {
+        return MwebPublicPegInSender(
+            context = context,
+            walletId = walletId,
+            networkType = LitecoinKit.NetworkType.MainNet,
+            addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet),
+            config = MwebPublicSendConfig(
+                dispatcherProvider = dispatcherProvider,
+                daemonClientFactory = { daemonClient },
+            ),
+        ).also(publicPegInSenders::add)
+    }
+
+    private fun walletId(prefix: String): String {
+        return "$prefix-${System.nanoTime()}".also(walletIds::add)
     }
 
     private object ImmediateDispatcher : CoroutineDispatcher() {

@@ -60,9 +60,13 @@ import io.horizontalsystems.litecoinkit.mweb.LitecoinMwebEngineRegistry
 import io.horizontalsystems.litecoinkit.mweb.MwebBalance
 import io.horizontalsystems.litecoinkit.mweb.MwebConfig
 import io.horizontalsystems.litecoinkit.mweb.MwebError
+import io.horizontalsystems.litecoinkit.mweb.MwebPublicPegInSender
+import io.horizontalsystems.litecoinkit.mweb.MwebPublicSendConfig
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicSendOptions
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicTransactionBridge
 import io.horizontalsystems.litecoinkit.mweb.MwebSendRequest
+import io.horizontalsystems.litecoinkit.mweb.MwebSendInfo
+import io.horizontalsystems.litecoinkit.mweb.MwebSendResult
 import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
@@ -90,6 +94,7 @@ class LitecoinKit : AbstractKit {
     private var mwebEngineListener: MwebListenerAdapter? = null
     private val mwebPublicTransactionBridge: MwebPublicTransactionBridge by lazy { MwebBitcoinCoreBridge() }
     private lateinit var mwebAddressCodec: MwebAddressCodec
+    private lateinit var mwebPublicPegInSender: MwebPublicPegInSender
 
     var listener: Listener? = null
         set(value) {
@@ -110,7 +115,20 @@ class LitecoinKit : AbstractKit {
         purpose: Purpose = Purpose.BIP44,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebConfig: MwebConfig? = null,
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder = sharedPeerGroupHolder, mwebConfig = mwebConfig)
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+    ) : this(
+        context = context,
+        seed = Mnemonic().toSeed(words, passphrase),
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        purpose = purpose,
+        sharedPeerGroupHolder = sharedPeerGroupHolder,
+        mwebConfig = mwebConfig,
+        mwebPublicSendConfig = mwebPublicSendConfig,
+    )
 
     constructor(
         context: Context,
@@ -123,7 +141,21 @@ class LitecoinKit : AbstractKit {
         purpose: Purpose = Purpose.BIP44,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebConfig: MwebConfig? = null,
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, syncMode, confirmationsThreshold, sharedPeerGroupHolder = sharedPeerGroupHolder, mwebSeed = seed, mwebConfig = mwebConfig)
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+    ) : this(
+        context = context,
+        extendedKey = HDExtendedKey(seed, purpose),
+        purpose = purpose,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        sharedPeerGroupHolder = sharedPeerGroupHolder,
+        mwebSeed = seed,
+        mwebConfig = mwebConfig,
+        mwebPublicSendConfig = mwebPublicSendConfig,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
@@ -149,9 +181,11 @@ class LitecoinKit : AbstractKit {
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebSeed: ByteArray? = null,
         mwebConfig: MwebConfig? = null,
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
     ) {
         network = network(networkType)
         mwebAddressCodec = MwebAddressCodec(networkType)
+        mwebPublicPegInSender = MwebPublicPegInSender(context, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig)
 
         bitcoinCore = bitcoinCore(
             context = context,
@@ -191,10 +225,12 @@ class LitecoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
-        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
     ) {
         network = network(networkType)
         mwebAddressCodec = MwebAddressCodec(networkType)
+        mwebPublicPegInSender = MwebPublicPegInSender(context, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig)
 
         val address = parseAddress(watchAddress, network)
         val watchAddressPublicKey = WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
@@ -234,6 +270,7 @@ class LitecoinKit : AbstractKit {
      * Android main thread when MWEB is enabled.
      */
     override fun stop() {
+        mwebPublicPegInSender.stop()
         mwebEngineHandle?.stop()
         super.stop()
     }
@@ -258,6 +295,7 @@ class LitecoinKit : AbstractKit {
             }
         }
         mwebEngineListener = null
+        mwebPublicPegInSender.stop()
         mwebEngineHandle?.release()
         mwebEngineHandle = null
         super.dispose()
@@ -338,17 +376,14 @@ class LitecoinKit : AbstractKit {
                 )
             )
         } else {
+            val publicOptions = MwebPublicSendOptions(
+                unspentOutputs = unspentOutputs,
+                changeToFirstInput = changeToFirstInput,
+                rbfEnabled = false,
+                filters = filters,
+            )
             LitecoinSendInfo.Mweb(
-                requireMwebEngine().sendInfo(
-                    request = mwebRequest,
-                    publicOptions = MwebPublicSendOptions(
-                        unspentOutputs = unspentOutputs,
-                        changeToFirstInput = changeToFirstInput,
-                        rbfEnabled = false,
-                        filters = filters,
-                    ),
-                    publicTransactionBridge = mwebPublicTransactionBridge,
-                )
+                mwebSendInfo(mwebRequest, publicOptions)
             )
         }
     }
@@ -384,17 +419,60 @@ class LitecoinKit : AbstractKit {
                 )
             )
         } else {
+            val publicOptions = MwebPublicSendOptions(
+                unspentOutputs = unspentOutputs,
+                changeToFirstInput = changeToFirstInput,
+                rbfEnabled = rbfEnabled,
+                filters = filters,
+            )
             LitecoinSendResult.Mweb(
-                requireMwebEngine().send(
-                    request = mwebRequest,
-                    publicOptions = MwebPublicSendOptions(
-                        unspentOutputs = unspentOutputs,
-                        changeToFirstInput = changeToFirstInput,
-                        rbfEnabled = rbfEnabled,
-                        filters = filters,
-                    ),
-                    publicTransactionBridge = mwebPublicTransactionBridge,
-                )
+                mwebSend(mwebRequest, publicOptions)
+            )
+        }
+    }
+
+    private fun mwebSendInfo(
+        request: MwebSendRequest,
+        publicOptions: MwebPublicSendOptions,
+    ): MwebSendInfo {
+        return when (request) {
+            is MwebSendRequest.PublicToMweb -> mwebEngine?.sendInfo(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            ) ?: mwebPublicPegInSender.sendInfo(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            )
+            is MwebSendRequest.MwebToPublic,
+            is MwebSendRequest.MwebToMweb -> requireMwebEngine().sendInfo(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            )
+        }
+    }
+
+    private suspend fun mwebSend(
+        request: MwebSendRequest,
+        publicOptions: MwebPublicSendOptions,
+    ): MwebSendResult {
+        return when (request) {
+            is MwebSendRequest.PublicToMweb -> mwebEngine?.send(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            ) ?: mwebPublicPegInSender.send(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            )
+            is MwebSendRequest.MwebToPublic,
+            is MwebSendRequest.MwebToMweb -> requireMwebEngine().send(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
             )
         }
     }
@@ -783,10 +861,11 @@ class LitecoinKit : AbstractKit {
         }
 
         /**
-         * Deletes only MWEB scan storage and daemon data for [walletId].
+         * Deletes only MWEB scan storage, wallet daemon data, and public-send daemon data for [walletId].
          *
          * Use this when the MWEB restore point changes without resetting public
-         * Litecoin BIP44/BIP49/BIP84/BIP86 databases.
+         * Litecoin BIP44/BIP49/BIP84/BIP86 databases. Active public-send daemons
+         * must be stopped by stopping or disposing their LitecoinKit instances first.
          */
         fun clearMweb(context: Context, networkType: NetworkType, walletId: String) {
             LitecoinMwebEngine.clear(context, networkType, walletId)

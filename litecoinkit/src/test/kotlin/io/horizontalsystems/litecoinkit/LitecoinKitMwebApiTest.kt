@@ -2,6 +2,7 @@ package io.horizontalsystems.litecoinkit
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.litecoinkit.mweb.CoroutineMwebDispatcherProvider
 import io.horizontalsystems.litecoinkit.mweb.MwebConfig
 import io.horizontalsystems.litecoinkit.mweb.MwebError
@@ -48,12 +49,8 @@ class LitecoinKitMwebApiTest {
     @Test
     fun isMwebAddress_mwebMainnetAddress_returnsTrue() {
         val kit = litecoinKit()
-        val address = MwebAddressCodec(LitecoinKit.NetworkType.MainNet).encode(
-            scanPublicKey = ByteArray(33) { (it + 1).toByte() },
-            spendPublicKey = ByteArray(33) { (it + 34).toByte() },
-        )
 
-        assertTrue(kit.isMwebAddress(address))
+        assertTrue(kit.isMwebAddress(mwebAddress()))
     }
 
     @Test
@@ -81,6 +78,42 @@ class LitecoinKitMwebApiTest {
         LitecoinKit.clearMweb(context, LitecoinKit.NetworkType.MainNet, walletId)
     }
 
+    @Test
+    fun sendInfo_publicToMwebWithoutMwebEngine_usesPublicFundingPath() {
+        val kit = litecoinKit()
+
+        assertThrows(MwebError.InsufficientFunds::class.java) {
+            kit.sendInfo(
+                value = 1_000,
+                address = mwebAddress(),
+                memo = null,
+                source = LitecoinSendSource.Public,
+                feeRate = 1,
+                unspentOutputs = null,
+                changeToFirstInput = false,
+                filters = UtxoFilters(),
+            )
+        }
+    }
+
+    @Test
+    fun sendInfo_mwebToPublicWithoutMwebEngine_throwsNativeUnavailable() {
+        val kit = litecoinKit()
+
+        assertThrows(MwebError.NativeUnavailable::class.java) {
+            kit.sendInfo(
+                value = 1_000,
+                address = "ltc1q9z5mzd0k72k8f8g9cny70a4rvv7ne48x336jw5",
+                memo = null,
+                source = LitecoinSendSource.Mweb,
+                feeRate = 1,
+                unspentOutputs = null,
+                changeToFirstInput = false,
+                filters = UtxoFilters(),
+            )
+        }
+    }
+
     private fun litecoinKit(
         walletId: String = walletId(),
         mwebConfig: MwebConfig? = null,
@@ -99,6 +132,13 @@ class LitecoinKitMwebApiTest {
         return MwebConfig(
             dispatcherProvider = dispatcherProvider,
             daemonClientFactory = MissingMwebDaemonClientFactory,
+        )
+    }
+
+    private fun mwebAddress(): String {
+        return MwebAddressCodec(LitecoinKit.NetworkType.MainNet).encode(
+            scanPublicKey = ByteArray(33) { (it + 1).toByte() },
+            spendPublicKey = ByteArray(33) { (it + 34).toByte() },
         )
     }
 

@@ -14,8 +14,14 @@ internal object MwebFiles {
         return File(context.noBackupFilesDir, databaseName(networkType, walletId))
     }
 
+    fun publicSendDaemonDataDir(context: Context, networkType: LitecoinKit.NetworkType, walletId: String): File {
+        return File(context.noBackupFilesDir, "${databaseName(networkType, walletId)}-PublicSend")
+    }
+
     fun clear(context: Context, networkType: LitecoinKit.NetworkType, walletId: String) {
+        MwebPublicPegInSender.checkCanClear(walletId, networkType)
         SQLiteDatabase.deleteDatabase(context.getDatabasePath(databaseName(networkType, walletId)))
         daemonDataDir(context, networkType, walletId).deleteRecursively()
+        publicSendDaemonDataDir(context, networkType, walletId).deleteRecursively()
     }
 }

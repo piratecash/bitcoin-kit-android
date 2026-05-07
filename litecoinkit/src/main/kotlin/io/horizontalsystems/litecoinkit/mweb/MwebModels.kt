@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClientFactory
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdAndroidDaemonClientFactory
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 /** Confirmed and unconfirmed MWEB balance in litoshi. */
 data class MwebBalance(
@@ -89,6 +90,30 @@ data class MwebConfig(
 
     /** Restore point for MWEB UTXO scanning. */
     val restorePoint: MwebRestorePoint = MwebRestorePoint.Activation,
+
+    /**
+     * Optional Litecoin P2P peer for mwebd. When null, mwebd uses its own
+     * DNS/P2P discovery for NODE_MWEB_LIGHT_CLIENT peers.
+     */
+    val peerAddress: String? = null,
+
+    /** Factory for the native daemon binding; override in tests only. */
+    val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
+)
+
+/**
+ * Native daemon configuration used only for public Litecoin peg-in sends to MWEB.
+ *
+ * This does not create a wallet MWEB engine, does not scan MWEB UTXOs, and does
+ * not persist account keys. It exists so public Litecoin wallets can send to an
+ * MWEB address without enabling a local MWEB account. By default it uses
+ * Dispatchers.IO; hosts with custom [MwebConfig.dispatcherProvider] should pass
+ * the same provider here. Synchronous previews must not be called from the same
+ * single-thread dispatcher used as [dispatcherProvider.io].
+ */
+data class MwebPublicSendConfig(
+    /** Dispatchers used by blocking native calls. */
+    val dispatcherProvider: MwebDispatcherProvider = CoroutineMwebDispatcherProvider(Dispatchers.IO),
 
     /**
      * Optional Litecoin P2P peer for mwebd. When null, mwebd uses its own
