@@ -1,0 +1,182 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "bitcoincore",
+    "version": "acddeb9",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash",
+          "module": "hd-wallet-kit-android",
+          "version": {
+            "requires": "46a441d"
+          }
+        },
+        {
+          "group": "com.jakewharton.timber",
+          "module": "timber",
+          "version": {
+            "requires": "5.0.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincore-acddeb9.aar",
+          "url": "bitcoincore-acddeb9.aar",
+          "size": 1122027,
+          "sha512": "292f0a2a31075944827666047167b133c62bd1821a1e477a1aaa21e40278138753c8d45119b399d8f8e6c65a44a449d93416a93b8a78f2559925042dd143bf50",
+          "sha256": "0c908001c861a1908792a9dc58fad40c41eaad85950d8a0edc8a00b11c1ca8a7",
+          "sha1": "f3a670775c8f64126a4e07b228a70f0b98450341",
+          "md5": "d5330815ab6ef32503705b6304a72b56"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "io.reactivex.rxjava2",
+          "module": "rxjava",
+          "version": {
+            "requires": "2.2.19"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-core",
+          "version": {
+            "requires": "1.3.5"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.8.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "org.bouncycastle",
+          "module": "bcprov-jdk15to18",
+          "version": {
+            "requires": "1.80"
+          }
+        },
+        {
+          "group": "com.eclipsesource.minimal-json",
+          "module": "minimal-json",
+          "version": {
+            "requires": "0.9.5"
+          }
+        },
+        {
+          "group": "com.squareup.okhttp3",
+          "module": "okhttp",
+          "version": {
+            "requires": "4.5.0"
+          }
+        },
+        {
+          "group": "com.github.piratecash",
+          "module": "hd-wallet-kit-android",
+          "version": {
+            "requires": "46a441d"
+          }
+        },
+        {
+          "group": "com.jakewharton.timber",
+          "module": "timber",
+          "version": {
+            "requires": "5.0.1"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincore-acddeb9.aar",
+          "url": "bitcoincore-acddeb9.aar",
+          "size": 1122027,
+          "sha512": "292f0a2a31075944827666047167b133c62bd1821a1e477a1aaa21e40278138753c8d45119b399d8f8e6c65a44a449d93416a93b8a78f2559925042dd143bf50",
+          "sha256": "0c908001c861a1908792a9dc58fad40c41eaad85950d8a0edc8a00b11c1ca8a7",
+          "sha1": "f3a670775c8f64126a4e07b228a70f0b98450341",
+          "md5": "d5330815ab6ef32503705b6304a72b56"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "bitcoincore-acddeb9-sources.jar",
+          "url": "bitcoincore-acddeb9-sources.jar",
+          "size": 1194518,
+          "sha512": "ecb5db24709fdf6bf8e30d0ff184090f97e74c52b0d24042e34cfce2bc57e9cd6591eb38f1a418a51cdbaf5e13036e61e6c7821a8afbf4e4c7e59a29534d3a77",
+          "sha256": "4c5fbef0ea66c8d2839c7f64fc6f6fbaa9aa7800bfc70704f38c252babb81e37",
+          "sha1": "e46ed057140c6395056b825675b0d7421a85e3ec",
+          "md5": "5c63510de2ab049f5b98a7cc0809648a"
+        }
+      ]
+    }
+  ]
+}
