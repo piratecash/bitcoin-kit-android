@@ -585,10 +585,26 @@ class LitecoinMwebEngineLifecycleTest {
         )
 
         assertEquals(1, bridge.signCalls.size)
-        assertEquals(1, bridge.processCreatedCount)
+        assertEquals(1, bridge.processRelayedCount)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
         assertArrayEquals(signedRaw, result.rawTransaction)
         assertEquals("test-transaction", result.canonicalTransactionHash)
+    }
+
+    @Test
+    fun send_publicToMwebBroadcastFailure_doesNotPersistPublicTransaction() {
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val daemonClient = FakeDaemonClient(broadcastError = IllegalStateException("broadcast failed"))
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        assertPublicPegInBroadcastFailureDoesNotPersist(bridge) {
+            engine.send(
+                request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                publicOptions = publicOptions(),
+                publicTransactionBridge = bridge,
+            )
+        }
     }
 
     @Test
@@ -629,6 +645,21 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(1, bridge.signCalls.size)
         assertEquals(1, daemonClient.startCount)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
+    }
+
+    @Test
+    fun publicPegInSender_broadcastFailure_doesNotPersistPublicTransaction() {
+        val daemonClient = FakeDaemonClient(broadcastError = IllegalStateException("broadcast failed"))
+        val sender = publicPegInSender(daemonClient)
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+
+        assertPublicPegInBroadcastFailureDoesNotPersist(bridge) {
+            sender.send(
+                request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                publicOptions = publicOptions(),
+                publicTransactionBridge = bridge,
+            )
+        }
     }
 
     @Test
@@ -792,6 +823,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val dryRunRawTransaction: ByteArray? = null,
         private val createdOutputIds: List<String> = listOf("created-output"),
         private val createError: Throwable? = null,
+        private val broadcastError: Throwable? = null,
     ) : MwebDaemonClient {
         private val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         var status: MwebDaemonStatus = status
@@ -874,6 +906,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         override fun broadcast(rawTransaction: ByteArray): String {
             broadcastRawTransactions.add(rawTransaction.copyOf())
+            broadcastError?.let { throw it }
             return "test-transaction"
         }
     }
@@ -891,7 +924,7 @@ class LitecoinMwebEngineLifecycleTest {
         private var activeSpendableCalls = 0
         var spendableCalls = 0
             private set
-        var processCreatedCount = 0
+        var processRelayedCount = 0
             private set
 
         override fun spendableUtxos(options: MwebPublicSendOptions): List<UnspentOutput> {
@@ -941,14 +974,20 @@ class LitecoinMwebEngineLifecycleTest {
             return signedRawTransaction.copyOf()
         }
 
-        override fun processCreated(transaction: FullTransaction): FullTransaction {
-            processCreatedCount += 1
+        override fun processRelayed(transaction: FullTransaction): FullTransaction {
+            processRelayedCount += 1
             return transaction
         }
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {
             signCalls.add(SignCall(rawTransaction.copyOf(), selectedUtxos))
-            return transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
+            return signedNewTransaction(rawTransaction)
+        }
+
+        private fun signedNewTransaction(rawTransaction: ByteArray): FullTransaction {
+            return transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction)).also {
+                it.header.status = Transaction.Status.NEW
+            }
         }
     }
 
@@ -985,6 +1024,18 @@ class LitecoinMwebEngineLifecycleTest {
                 daemonClientFactory = { daemonClient },
             ),
         ).also(publicPegInSenders::add)
+    }
+
+    private fun assertPublicPegInBroadcastFailureDoesNotPersist(
+        bridge: FakePublicTransactionBridge,
+        send: suspend () -> Unit,
+    ) {
+        assertThrows(MwebError.DaemonCrashed::class.java) {
+            runBlocking { send() }
+        }
+
+        assertEquals(1, bridge.signCalls.size)
+        assertEquals(0, bridge.processRelayedCount)
     }
 
     private fun walletId(prefix: String): String {

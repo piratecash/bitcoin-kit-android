@@ -185,4 +185,17 @@ object TransactionCreatorTest : Spek({
             verify(transactionSender, never()).sendPendingTransactions()
         }
     }
+
+    describe("#processRelayedLocally") {
+        beforeEachTest {
+            doNothing().whenever(processor).processRelayed(any())
+        }
+
+        it("saves relayed transaction without broadcasting through public peers") {
+            transactionCreator.processRelayedLocally(mockTransaction)
+
+            verify(processor).processRelayed(mockTransaction)
+            verify(transactionSender, never()).sendPendingTransactions()
+        }
+    }
 })

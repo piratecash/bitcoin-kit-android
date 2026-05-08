@@ -1,6 +1,7 @@
 package io.horizontalsystems.litecoinkit.mweb
 
 import android.content.Context
+import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
@@ -73,16 +74,17 @@ internal class MwebPublicPegInSender(
                 val createResult = MwebDaemonErrorMapper.mapSuspend {
                     activeClient.create(prepared.rawTemplate, request.feeRate, dryRun = false)
                 }
-                val rawTransaction = publicTransactionBridge.signPublicInputs(
+                val signedPublicTransaction = publicTransactionBridge.signPublicInputs(
                     rawTransaction = createResult.rawTransaction,
                     selectedPublicUtxos = prepared.selectedPublicUtxos,
                 )
                 val transactionHash = MwebDaemonErrorMapper.mapSuspend {
-                    activeClient.broadcast(rawTransaction)
+                    activeClient.broadcast(signedPublicTransaction.rawTransaction)
                 }
+                signedPublicTransaction.publicTransaction?.let(publicTransactionBridge::processRelayed)
                 MwebSendResult(
                     canonicalTransactionHash = transactionHash,
-                    rawTransaction = rawTransaction,
+                    rawTransaction = signedPublicTransaction.rawTransaction,
                     outputIds = createResult.outputIds,
                 )
             }
@@ -267,11 +269,18 @@ internal class MwebPublicPegInSender(
     )
 }
 
+internal class MwebSignedPublicTransaction(
+    val rawTransaction: ByteArray,
+    val publicTransaction: FullTransaction?,
+)
+
 internal suspend fun MwebPublicTransactionBridge.signPublicInputs(
     rawTransaction: ByteArray,
     selectedPublicUtxos: List<UnspentOutput>,
-): ByteArray {
-    if (selectedPublicUtxos.isEmpty()) return rawTransaction
+): MwebSignedPublicTransaction {
+    if (selectedPublicUtxos.isEmpty()) {
+        return MwebSignedPublicTransaction(rawTransaction, publicTransaction = null)
+    }
     val signedTransaction = sign(rawTransaction, selectedPublicUtxos)
-    return serialize(processCreated(signedTransaction))
+    return MwebSignedPublicTransaction(serialize(signedTransaction), signedTransaction)
 }

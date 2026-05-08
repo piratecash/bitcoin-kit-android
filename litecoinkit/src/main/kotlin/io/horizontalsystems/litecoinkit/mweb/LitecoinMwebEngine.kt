@@ -271,17 +271,20 @@ internal class LitecoinMwebEngine(
             val createResult = MwebDaemonErrorMapper.mapSuspend {
                 client.create(prepared.rawTemplate, request.feeRate, dryRun = false)
             }
-            val rawTransaction = signPublicInputs(
+            val signedPublicTransaction = signPublicInputs(
                 rawTransaction = createResult.rawTransaction,
                 selectedPublicUtxos = prepared.selectedPublicUtxos,
                 publicTransactionBridge = publicTransactionBridge,
             )
             val transactionHash = MwebDaemonErrorMapper.mapSuspend {
-                client.broadcast(rawTransaction)
+                client.broadcast(signedPublicTransaction.rawTransaction)
+            }
+            signedPublicTransaction.publicTransaction?.let {
+                requirePublicBridge(publicTransactionBridge).processRelayed(it)
             }
             val result = MwebSendResult(
                 canonicalTransactionHash = transactionHash,
-                rawTransaction = rawTransaction,
+                rawTransaction = signedPublicTransaction.rawTransaction,
                 outputIds = createResult.outputIds,
             )
             val timestamp = currentTimeMillisProvider()
@@ -499,9 +502,14 @@ internal class LitecoinMwebEngine(
         rawTransaction: ByteArray,
         selectedPublicUtxos: List<UnspentOutput>,
         publicTransactionBridge: MwebPublicTransactionBridge?,
-    ): ByteArray {
-        if (selectedPublicUtxos.isEmpty()) return rawTransaction
-        return requirePublicBridge(publicTransactionBridge).signPublicInputs(rawTransaction, selectedPublicUtxos)
+    ): MwebSignedPublicTransaction {
+        if (selectedPublicUtxos.isEmpty()) {
+            return MwebSignedPublicTransaction(rawTransaction, publicTransaction = null)
+        }
+        return requirePublicBridge(publicTransactionBridge).signPublicInputs(
+            rawTransaction = rawTransaction,
+            selectedPublicUtxos = selectedPublicUtxos,
+        )
     }
 
     private fun requirePublicBridge(publicTransactionBridge: MwebPublicTransactionBridge?): MwebPublicTransactionBridge {

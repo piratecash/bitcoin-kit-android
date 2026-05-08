@@ -116,6 +116,16 @@ class TransactionCreator(
         return processCreatedInStorage(transaction)
     }
 
+    fun processRelayedLocally(transaction: FullTransaction): FullTransaction {
+        try {
+            processor.processRelayed(transaction)
+        } catch (ex: BloomFilterManager.BloomFilterExpired) {
+            bloomFilterManager.regenerateBloomFilter()
+        }
+
+        return transaction
+    }
+
     private suspend fun signAndBuild(
         mutableTransaction: MutableTransaction,
         inputs: List<TransactionInput>? = null,

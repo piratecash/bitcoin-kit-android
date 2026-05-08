@@ -363,6 +363,10 @@ class BitcoinCore(
         return transactionCreator?.processCreatedLocally(transaction) ?: throw CoreError.ReadOnlyCore
     }
 
+    fun processRelayedTransactionLocally(transaction: FullTransaction): FullTransaction {
+        return transactionCreator?.processRelayedLocally(transaction) ?: throw CoreError.ReadOnlyCore
+    }
+
     fun transactionOutput(value: Long, address: String): TransactionOutput {
         val converted = addressConverter.convert(address)
         return TransactionOutput(

@@ -55,12 +55,22 @@ internal class MwebTransactionPreparer(
             val dryRunTransaction = dryRun(draft.rawTemplate, request.feeRate)
             val estimatedFees = estimateFees(request, draft, dryRunTransaction)
             if (estimatedFees == fees) {
-                return draft.prepared(estimatedFees)
+                return validatePrepared(request, draft.prepared(estimatedFees))
             }
             fees = estimatedFees
         }
 
         throw MwebError.SyncFailure(IllegalStateException("MWEB fee estimation did not converge"))
+    }
+
+    private fun validatePrepared(
+        request: MwebSendRequest,
+        transaction: PreparedMwebTransaction,
+    ): PreparedMwebTransaction {
+        if (request is MwebSendRequest.PublicToMweb && transaction.selectedPublicUtxos.isEmpty()) {
+            throw MwebError.SyncFailure(IllegalStateException("MWEB peg-in requires public inputs"))
+        }
+        return transaction
     }
 
     private fun selectedMwebUtxos(request: MwebSendRequest): List<MwebUtxo> {

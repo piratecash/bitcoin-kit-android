@@ -27,6 +27,7 @@ import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
 import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.Checkpoint
+import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
@@ -601,8 +602,9 @@ class LitecoinKit : AbstractKit {
             return bitcoinCore.serializeTransaction(transaction)
         }
 
-        override fun processCreated(transaction: FullTransaction): FullTransaction {
-            return bitcoinCore.processCreatedTransactionLocally(transaction)
+        override fun processRelayed(transaction: FullTransaction): FullTransaction {
+            transaction.header.status = Transaction.Status.RELAYED
+            return bitcoinCore.processRelayedTransactionLocally(transaction)
         }
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {

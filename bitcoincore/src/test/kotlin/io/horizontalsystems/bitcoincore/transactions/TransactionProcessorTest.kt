@@ -133,6 +133,32 @@ object TransactionProcessorTest : Spek({
             Mockito.verify(outputsCache).add(fullTransaction.outputs)
         }
 
+        it("processRelayed_newTransaction_persistsRelayedTransaction") {
+            processor.processRelayed(fullTransaction)
+
+            Assert.assertEquals(Transaction.Status.RELAYED, transaction.status)
+            Mockito.verify(storage).addTransaction(fullTransaction)
+            Mockito.verify(extractor).extract(fullTransaction)
+            Mockito.verify(blockchainDataListener)
+                .onTransactionsUpdate(listOf(transaction), listOf(), null)
+        }
+
+        it("processRelayed_existingNewTransaction_updatesStatus") {
+            val existingTransaction = Transaction().apply {
+                hash = transaction.hash
+                status = Transaction.Status.NEW
+            }
+            Mockito.`when`(storage.getTransaction(transaction.hash)).thenReturn(existingTransaction)
+
+            processor.processRelayed(fullTransaction)
+
+            Assert.assertEquals(Transaction.Status.RELAYED, existingTransaction.status)
+            Mockito.verify(storage).updateTransaction(existingTransaction)
+            Mockito.verify(storage, Mockito.never()).addTransaction(fullTransaction)
+            Mockito.verify(blockchainDataListener)
+                .onTransactionsUpdate(listOf(), listOf(existingTransaction), null)
+        }
+
         it("testProcessTransactions_SeveralMempoolTransactions") {
             val transactions = transactions()
 
