@@ -17,6 +17,8 @@ data class FullApiTransaction(
 @Serializable
 data class ApiTransaction(
     val hash: String,
+    @SerialName("block_id")
+    val blockId: Int? = null,
     val date: String,
     val time: String,
     val fee: Long

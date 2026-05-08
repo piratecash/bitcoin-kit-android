@@ -12,6 +12,7 @@ import io.horizontalsystems.bitcoincore.core.IKitStateListener
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
+import io.horizontalsystems.bitcoincore.transactions.PendingTransactionReconciler
 import kotlin.math.max
 
 class SyncManager(
@@ -21,8 +22,13 @@ class SyncManager(
     private val storage: IStorage,
     private val syncMode: SyncMode,
     bestBlockHeight: Int,
-    private val peerSize: Int
+    private val peerSize: Int,
+    private val pendingTransactionReconciler: PendingTransactionReconciler
 ) : IApiSyncerListener, IConnectionManagerListener, IBlockSyncListener, PeerGroup.Listener {
+
+    init {
+        pendingTransactionReconciler.onConfirmedBlocksFound = ::onPendingTransactionBlocksFound
+    }
 
     var listener: IKitStateListener? = null
 
@@ -75,8 +81,11 @@ class SyncManager(
             if (syncState !is KitState.NotSynced) return
         }
 
+        pendingTransactionReconciler.start()
+
         if (connectionManager.isConnected) {
             startSync()
+            pendingTransactionReconciler.reconcileAsync()
         } else {
             syncState = KitState.NotSynced(BitcoinCore.StateError.NoInternet())
         }
@@ -94,6 +103,7 @@ class SyncManager(
 
             else -> Unit
         }
+        pendingTransactionReconciler.stop()
         syncState = KitState.NotSynced(BitcoinCore.StateError.NotStarted())
     }
 
@@ -185,6 +195,14 @@ class SyncManager(
 
     override fun onBlockSyncFinished() {
         syncState = KitState.Synced
+        pendingTransactionReconciler.reconcileAsync()
+    }
+
+    private fun onPendingTransactionBlocksFound() {
+        forceAddedBlocksTotal = storage.getApiBlockHashesCount()
+        if (connectionManager.isConnected && syncState is KitState.Synced) {
+            startSync()
+        }
     }
 
     //

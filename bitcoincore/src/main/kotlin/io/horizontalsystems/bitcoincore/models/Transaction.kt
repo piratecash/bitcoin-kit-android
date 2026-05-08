@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.models
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 import java.util.*
 
 /**
@@ -18,6 +19,12 @@ import java.util.*
  */
 
 @Entity(primaryKeys = ["hash"],
+        indices = [
+                Index(
+                        value = ["blockHash", "status", "isMine"],
+                        name = "index_Transaction_blockHash_status_isMine"
+                )
+        ],
         foreignKeys = [ForeignKey(
                 entity = Block::class,
                 parentColumns = ["headerHash"],

@@ -14,7 +14,11 @@ class TransactionInvalidator(
 ) {
 
     fun invalidate(transaction: Transaction) {
-        val invalidTransactionsFullInfo = storage.getDescendantTransactionsFullInfo(transaction.hash)
+        val currentTransaction = storage.getTransaction(transaction.hash)
+            ?.takeIf { it.blockHash == null }
+            ?: return
+
+        val invalidTransactionsFullInfo = storage.getDescendantTransactionsFullInfo(currentTransaction.hash)
 
         if (invalidTransactionsFullInfo.isEmpty()) return
 

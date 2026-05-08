@@ -15,4 +15,7 @@ interface TransactionMetadataDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(metadata: TransactionMetadata)
 
+    @Query("DELETE FROM `TransactionMetadata` WHERE `transactionHash` = :txHash")
+    fun delete(txHash: ByteArray)
+
 }

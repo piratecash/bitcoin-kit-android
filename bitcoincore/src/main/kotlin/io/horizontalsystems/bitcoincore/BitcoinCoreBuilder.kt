@@ -94,7 +94,9 @@ import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
+import io.horizontalsystems.bitcoincore.transactions.BlockchairPendingTransactionStatusProvider
 import io.horizontalsystems.bitcoincore.transactions.PendingTransactionProcessor
+import io.horizontalsystems.bitcoincore.transactions.PendingTransactionReconciler
 import io.horizontalsystems.bitcoincore.transactions.SendTransactionsOnPeersSynced
 import io.horizontalsystems.bitcoincore.transactions.TransactionConflictsResolver
 import io.horizontalsystems.bitcoincore.transactions.TransactionCreator
@@ -126,6 +128,8 @@ import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet
 import io.horizontalsystems.hdwalletkit.HDWalletAccount
 import io.horizontalsystems.hdwalletkit.HDWalletAccountWatch
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 class BitcoinCoreBuilder {
 
@@ -160,6 +164,7 @@ class BitcoinCoreBuilder {
     private var allowBroadcastFromUnsyncedPeers = false
     private var instantChecker: IInstantTransactionChecker? = null
     private var sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+    private var coroutineDispatcher: CoroutineDispatcher = Dispatchers.IO
 
     // parameters for signing
     private var iInputSigner: IInputSigner? = null
@@ -298,6 +303,11 @@ class BitcoinCoreBuilder {
 
     fun setSharedPeerGroupHolder(holder: SharedPeerGroupHolder): BitcoinCoreBuilder {
         this.sharedPeerGroupHolder = holder
+        return this
+    }
+
+    fun setCoroutineDispatcher(coroutineDispatcher: CoroutineDispatcher): BitcoinCoreBuilder {
+        this.coroutineDispatcher = coroutineDispatcher
         return this
     }
 
@@ -457,6 +467,14 @@ class BitcoinCoreBuilder {
             conflictsResolver,
             invalidator
         )
+        val pendingTransactionReconciler = PendingTransactionReconciler(
+            storage = storage,
+            statusProvider = BlockchairPendingTransactionStatusProvider.create(blockchairApi, network.blockchairChainId),
+            dataListener = dataProvider,
+            invalidateOutgoing = invalidator::invalidate,
+            logTag = network.logTag,
+            coroutineDispatcher = coroutineDispatcher
+        )
 
         val isShared = sharedPeerGroupHolder != null
         val peerHostManager = if (!isShared) PeerAddressManager(network, storage) else null
@@ -564,7 +582,8 @@ class BitcoinCoreBuilder {
             storage,
             syncMode,
             blockSyncer.localDownloadedBestBlockHeight,
-            peerSize
+            peerSize,
+            pendingTransactionReconciler
         )
         apiSyncer.listener = syncManager
         blockSyncer.listener = syncManager
