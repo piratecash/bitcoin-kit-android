@@ -1,7 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
-import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
@@ -33,7 +32,11 @@ internal class MwebTransactionPreparer(
         var nextPublicCandidateIndex = 0
         var fees = MwebFeeEstimate(normalFee = 0, mwebFee = 0)
 
-        repeat(publicCandidates.size + FEE_ESTIMATION_ATTEMPTS) {
+        // First pass starts with zero fee assumption and computes the real one;
+        // a second pass confirms convergence once the draft uses that fee.
+        // For peg-in, growing the public input set may require additional
+        // passes — one per added UTXO — so we allow `candidates + 2` iterations.
+        repeat(publicCandidates.size + 2) {
             if (request is MwebSendRequest.PublicToMweb) {
                 nextPublicCandidateIndex = addPublicUtxos(
                     selectedPublicUtxos = selectedPublicUtxos,
@@ -52,12 +55,12 @@ internal class MwebTransactionPreparer(
                 fees = fees,
                 publicOptions = publicOptions,
             )
-            val dryRunTransaction = dryRun(draft.rawTemplate, request.feeRate)
-            val estimatedFees = estimateFees(request, draft, dryRunTransaction)
-            if (estimatedFees == fees) {
-                return validatePrepared(request, draft.prepared(estimatedFees))
+            val newFees = computeFees(request, draft)
+            if (newFees == fees) {
+                dryRun(draft.rawTemplate, request.feeRate)
+                return validatePrepared(request, draft.prepared(newFees))
             }
-            fees = estimatedFees
+            fees = newFees
         }
 
         throw MwebError.SyncFailure(IllegalStateException("MWEB fee estimation did not converge"))
@@ -174,6 +177,7 @@ internal class MwebTransactionPreparer(
         return MwebTransactionDraft(
             selectedPublicUtxos = selectedPublicUtxos,
             selectedMwebUtxos = selectedMwebUtxos,
+            outputs = indexedOutputs,
             rawTemplate = rawTemplate,
             inputValue = inputValue,
             outputValue = indexedOutputs.sumOf { it.value },
@@ -254,50 +258,29 @@ internal class MwebTransactionPreparer(
         }
     }
 
-    private fun estimateFees(
+    private fun computeFees(
         request: MwebSendRequest,
         draft: MwebTransactionDraft,
-        dryRunTransaction: ByteArray,
     ): MwebFeeEstimate {
-        val dryRun = deserialize(dryRunTransaction)
-        val postPublicInputValue = publicInputValue(dryRun.inputs, draft.selectedPublicUtxos)
-        val mwebInputValue = draft.inputValue - postPublicInputValue
-        val expectedPegin = maxOf(0L, draft.outputValue - mwebInputValue)
-        val postOutputValue = dryRun.outputs.sumOf { it.value }
-        val mwebFee = maxOf(
-            0L,
-            postOutputValue - expectedPegin + hogExInputFee(request, expectedPegin)
+        val isPegIn = request is MwebSendRequest.PublicToMweb
+        val mwebFee = MwebFeeFormula.estimate(
+            outputs = draft.outputs,
+            feeRate = request.feeRate,
+            isPegIn = isPegIn,
         )
-        val normalFee = if (draft.selectedPublicUtxos.isEmpty()) {
-            0
+        val normalFee = if (isPegIn) {
+            canonicalPegInFeeBytes(draft) * request.feeRate
         } else {
-            transactionSizeCalculator.transactionSize(
-                previousOutputs = draft.selectedPublicUtxos.map { it.output },
-                outputs = dryRun.outputs,
-            ) * request.feeRate
+            0L
         }
         return MwebFeeEstimate(normalFee = normalFee, mwebFee = mwebFee)
     }
 
-    private fun hogExInputFee(request: MwebSendRequest, expectedPegin: Long): Long {
-        if (expectedPegin <= 0) return 0
-        return request.feeRate.toLong() * HOGEX_PEGIN_INPUT_VBYTES
-    }
-
-    private fun deserialize(rawTransaction: ByteArray): FullTransaction {
-        return transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
-    }
-
-    private fun publicInputValue(
-        inputs: List<TransactionInput>,
-        selectedPublicUtxos: List<UnspentOutput>,
-    ): Long {
-        return inputs.sumOf { input ->
-            selectedPublicUtxos.firstOrNull { unspentOutput ->
-                unspentOutput.transaction.hash.contentEquals(input.previousOutputTxHash) &&
-                    unspentOutput.output.index.toLong() == input.previousOutputIndex
-            }?.output?.value ?: 0
-        }
+    private fun canonicalPegInFeeBytes(draft: MwebTransactionDraft): Long {
+        return transactionSizeCalculator.transactionSize(
+            previousOutputs = draft.selectedPublicUtxos.map { it.output },
+            outputs = listOf(PEG_IN_MARKER_OUTPUT),
+        ).toLong()
     }
 
     private fun requirePublicBridge(): MwebPublicTransactionBridge {
@@ -307,6 +290,7 @@ internal class MwebTransactionPreparer(
     private class MwebTransactionDraft(
         val selectedPublicUtxos: List<UnspentOutput>,
         val selectedMwebUtxos: List<MwebUtxo>,
+        val outputs: List<TransactionOutput>,
         val rawTemplate: ByteArray,
         val inputValue: Long,
         val outputValue: Long,
@@ -336,10 +320,76 @@ internal class MwebTransactionPreparer(
 
     private companion object {
         const val DEFAULT_INPUT_SEQUENCE = 0xfffffffeL
-        const val FEE_ESTIMATION_ATTEMPTS = 4
-        const val HOGEX_PEGIN_INPUT_VBYTES = 41L
         const val PEG_OUT_CONFIRMATIONS = 6
         const val RBF_SEQUENCE = 0L
+        const val PEG_IN_MARKER_SCRIPT_SIZE = 34
+        val PEG_IN_MARKER_OUTPUT: TransactionOutput = TransactionOutput(
+            value = 0L,
+            index = 0,
+            script = ByteArray(PEG_IN_MARKER_SCRIPT_SIZE),
+            type = ScriptType.UNKNOWN,
+        )
+    }
+}
+
+/**
+ * Local Kotlin port of the MWEB fee formula from ltcd's
+ * `mweb.EstimateFee` (ltcutil/mweb/fees.go) plus the HogEx peg-in surcharge
+ * documented in the mwebd README. Used as the source of truth for fee
+ * estimation, mirroring how Cake Wallet, Electrum-LTC and Litecoin Core
+ * compute MWEB fees locally instead of trusting daemon-stripped dry-run output.
+ */
+internal object MwebFeeFormula {
+    private const val BASE_MWEB_FEE = 100L
+    private const val KERNEL_WITH_STEALTH_WEIGHT = 3L
+    private const val STANDARD_OUTPUT_WEIGHT = 18L
+    private const val BYTES_PER_WEIGHT = 42L
+    private const val FEE_RATE_KB_PER_VBYTE = 1000L
+    private const val MWEB_OUTPUT_SCRIPT_SIZE = 66
+    private const val HOGEX_PEGIN_INPUT_VBYTES = 41L
+    private const val TX_OUT_VALUE_BYTES = 8
+
+    fun estimate(
+        outputs: List<TransactionOutput>,
+        feeRate: Int,
+        isPegIn: Boolean,
+    ): Long {
+        var weight = KERNEL_WITH_STEALTH_WEIGHT
+        var canonicalTxOutSize = 0L
+        for (output in outputs) {
+            if (isMwebOutput(output)) {
+                weight += STANDARD_OUTPUT_WEIGHT
+            } else {
+                weight += ceilDiv(output.lockingScript.size.toLong(), BYTES_PER_WEIGHT)
+                canonicalTxOutSize += publicTxOutSerializedSize(output).toLong()
+            }
+        }
+        val feeRatePerKb = feeRate.toLong() * FEE_RATE_KB_PER_VBYTE
+        val canonicalFeeComponent = ceilDiv(feeRatePerKb * canonicalTxOutSize, FEE_RATE_KB_PER_VBYTE)
+        val mwebFeeComponent = weight * BASE_MWEB_FEE
+        val hogExSurcharge = if (isPegIn) feeRate.toLong() * HOGEX_PEGIN_INPUT_VBYTES else 0L
+        return canonicalFeeComponent + mwebFeeComponent + hogExSurcharge
+    }
+
+    fun isMwebOutput(output: TransactionOutput): Boolean {
+        return output.scriptType == ScriptType.UNKNOWN &&
+            output.lockingScript.size == MWEB_OUTPUT_SCRIPT_SIZE
+    }
+
+    private fun publicTxOutSerializedSize(output: TransactionOutput): Int {
+        val scriptSize = output.lockingScript.size
+        return TX_OUT_VALUE_BYTES + varintSize(scriptSize) + scriptSize
+    }
+
+    private fun varintSize(value: Int): Int = when {
+        value < 0xfd -> 1
+        value <= 0xffff -> 3
+        value.toLong() <= 0xffffffffL -> 5
+        else -> 9
+    }
+
+    private fun ceilDiv(numerator: Long, denominator: Long): Long {
+        return (numerator + denominator - 1) / denominator
     }
 }
 

@@ -256,7 +256,7 @@ class LitecoinMwebEngineLifecycleTest {
         val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         val destination = addressCodec.encode(ByteArray(33) { 1 }, ByteArray(33) { 2 })
         val daemonClient = FakeDaemonClient(
-            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
             dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
         )
         val engine = engineWith(daemonClient)
@@ -310,7 +310,7 @@ class LitecoinMwebEngineLifecycleTest {
         val destination = mwebDestination()
         val engine = engineWith(
             FakeDaemonClient(
-                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
                 dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
             )
         )
@@ -321,7 +321,8 @@ class LitecoinMwebEngineLifecycleTest {
         val transaction = engine.transactions().first { it.type == MwebTransactionType.Outgoing }
         assertEquals(MwebTransactionKind.MwebToMweb, transaction.kind)
         assertEquals(50L, transaction.amount)
-        assertEquals(0L, transaction.fee)
+        // Pure MWEB with recipient + change: kernel(3) + 2*standardOutput(18) = 39 wu * 100 = 3900 sat.
+        assertEquals(3_900L, transaction.fee)
         assertEquals(destination, transaction.address)
         assertEquals("test-transaction", transaction.canonicalTransactionHash)
         assertEquals(listOf("created-output"), transaction.outputIds)
@@ -335,7 +336,7 @@ class LitecoinMwebEngineLifecycleTest {
         val engine = engineWith(
             FakeDaemonClient(
                 status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
-                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100, 95, 1_000, spent = false)),
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
                 dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
             )
         )
@@ -381,7 +382,7 @@ class LitecoinMwebEngineLifecycleTest {
     fun transactions_createdOutputFromOutgoing_doesNotReturnIncoming() = runBlocking {
         val destination = mwebDestination()
         val daemonClient = FakeDaemonClient(
-            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
             dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
         )
         val engine = engineWith(daemonClient)
@@ -430,7 +431,7 @@ class LitecoinMwebEngineLifecycleTest {
         val engine = engineWith(
             daemonClient = FakeDaemonClient(
                 status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
-                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100, 95, 1_000, spent = false)),
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
                 dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
                 createdOutputIds = emptyList(),
             ),
@@ -455,7 +456,7 @@ class LitecoinMwebEngineLifecycleTest {
         val destination = mwebDestination()
         val engine = engineWith(
             daemonClient = FakeDaemonClient(
-                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100, 10, 1_000, spent = false)),
+                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
                 dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
             ),
             localTransactionTtlMillis = 1_000L,
@@ -474,23 +475,28 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun sendInfo_mwebInput_usesDryRunFeeAndMwebOutpointTemplate() {
+    fun sendInfo_mwebInput_usesLocalCanonicalFeeAndMwebOutpointTemplate() {
         val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         val destination = addressCodec.encode(ByteArray(33) { 1 }, ByteArray(33) { 2 })
+        val confirmedValue = 100_000L
+        val recipientValue = 50L
         val daemonClient = FakeDaemonClient(
-            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 7, 100, 10, 1_000, spent = false)),
-            dryRunRawTransaction = rawTransactionWithOutput(7),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 7, confirmedValue, 10, 1_000, spent = false)),
+            // Daemon-stripped dry-run output value MUST NOT influence the fee in the new contract.
+            dryRunRawTransaction = rawTransactionWithOutput(value = 999_999),
         )
         val engine = engineWith(daemonClient)
         engine.start()
 
-        val sendInfo = engine.sendInfo(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+        val sendInfo = engine.sendInfo(MwebSendRequest.MwebToMweb(destination, recipientValue, 1), publicOptions())
         val template = transactionSerializer.deserialize(
             BitcoinInputMarkable(daemonClient.createRequests.first().rawTransaction)
         )
 
-        assertEquals(7L, sendInfo.mwebFee)
-        assertEquals(43L, sendInfo.changeValue)
+        // Pure MWEB with recipient + change: kernel(3) + 2*standardOutput(18) = 39 wu * 100 = 3900 sat.
+        val expectedMwebFee = 3_900L
+        assertEquals(expectedMwebFee, sendInfo.mwebFee)
+        assertEquals(confirmedValue - recipientValue - expectedMwebFee, sendInfo.changeValue)
         assertEquals(SELECTED_OUTPUT_ID, template.inputs.first().previousOutputTxHash.toHexString())
         assertEquals(7, template.inputs.first().previousOutputIndex)
         assertEquals(66, template.outputs.first().lockingScript.size)
@@ -527,7 +533,7 @@ class LitecoinMwebEngineLifecycleTest {
             val engine = engineWith(
                 daemonClient = FakeDaemonClient(
                     status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
-                    streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100, utxoHeight, 1_000, spent = false)),
+                    streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, utxoHeight, 1_000, spent = false)),
                     dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
                 ),
             )
@@ -550,7 +556,7 @@ class LitecoinMwebEngineLifecycleTest {
             val engine = engineWith(
                 daemonClient = FakeDaemonClient(
                     status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
-                    streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100, utxoHeight, 1_000, spent = false)),
+                    streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, utxoHeight, 1_000, spent = false)),
                     dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
                 ),
             )
