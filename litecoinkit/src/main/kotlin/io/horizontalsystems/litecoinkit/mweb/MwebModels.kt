@@ -136,7 +136,11 @@ data class MwebSendInfo(
     /** Canonical transaction fee part in litoshi. */
     val normalFee: Long,
 
-    /** MWEB/HogEx fee part in litoshi as returned by mwebd dry-run. */
+    /**
+     * MWEB/HogEx fee part in litoshi computed locally from the canonical ltcd
+     * `mweb.EstimateFee` formula. Daemon dry-run is not used for this value
+     * because it strips outputs for peg-out and pure MWEB sends.
+     */
     val mwebFee: Long,
 
     /** Sum of [normalFee] and [mwebFee]. */

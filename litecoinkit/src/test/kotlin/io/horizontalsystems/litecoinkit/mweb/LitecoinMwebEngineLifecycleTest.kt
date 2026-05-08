@@ -254,7 +254,7 @@ class LitecoinMwebEngineLifecycleTest {
     @Test
     fun send_mwebInput_marksSelectedUtxosSpent() = runBlocking {
         val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
-        val destination = addressCodec.encode(ByteArray(33) { 1 }, ByteArray(33) { 2 })
+        val destination = addressCodec.encode(fakeMwebPubkey(0x11), fakeMwebPubkey(0x22))
         val daemonClient = FakeDaemonClient(
             streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
             dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
@@ -477,7 +477,7 @@ class LitecoinMwebEngineLifecycleTest {
     @Test
     fun sendInfo_mwebInput_usesLocalCanonicalFeeAndMwebOutpointTemplate() {
         val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
-        val destination = addressCodec.encode(ByteArray(33) { 1 }, ByteArray(33) { 2 })
+        val destination = addressCodec.encode(fakeMwebPubkey(0x11), fakeMwebPubkey(0x22))
         val confirmedValue = 100_000L
         val recipientValue = 50L
         val daemonClient = FakeDaemonClient(
@@ -865,9 +865,16 @@ class LitecoinMwebEngineLifecycleTest {
         override fun addresses(fromIndex: Int, toIndex: Int): List<String> {
             return (fromIndex..toIndex).map { index ->
                 addressCodec.encode(
-                    scanPublicKey = ByteArray(33) { offset -> (index + offset + 1).toByte() },
-                    spendPublicKey = ByteArray(33) { offset -> (index + offset + 34).toByte() },
+                    scanPublicKey = compressedFakePubkey(prefix = 0x02, seed = (index + 1).toByte()),
+                    spendPublicKey = compressedFakePubkey(prefix = 0x03, seed = (index + 34).toByte()),
                 )
+            }
+        }
+
+        private fun compressedFakePubkey(prefix: Byte, seed: Byte): ByteArray {
+            return ByteArray(33).also { bytes ->
+                bytes[0] = prefix
+                for (i in 1 until 33) bytes[i] = (seed + i).toByte()
             }
         }
 
@@ -1090,7 +1097,16 @@ class LitecoinMwebEngineLifecycleTest {
 
     private fun mwebDestination(): String {
         return MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
-            .encode(ByteArray(33) { 1 }, ByteArray(33) { 2 })
+            .encode(fakeMwebPubkey(0x11), fakeMwebPubkey(0x22))
+    }
+
+    private fun fakeMwebPubkey(seed: Byte): ByteArray {
+        // Compressed secp256k1 pubkeys start with 0x02 or 0x03; only the prefix
+        // byte is checked by MwebFeeFormula.isMwebOutput.
+        return ByteArray(33).also { bytes ->
+            bytes[0] = 0x02
+            for (i in 1 until 33) bytes[i] = seed
+        }
     }
 
     private fun waitUntil(condition: () -> Boolean) = runBlocking {

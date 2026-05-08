@@ -25,8 +25,8 @@ class MwebTransactionPreparerTest {
     private val networkType = LitecoinKit.NetworkType.MainNet
     private val addressCodec = MwebAddressCodec(networkType)
     private val transactionSerializer = BaseTransactionSerializer()
-    private val mwebDestination = addressCodec.encode(ByteArray(33) { 1 }, ByteArray(33) { 2 })
-    private val mwebChange = addressCodec.encode(ByteArray(33) { 3 }, ByteArray(33) { 4 })
+    private val mwebDestination = addressCodec.encode(fakeMwebPubkey(0x11), fakeMwebPubkey(0x22))
+    private val mwebChange = addressCodec.encode(fakeMwebPubkey(0x33), fakeMwebPubkey(0x44))
     private val publicDestination = "ltc1qpublicrecipient"
     private val syncState = MwebSyncState(blockHeaderHeight = 100, mwebHeaderHeight = 100, mwebUtxosHeight = 100)
 
@@ -72,13 +72,52 @@ class MwebTransactionPreparerTest {
 
     @Test
     fun mwebFeeFormula_isMwebOutput_recognizesSixtySixByteUnknownScript() {
-        val mwebLike = TransactionOutput(value = 0, index = 0, script = ByteArray(66), type = ScriptType.UNKNOWN)
+        val mwebLike = TransactionOutput(
+            value = 0,
+            index = 0,
+            script = mwebLikeScript(scanPrefix = 0x02, spendPrefix = 0x03),
+            type = ScriptType.UNKNOWN,
+        )
         val nonMwebShortScript = TransactionOutput(value = 0, index = 0, script = ByteArray(25), type = ScriptType.UNKNOWN)
-        val knownScriptType = TransactionOutput(value = 0, index = 0, script = ByteArray(66), type = ScriptType.P2WPKH)
+        val knownScriptType = TransactionOutput(
+            value = 0,
+            index = 0,
+            script = mwebLikeScript(scanPrefix = 0x02, spendPrefix = 0x03),
+            type = ScriptType.P2WPKH,
+        )
 
         assertTrue(MwebFeeFormula.isMwebOutput(mwebLike))
         assertEquals(false, MwebFeeFormula.isMwebOutput(nonMwebShortScript))
         assertEquals(false, MwebFeeFormula.isMwebOutput(knownScriptType))
+    }
+
+    @Test
+    fun mwebFeeFormula_isMwebOutput_rejectsScriptWithNonCompressedPubkeyPrefix() {
+        // ltcd's `extractMweb` validates both halves as compressed secp256k1
+        // pubkeys; a 66-byte UNKNOWN script with 0x00/0x01/0x04 prefix bytes
+        // must not be classified as MWEB.
+        val invalidScanPrefix = TransactionOutput(
+            value = 0,
+            index = 0,
+            script = mwebLikeScript(scanPrefix = 0x00, spendPrefix = 0x02),
+            type = ScriptType.UNKNOWN,
+        )
+        val invalidSpendPrefix = TransactionOutput(
+            value = 0,
+            index = 0,
+            script = mwebLikeScript(scanPrefix = 0x03, spendPrefix = 0x04),
+            type = ScriptType.UNKNOWN,
+        )
+        val uncompressedPrefix = TransactionOutput(
+            value = 0,
+            index = 0,
+            script = mwebLikeScript(scanPrefix = 0x04, spendPrefix = 0x04),
+            type = ScriptType.UNKNOWN,
+        )
+
+        assertEquals(false, MwebFeeFormula.isMwebOutput(invalidScanPrefix))
+        assertEquals(false, MwebFeeFormula.isMwebOutput(invalidSpendPrefix))
+        assertEquals(false, MwebFeeFormula.isMwebOutput(uncompressedPrefix))
     }
 
     @Test
@@ -102,6 +141,84 @@ class MwebTransactionPreparerTest {
         assertEquals(0L, prepared.normalFee)
         assertEquals(confirmedUtxoValue - recipientValue - 3_900L, prepared.changeValue)
         assertEquals(1, daemonClient.dryRunCalls)
+    }
+
+    @Test
+    fun prepare_mwebToMwebExactCoverageOfValuePlusOneOutputFee_skipsChangeOutput() {
+        // 2-output draft cannot fit (V - R - 3900 < 0) but a 1-output draft is
+        // valid: absorbed leftover (V - R) equals the canonical 1-output fee
+        // (kernel 3 + 1 standard 18 = 21 wu -> 2100 sat). The preparer must
+        // emit a no-change MWEB transaction instead of throwing.
+        val confirmedUtxoValue = 100_000L
+        val recipientValue = 97_900L
+        val daemonClient = stubDryRunDaemon()
+        val preparer = preparer(
+            mwebUtxos = listOf(mwebUtxo(value = confirmedUtxoValue, height = 1)),
+        )
+
+        val prepared = preparer.prepare(
+            request = MwebSendRequest.MwebToMweb(mwebDestination, recipientValue, feeRate = 1),
+            publicOptions = publicOptions(),
+            dryRun = daemonClient::dryRun,
+        )
+
+        assertEquals(2_100L, prepared.mwebFee)
+        assertEquals(0L, prepared.normalFee)
+        assertEquals(null, prepared.changeValue)
+        assertEquals(null, prepared.changeAddress)
+        assertEquals(1, daemonClient.dryRunCalls)
+    }
+
+    @Test
+    fun prepare_mwebToPublicExactCoverageOfValuePlusOneOutputFee_skipsChangeOutput() {
+        // No-change peg-out: 2-output fee = kernel(3) + canonical-recipient
+        // weight(1) + standard change(18) = 22 wu * 100 + canonical TxOut bytes
+        // (8 + 1 + 25 = 34) at feeRate 1 = 2_234 sat. 1-output fee drops the
+        // standard change weight: 4 wu * 100 + 34 = 434 sat.
+        val recipientValue = 99_566L
+        val confirmedUtxoValue = recipientValue + 434L
+        val tipHeight = syncState.mwebUtxosHeight
+        val bridge = FakeBridge()
+        val daemonClient = stubDryRunDaemon()
+        val preparer = preparer(
+            mwebUtxos = listOf(mwebUtxo(value = confirmedUtxoValue, height = tipHeight - 5)),
+            bridge = bridge,
+        )
+
+        val prepared = preparer.prepare(
+            request = MwebSendRequest.MwebToPublic(publicDestination, recipientValue, feeRate = 1),
+            publicOptions = publicOptions(),
+            dryRun = daemonClient::dryRun,
+        )
+
+        assertEquals(434L, prepared.mwebFee)
+        assertEquals(0L, prepared.normalFee)
+        assertEquals(null, prepared.changeValue)
+        assertEquals(null, prepared.changeAddress)
+        assertEquals(1, daemonClient.dryRunCalls)
+        assertTrue("bridge.output must be invoked at least once", bridge.outputCalls.isNotEmpty())
+    }
+
+    @Test
+    fun prepare_mwebToMwebAbsorbedLeftoverBelowCanonicalFee_throwsInsufficientFunds() {
+        // 2-output draft is insufficient and the absorbed leftover (V - R) is
+        // also less than the canonical 1-output fee (2_100 sat) -> the preparer
+        // must report InsufficientFunds rather than a malformed below-fee tx.
+        val confirmedUtxoValue = 2_000L
+        val recipientValue = 1_000L
+        val daemonClient = stubDryRunDaemon()
+        val preparer = preparer(
+            mwebUtxos = listOf(mwebUtxo(value = confirmedUtxoValue, height = 1)),
+        )
+
+        assertThrows(MwebError.InsufficientFunds::class.java) {
+            preparer.prepare(
+                request = MwebSendRequest.MwebToMweb(mwebDestination, recipientValue, feeRate = 1),
+                publicOptions = publicOptions(),
+                dryRun = daemonClient::dryRun,
+            )
+        }
+        assertEquals("dry-run must not be called when funding is insufficient", 0, daemonClient.dryRunCalls)
     }
 
     @Test
@@ -252,6 +369,68 @@ class MwebTransactionPreparerTest {
     }
 
     @Test
+    fun prepare_publicToMwebExactCoverageOfRecipientPlusOneOutputFee_skipsPublicChange() {
+        // Single public UTXO whose value sits between R + 1-output canonical
+        // fee and R + 2-output canonical fee. The 2-output draft cannot fit and
+        // there are no more candidates to grow into, but a no-change peg-in is
+        // valid: leftover (V - R) >= canonical 1-output fee.
+        //
+        // FakeBridge gives a 1-byte change script and a 25-byte recipient
+        // script (unused for peg-in). For 1 P2WPKH input + peg-in marker output:
+        // canonicalPegInFeeBytes = 122 -> normalFee_canonical = 122 sat at feeRate 1.
+        // 2-output mwebFee = kernel(3) + standard(18) + ceilDiv(1,42)=1 = 22 wu * 100
+        //   + canonical TxOut (8+1+1=10) at feeRate 1 + HogEx (1*41) = 2_251 sat.
+        // 1-output mwebFee = kernel(3) + standard(18) = 21 wu * 100 + 0 + HogEx 41 = 2_141 sat.
+        // F2 = 2_251 + 122 = 2_373; F1 = 2_141 + 122 = 2_263; window of 110 sat.
+        val publicValue = 10_000L
+        val recipientValue = 7_700L  // V - R = 2_300 -> in (F1=2_263, F2=2_373).
+        val daemonClient = stubDryRunDaemon()
+        val preparer = preparer(
+            bridge = FakeBridge(publicUtxos = listOf(publicUtxo(value = publicValue))),
+        )
+
+        val prepared = preparer.prepare(
+            request = MwebSendRequest.PublicToMweb(mwebDestination, recipientValue, feeRate = 1),
+            publicOptions = publicOptions(),
+            dryRun = daemonClient::dryRun,
+        )
+
+        // Canonical 1-output MWEB fee stays in mwebFee; the rest absorbs into normalFee.
+        assertEquals(2_141L, prepared.mwebFee)
+        assertEquals(publicValue - recipientValue - prepared.mwebFee, prepared.normalFee)
+        assertTrue("normalFee must cover the canonical broadcast bytes", prepared.normalFee >= 122L)
+        assertEquals(null, prepared.changeValue)
+        assertEquals(null, prepared.changeAddress)
+        assertEquals(1, prepared.selectedPublicUtxos.size)
+        // Conservation: input = recipient + normalFee + mwebFee.
+        assertEquals(publicValue, recipientValue + prepared.normalFee + prepared.mwebFee)
+        assertEquals(1, daemonClient.dryRunCalls)
+    }
+
+    @Test
+    fun prepare_publicToMwebAbsorbedLeftoverBelowCanonicalFee_throwsInsufficientFunds() {
+        // Single public UTXO with V - R below the 1-output canonical peg-in
+        // fee (2_141 mwebFee + 122 normalFee = 2_263). 2-output also out of
+        // reach; preparer must report InsufficientFunds rather than fabricate a
+        // below-fee broadcast.
+        val publicValue = 10_000L
+        val recipientValue = 8_000L  // V - R = 2_000 < F1 = 2_263.
+        val daemonClient = stubDryRunDaemon()
+        val preparer = preparer(
+            bridge = FakeBridge(publicUtxos = listOf(publicUtxo(value = publicValue))),
+        )
+
+        assertThrows(MwebError.InsufficientFunds::class.java) {
+            preparer.prepare(
+                request = MwebSendRequest.PublicToMweb(mwebDestination, recipientValue, feeRate = 1),
+                publicOptions = publicOptions(),
+                dryRun = daemonClient::dryRun,
+            )
+        }
+        assertEquals("dry-run must not be called when peg-in cannot cover canonical fee", 0, daemonClient.dryRunCalls)
+    }
+
+    @Test
     fun prepare_publicToMwebInsufficientPublicUtxos_throwsInsufficientFunds() {
         val daemonClient = stubDryRunDaemon()
         val preparer = preparer(
@@ -304,7 +483,29 @@ class MwebTransactionPreparerTest {
     ): StubDaemon = StubDaemon(rawTransactionFactory)
 
     private fun mwebOutput(value: Long): TransactionOutput {
-        return TransactionOutput(value = value, index = 0, script = ByteArray(66), type = ScriptType.UNKNOWN)
+        return TransactionOutput(
+            value = value,
+            index = 0,
+            script = mwebLikeScript(scanPrefix = 0x02, spendPrefix = 0x03),
+            type = ScriptType.UNKNOWN,
+        )
+    }
+
+    private fun mwebLikeScript(scanPrefix: Int, spendPrefix: Int): ByteArray {
+        return ByteArray(66).apply {
+            this[0] = scanPrefix.toByte()
+            this[33] = spendPrefix.toByte()
+        }
+    }
+
+    private fun fakeMwebPubkey(seed: Byte): ByteArray {
+        // Compressed secp256k1 pubkeys start with 0x02 or 0x03; the rest of the
+        // bytes are not validated by MwebAddressCodec, only the leading prefix
+        // matters for ltcd parity in the local fee formula.
+        return ByteArray(33).also { bytes ->
+            bytes[0] = 0x02
+            for (i in 1 until 33) bytes[i] = seed
+        }
     }
 
     private fun publicOutput(value: Long, scriptSize: Int): TransactionOutput {

@@ -38,14 +38,24 @@ internal class MwebTransactionPreparer(
         // passes — one per added UTXO — so we allow `candidates + 2` iterations.
         repeat(publicCandidates.size + 2) {
             if (request is MwebSendRequest.PublicToMweb) {
-                nextPublicCandidateIndex = addPublicUtxos(
+                val grown = addPublicUtxos(
                     selectedPublicUtxos = selectedPublicUtxos,
                     publicCandidates = publicCandidates,
                     nextPublicCandidateIndex = nextPublicCandidateIndex,
                     requiredValue = request.value + fees.total,
                 )
-            } else {
-                validateMwebFunding(request, selectedMwebUtxos, fees.total)
+                if (grown == null) {
+                    // Public candidates exhausted before they could cover the
+                    // 2-output canonical draft. A no-change peg-in may still
+                    // fit when the leftover (V - R) >= 1-output canonical fee.
+                    return prepareWithAbsorbedPegInFee(
+                        request = request,
+                        selectedPublicUtxos = selectedPublicUtxos,
+                        publicOptions = publicOptions,
+                        dryRun = dryRun,
+                    )
+                }
+                nextPublicCandidateIndex = grown
             }
 
             val draft = buildTransactionDraft(
@@ -55,15 +65,107 @@ internal class MwebTransactionPreparer(
                 fees = fees,
                 publicOptions = publicOptions,
             )
-            val newFees = computeFees(request, draft)
-            if (newFees == fees) {
-                dryRun(draft.rawTemplate, request.feeRate)
-                return validatePrepared(request, draft.prepared(newFees))
+            if (draft != null) {
+                val newFees = computeFees(request, draft)
+                if (newFees == fees) {
+                    dryRun(draft.rawTemplate, request.feeRate)
+                    return validatePrepared(request, draft.prepared(newFees))
+                }
+                fees = newFees
+                return@repeat
             }
-            fees = newFees
+
+            // 2-output draft cannot cover the canonical fee. addPublicUtxos
+            // ensures selected_sum >= request.value + fees.total for peg-in
+            // before we get here, so this branch is reached only for MWEB-
+            // funded sends where the absorbed-leftover model applies.
+            return prepareWithAbsorbedFee(
+                request = request,
+                selectedPublicUtxos = selectedPublicUtxos,
+                selectedMwebUtxos = selectedMwebUtxos,
+                publicOptions = publicOptions,
+                dryRun = dryRun,
+            )
         }
 
-        throw MwebError.SyncFailure(IllegalStateException("MWEB fee estimation did not converge"))
+        // Convergence on a 2-output draft did not stabilise. Both peg-in and
+        // MWEB-funded sends fall back to the no-change variant: peg-in absorbs
+        // leftover into normalFee while keeping mwebFee at the canonical
+        // 1-output value; MWEB-funded sends absorb leftover into mwebFee.
+        return if (request is MwebSendRequest.PublicToMweb) {
+            prepareWithAbsorbedPegInFee(
+                request = request,
+                selectedPublicUtxos = selectedPublicUtxos,
+                publicOptions = publicOptions,
+                dryRun = dryRun,
+            )
+        } else {
+            prepareWithAbsorbedFee(
+                request = request,
+                selectedPublicUtxos = selectedPublicUtxos,
+                selectedMwebUtxos = selectedMwebUtxos,
+                publicOptions = publicOptions,
+                dryRun = dryRun,
+            )
+        }
+    }
+
+    private fun prepareWithAbsorbedPegInFee(
+        request: MwebSendRequest.PublicToMweb,
+        selectedPublicUtxos: List<UnspentOutput>,
+        publicOptions: MwebPublicSendOptions,
+        dryRun: (rawTemplate: ByteArray, feeRate: Int) -> ByteArray,
+    ): PreparedMwebTransaction {
+        val draft = buildNoChangeDraft(
+            request = request,
+            selectedPublicUtxos = selectedPublicUtxos,
+            selectedMwebUtxos = emptyList(),
+            publicOptions = publicOptions,
+        )
+        val canonical = computeFees(request, draft)
+        val absorbed = draft.inputValue - request.value
+        if (absorbed < canonical.total) {
+            throw MwebError.InsufficientFunds()
+        }
+
+        // Peg-in keeps the canonical MWEB fee (kernel + standard recipient
+        // weight + HogEx surcharge) and dumps the leftover into normalFee so
+        // that the canonical broadcast tx still pays at least its canonical
+        // bytes; miners simply receive the surplus as overpayment.
+        val absorbedFees = MwebFeeEstimate(
+            normalFee = absorbed - canonical.mwebFee,
+            mwebFee = canonical.mwebFee,
+        )
+        dryRun(draft.rawTemplate, request.feeRate)
+        return validatePrepared(request, draft.prepared(absorbedFees))
+    }
+
+    private fun prepareWithAbsorbedFee(
+        request: MwebSendRequest,
+        selectedPublicUtxos: List<UnspentOutput>,
+        selectedMwebUtxos: List<MwebUtxo>,
+        publicOptions: MwebPublicSendOptions,
+        dryRun: (rawTemplate: ByteArray, feeRate: Int) -> ByteArray,
+    ): PreparedMwebTransaction {
+        val draft = buildNoChangeDraft(
+            request = request,
+            selectedPublicUtxos = selectedPublicUtxos,
+            selectedMwebUtxos = selectedMwebUtxos,
+            publicOptions = publicOptions,
+        )
+        val canonical = computeFees(request, draft)
+        val absorbed = draft.inputValue - request.value
+        if (absorbed < canonical.total) {
+            validateMwebFunding(request, selectedMwebUtxos, canonical.total)
+            throw MwebError.InsufficientFunds()
+        }
+
+        val absorbedFees = MwebFeeEstimate(
+            normalFee = canonical.normalFee,
+            mwebFee = absorbed - canonical.normalFee,
+        )
+        dryRun(draft.rawTemplate, request.feeRate)
+        return validatePrepared(request, draft.prepared(absorbedFees))
     }
 
     private fun validatePrepared(
@@ -108,12 +210,10 @@ internal class MwebTransactionPreparer(
         publicCandidates: List<UnspentOutput>,
         nextPublicCandidateIndex: Int,
         requiredValue: Long,
-    ): Int {
+    ): Int? {
         var candidateIndex = nextPublicCandidateIndex
         while (selectedPublicUtxos.sumOf { it.output.value } < requiredValue) {
-            if (candidateIndex >= publicCandidates.size) {
-                throw MwebError.InsufficientFunds()
-            }
+            if (candidateIndex >= publicCandidates.size) return null
             selectedPublicUtxos.add(publicCandidates[candidateIndex])
             candidateIndex += 1
         }
@@ -153,12 +253,10 @@ internal class MwebTransactionPreparer(
         selectedMwebUtxos: List<MwebUtxo>,
         fees: MwebFeeEstimate,
         publicOptions: MwebPublicSendOptions,
-    ): MwebTransactionDraft {
+    ): MwebTransactionDraft? {
         val inputValue = selectedPublicUtxos.sumOf { it.output.value } + selectedMwebUtxos.sumOf { it.value }
         val changeValue = inputValue - request.value - fees.total
-        if (changeValue < 0) {
-            throw MwebError.InsufficientFunds()
-        }
+        if (changeValue < 0) return null
 
         val inputs = publicInputs(selectedPublicUtxos, publicOptions) + mwebInputs(selectedMwebUtxos)
         val outputs = mutableListOf<TransactionOutput>()
@@ -183,6 +281,30 @@ internal class MwebTransactionPreparer(
             outputValue = indexedOutputs.sumOf { it.value },
             changeValue = changeValue.takeIf { it > 0 },
             changeAddress = changeAddress,
+        )
+    }
+
+    private fun buildNoChangeDraft(
+        request: MwebSendRequest,
+        selectedPublicUtxos: List<UnspentOutput>,
+        selectedMwebUtxos: List<MwebUtxo>,
+        publicOptions: MwebPublicSendOptions,
+    ): MwebTransactionDraft {
+        val inputValue = selectedPublicUtxos.sumOf { it.output.value } + selectedMwebUtxos.sumOf { it.value }
+        val inputs = publicInputs(selectedPublicUtxos, publicOptions) + mwebInputs(selectedMwebUtxos)
+        val outputs = listOf(recipientOutput(request, index = 0))
+        val rawTemplate = transactionSerializer.serialize(
+            FullTransaction(transactionHeader(), inputs, outputs, transactionSerializer)
+        )
+        return MwebTransactionDraft(
+            selectedPublicUtxos = selectedPublicUtxos,
+            selectedMwebUtxos = selectedMwebUtxos,
+            outputs = outputs,
+            rawTemplate = rawTemplate,
+            inputValue = inputValue,
+            outputValue = outputs.sumOf { it.value },
+            changeValue = null,
+            changeAddress = null,
         )
     }
 
@@ -372,8 +494,21 @@ internal object MwebFeeFormula {
     }
 
     fun isMwebOutput(output: TransactionOutput): Boolean {
-        return output.scriptType == ScriptType.UNKNOWN &&
-            output.lockingScript.size == MWEB_OUTPUT_SCRIPT_SIZE
+        if (output.scriptType != ScriptType.UNKNOWN) return false
+        val script = output.lockingScript
+        if (script.size != MWEB_OUTPUT_SCRIPT_SIZE) return false
+        // Cheap shape check: both halves must start with a compressed
+        // secp256k1 pubkey prefix (0x02 or 0x03). Production-generated MWEB
+        // outputs always satisfy this; ltcd's `extractMweb` additionally
+        // validates each half as a curve point, which we deliberately skip
+        // here because rejecting bad prefixes is enough to keep stray
+        // 66-byte UNKNOWN scripts out of the fee weight bucket.
+        return isCompressedPubkeyPrefix(script[0]) && isCompressedPubkeyPrefix(script[33])
+    }
+
+    private fun isCompressedPubkeyPrefix(byte: Byte): Boolean {
+        val value = byte.toInt() and 0xFF
+        return value == 0x02 || value == 0x03
     }
 
     private fun publicTxOutSerializedSize(output: TransactionOutput): Int {
