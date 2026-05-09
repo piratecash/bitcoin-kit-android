@@ -190,8 +190,29 @@ class MwebRoomStorageTest {
     }
 
     @Test
-    fun confirmCreatedUtxosForConfirmedTransactions_existingConfirmedTransaction_confirmsCreatedUtxo() {
-        storage.saveUtxos(listOf(utxo(outputId = "change-output", height = 0, blockTime = 123)))
+    fun reconcileCreatedUtxos_existingConfirmedTransaction_confirmsCreatedUtxo() {
+        storage.saveUtxos(listOf(utxo(outputId = "change-output", height = 0, blockTime = 0)))
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "confirmed-peg-out",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                createdOutputIds = listOf("change-output"),
+                confirmedHeight = 200,
+                confirmedTimestamp = null,
+            )
+        )
+
+        storage.reconcileCreatedUtxos()
+
+        val utxo = storage.utxos().single()
+        assertEquals(200, utxo.height)
+        assertEquals(1_000L, utxo.blockTime)
+        assertFalse(utxo.spent)
+    }
+
+    @Test
+    fun reconcileCreatedUtxos_lateArrivingCreatedUtxo_confirmsCreatedUtxo() {
         database.outgoingTransactionDao.save(
             entity(
                 uid = "confirmed-peg-out",
@@ -203,12 +224,69 @@ class MwebRoomStorageTest {
             )
         )
 
-        storage.confirmCreatedUtxosForConfirmedTransactions()
+        storage.reconcileCreatedUtxos()
+        assertTrue(storage.utxos().isEmpty())
+
+        storage.saveUtxos(listOf(utxo(outputId = "change-output", height = 0, blockTime = 0)))
+        storage.reconcileCreatedUtxos()
 
         val utxo = storage.utxos().single()
         assertEquals(200, utxo.height)
         assertEquals(3_000L, utxo.blockTime)
         assertFalse(utxo.spent)
+    }
+
+    @Test
+    fun reconcileCreatedUtxos_confirmedCreatedUtxo_keepsOriginalHeight() {
+        storage.saveUtxos(
+            listOf(
+                utxo(outputId = "confirmed-change", height = 100, blockTime = 2_000),
+                utxo(outputId = "unconfirmed-change", height = 0, blockTime = 0),
+            )
+        )
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "confirmed-peg-out",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                createdOutputIds = listOf("confirmed-change", "unconfirmed-change"),
+                confirmedHeight = 200,
+                confirmedTimestamp = 3_000,
+            )
+        )
+
+        storage.reconcileCreatedUtxos()
+
+        val utxos = storage.utxos().associateBy { it.outputId }
+        utxos.getValue("confirmed-change").let { utxo ->
+            assertEquals(100, utxo.height)
+            assertEquals(2_000L, utxo.blockTime)
+        }
+        utxos.getValue("unconfirmed-change").let { utxo ->
+            assertEquals(200, utxo.height)
+            assertEquals(3_000L, utxo.blockTime)
+        }
+    }
+
+    @Test
+    fun reconcileCreatedUtxos_nonPositiveConfirmedHeight_keepsCreatedUtxoUnconfirmed() {
+        storage.saveUtxos(listOf(utxo(outputId = "change-output", height = 0, blockTime = 123)))
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "confirmed-peg-out",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                createdOutputIds = listOf("change-output"),
+                confirmedHeight = 0,
+                confirmedTimestamp = 3_000,
+            )
+        )
+
+        storage.reconcileCreatedUtxos()
+
+        val utxo = storage.utxos().single()
+        assertEquals(0, utxo.height)
+        assertEquals(123L, utxo.blockTime)
     }
 
     @Test

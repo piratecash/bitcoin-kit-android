@@ -37,11 +37,14 @@ interface MwebUtxoDao {
     @Query(
         """
         UPDATE MwebUtxo
-        SET height = :height, blockTime = COALESCE(:timestamp, blockTime)
+        SET height = :height, blockTime = COALESCE(:blockTime, blockTime)
         WHERE outputId IN (:outputIds) AND height = 0
         """
     )
-    fun confirmCreated(outputIds: List<String>, height: Int, timestamp: Long?)
+    fun confirmCreated(outputIds: List<String>, height: Int, blockTime: Long?)
+
+    @Query("SELECT outputId FROM MwebUtxo WHERE height = 0")
+    fun unconfirmedOutputIds(): List<String>
 }
 
 @Dao
@@ -73,8 +76,14 @@ interface MwebOutgoingTransactionDao {
     @Query("SELECT * FROM MwebOutgoingTransaction WHERE confirmedHeight IS NULL ORDER BY timestamp DESC, uid DESC")
     fun pendingOutgoingTransactions(): List<MwebOutgoingTransactionEntity>
 
-    @Query("SELECT * FROM MwebOutgoingTransaction WHERE confirmedHeight IS NOT NULL ORDER BY timestamp DESC, uid DESC")
-    fun confirmedOutgoingTransactions(): List<MwebOutgoingTransactionEntity>
+    @Query(
+        """
+        SELECT * FROM MwebOutgoingTransaction
+        WHERE confirmedHeight > 0 AND createdOutputIds != '[]'
+        ORDER BY timestamp DESC, uid DESC
+        """
+    )
+    fun confirmedOutgoingTransactionsWithCreatedOutputs(): List<MwebOutgoingTransactionEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(transaction: MwebOutgoingTransactionEntity)

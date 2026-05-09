@@ -102,10 +102,19 @@ class MwebRoomStorage(
         }
     }
 
-    fun confirmCreatedUtxosForConfirmedTransactions() {
+    fun reconcileCreatedUtxos() {
+        val unconfirmedOutputIds = database.utxoDao.unconfirmedOutputIds().toSet()
+        if (unconfirmedOutputIds.isEmpty()) return
+
+        val transactions = database.outgoingTransactionDao.confirmedOutgoingTransactionsWithCreatedOutputs()
+            .filter { transaction ->
+                transaction.createdOutputIds.any { it in unconfirmedOutputIds }
+            }
+        if (transactions.isEmpty()) return
+
         database.runInTransaction {
-            database.outgoingTransactionDao.confirmedOutgoingTransactions().forEach { transaction ->
-                val height = transaction.confirmedHeight ?: return@forEach
+            transactions.forEach { transaction ->
+                val height = transaction.confirmedHeight?.takeIf { it > 0 } ?: return@forEach
                 confirmCreated(transaction, height, transaction.confirmedTimestamp)
             }
         }
@@ -175,8 +184,9 @@ class MwebRoomStorage(
     }
 
     private fun confirmCreated(transaction: MwebOutgoingTransactionEntity, height: Int, timestamp: Long?) {
-        if (transaction.createdOutputIds.isEmpty()) return
-        database.utxoDao.confirmCreated(transaction.createdOutputIds, height, timestamp)
+        if (transaction.createdOutputIds.isEmpty() || height <= 0) return
+        val blockTime = timestamp?.takeIf { it > 0 } ?: transaction.timestamp.takeIf { it > 0 }
+        database.utxoDao.confirmCreated(transaction.createdOutputIds, height, blockTime)
     }
 
     private fun MwebPendingTransactionEntity.toPendingTransaction(): MwebPendingTransaction {
