@@ -72,6 +72,27 @@ class MwebRoomStorage(
         return database.outgoingTransactionDao.outgoingTransactions().mapNotNull { it.toTransaction() }
     }
 
+    fun pendingLocalSpentOutputIds(): List<String> {
+        return database.outgoingTransactionDao.pendingOutgoingTransactions()
+            .flatMap { it.spentOutputIds }
+            .distinct()
+    }
+
+    fun confirmTransactionsSpending(outputIds: List<String>, height: Int, timestamp: Long?) {
+        if (outputIds.isEmpty() || height <= 0) return
+
+        val spentOutputIds = outputIds.toSet()
+        val confirmedUids = database.outgoingTransactionDao.pendingOutgoingTransactions()
+            .filter { transaction ->
+                transaction.spentOutputIds.isNotEmpty() &&
+                    transaction.spentOutputIds.all { it in spentOutputIds }
+            }
+            .map { it.uid }
+        if (confirmedUids.isEmpty()) return
+
+        database.outgoingTransactionDao.confirm(confirmedUids, height, timestamp)
+    }
+
     fun saveBroadcastResult(
         pendingTransaction: MwebPendingTransaction,
         localTransaction: MwebTransaction?,
@@ -167,9 +188,9 @@ class MwebRoomStorage(
             canonicalTransactionHash = canonicalTransactionHash,
             outputIds = createdOutputIds,
             inputOutputIds = spentOutputIds,
-            height = null,
-            timestamp = timestamp,
-            pending = true,
+            height = confirmedHeight,
+            timestamp = confirmedTimestamp ?: timestamp,
+            pending = confirmedHeight == null,
         )
     }
 
@@ -184,6 +205,8 @@ class MwebRoomStorage(
             canonicalTransactionHash = canonicalTransactionHash,
             createdOutputIds = outputIds,
             spentOutputIds = inputOutputIds,
+            confirmedHeight = height,
+            confirmedTimestamp = timestamp.takeIf { height != null },
             timestamp = timestamp,
         )
     }

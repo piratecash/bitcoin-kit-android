@@ -78,5 +78,7 @@ data class MwebOutgoingTransactionEntity(
     val canonicalTransactionHash: String?,
     val createdOutputIds: List<String>,
     val spentOutputIds: List<String>,
+    val confirmedHeight: Int?,
+    val confirmedTimestamp: Long?,
     val timestamp: Long,
 )

@@ -455,12 +455,12 @@ internal class LitecoinMwebEngine(
         return copy(
             height = createdUtxo?.height ?: height,
             timestamp = createdUtxo?.blockTime?.takeIf { it > 0 } ?: timestamp,
-            pending = pending && outputIds.isNotEmpty() && createdUtxo == null && height == null,
+            pending = pending && createdUtxo == null && height == null,
         )
     }
 
     private fun MwebTransaction.isStale(now: Long, knownUtxos: List<MwebUtxo>): Boolean {
-        if (!pending || height != null || outputIds.isEmpty()) return false
+        if (!pending || height != null) return false
         if (knownUtxos.any { it.outputId in outputIds }) return false
 
         return now - timestamp >= localTransactionTtlMillis / 1_000
@@ -494,7 +494,11 @@ internal class LitecoinMwebEngine(
             inputOutputIds = prepared.selectedMwebUtxos.map { it.outputId },
             height = null,
             timestamp = timestamp,
-            pending = result.outputIds.isNotEmpty(),
+            pending = when (request) {
+                is MwebSendRequest.PublicToMweb -> result.outputIds.isNotEmpty()
+                is MwebSendRequest.MwebToPublic,
+                is MwebSendRequest.MwebToMweb -> prepared.selectedMwebUtxos.isNotEmpty()
+            },
         )
     }
 

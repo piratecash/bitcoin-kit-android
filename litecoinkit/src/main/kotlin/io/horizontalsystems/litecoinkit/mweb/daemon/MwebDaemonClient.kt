@@ -34,6 +34,7 @@ interface MwebDaemonClient {
 data class MwebDaemonStatus(
     val syncState: MwebSyncState,
     val nativeVersion: String,
+    val blockTime: Long = 0,
 )
 
 data class MwebCreateResult(

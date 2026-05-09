@@ -56,6 +56,7 @@ private class MwebdAndroidDaemonClient(
                 mwebUtxosHeight = status.mwebUtxosHeight().toInt(),
             ),
             nativeVersion = NATIVE_VERSION,
+            blockTime = status.blockTime(),
         )
     }
 

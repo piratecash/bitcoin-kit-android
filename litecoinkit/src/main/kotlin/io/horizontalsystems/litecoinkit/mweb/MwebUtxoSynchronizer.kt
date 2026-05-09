@@ -3,6 +3,7 @@ package io.horizontalsystems.litecoinkit.mweb
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -11,6 +12,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.Closeable
+import java.util.logging.Level
+import java.util.logging.Logger
 
 internal class MwebUtxoSynchronizer(
     private val storage: MwebRoomStorage,
@@ -53,7 +56,7 @@ internal class MwebUtxoSynchronizer(
 
                     try {
                         refreshStatus(client)
-                    } catch (error: MwebError) {
+                    } catch (error: Exception) {
                         handlePollingError(error)
                     }
                 }
@@ -71,7 +74,7 @@ internal class MwebUtxoSynchronizer(
 
                     try {
                         refreshSpentOutputs(client)
-                    } catch (error: MwebError) {
+                    } catch (error: Exception) {
                         handlePollingError(error)
                     }
                 }
@@ -93,12 +96,18 @@ internal class MwebUtxoSynchronizer(
 
     fun refreshSpentOutputs(client: MwebDaemonClient) {
         val unspentOutputIds = storage.unspentUtxos().map { it.outputId }
-        if (unspentOutputIds.isEmpty()) return
+        val localTransactionOutputIds = storage.pendingLocalSpentOutputIds()
+        val outputIds = (unspentOutputIds + localTransactionOutputIds).distinct()
+        if (outputIds.isEmpty()) return
 
-        val spentOutputIds = MwebDaemonErrorMapper.map { client.spent(unspentOutputIds) }
+        val spentOutputIds = MwebDaemonErrorMapper.map { client.spent(outputIds) }
         if (spentOutputIds.isEmpty()) return
 
-        markSpent(spentOutputIds)
+        val status = MwebDaemonErrorMapper.map {
+            client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
+        }
+        onStatus(status)
+        applySpentOutputs(spentOutputIds, status)
     }
 
     private fun refreshStatus(client: MwebDaemonClient) {
@@ -108,8 +117,13 @@ internal class MwebUtxoSynchronizer(
         onStatus(status)
     }
 
-    fun markSpent(outputIds: List<String>) {
+    private fun applySpentOutputs(outputIds: List<String>, status: MwebDaemonStatus) {
         storage.markSpent(outputIds)
+        storage.confirmTransactionsSpending(
+            outputIds = outputIds,
+            height = status.syncState.mwebUtxosHeight,
+            timestamp = status.blockTime.takeIf { it > 0 },
+        )
         onSnapshot(loadSnapshot())
     }
 
@@ -171,8 +185,12 @@ internal class MwebUtxoSynchronizer(
         )
     }
 
-    private fun handlePollingError(error: MwebError) {
-        if (error !is MwebError.NativeUnavailable) return
+    private fun handlePollingError(error: Exception) {
+        if (error is CancellationException) throw error
+        if (error !is MwebError.NativeUnavailable) {
+            logger.log(Level.WARNING, "MWEB polling failed", error)
+            return
+        }
 
         onNativeUnavailable()
         closeUtxoStream()
@@ -195,6 +213,7 @@ internal class MwebUtxoSynchronizer(
 
     private companion object {
         const val UTXO_RECONNECT_DELAY_MILLIS = 1_000L
+        val logger: Logger = Logger.getLogger(MwebUtxoSynchronizer::class.java.name)
     }
 }
 

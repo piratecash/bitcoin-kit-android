@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MwebPendingTransactionEntity::class,
         MwebOutgoingTransactionEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(MwebTypeConverters::class)
@@ -102,9 +102,31 @@ abstract class MwebDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedHeight` INTEGER")
+                database.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedTimestamp` INTEGER")
+                database.execSQL(
+                    """
+                    UPDATE `MwebOutgoingTransaction`
+                    SET
+                        `confirmedHeight` = (SELECT `mwebUtxosHeight` FROM `MwebState` WHERE `id` = 0),
+                        `confirmedTimestamp` = `timestamp`
+                    WHERE
+                        `type` = 'Outgoing' AND
+                        `createdOutputIds` = '[]' AND
+                        `spentOutputIds` != '[]' AND
+                        COALESCE((SELECT `mwebUtxosHeight` FROM `MwebState` WHERE `id` = 0), 0) > 0
+                    """.trimIndent()
+                )
+            }
+        }
+
+        internal val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+
         fun getInstance(context: Context, dbName: String): MwebDatabase {
             return Room.databaseBuilder(context, MwebDatabase::class.java, dbName)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(*MIGRATIONS)
                 .build()
         }
     }

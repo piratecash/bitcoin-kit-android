@@ -58,8 +58,20 @@ interface MwebOutgoingTransactionDao {
     @Query("SELECT * FROM MwebOutgoingTransaction ORDER BY timestamp DESC, uid DESC")
     fun outgoingTransactions(): List<MwebOutgoingTransactionEntity>
 
+    @Query("SELECT * FROM MwebOutgoingTransaction WHERE confirmedHeight IS NULL ORDER BY timestamp DESC, uid DESC")
+    fun pendingOutgoingTransactions(): List<MwebOutgoingTransactionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(transaction: MwebOutgoingTransactionEntity)
+
+    @Query(
+        """
+        UPDATE MwebOutgoingTransaction
+        SET confirmedHeight = :height, confirmedTimestamp = :timestamp
+        WHERE uid IN (:uids) AND confirmedHeight IS NULL
+        """
+    )
+    fun confirm(uids: List<String>, height: Int, timestamp: Long?)
 
     @Query("DELETE FROM MwebOutgoingTransaction WHERE uid IN (:uids)")
     fun delete(uids: List<String>)

@@ -426,15 +426,21 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun transactions_mwebToPublicWithoutCreatedMwebOutput_doesNotStayPending() = runBlocking {
+    fun transactions_mwebToPublicWithoutCreatedMwebOutput_confirmsWhenSpentInputsConfirmed() = runBlocking {
         val bridge = FakePublicTransactionBridge()
+        val confirmedStatus = MwebDaemonStatus(
+            syncState = MwebSyncState(101, 101, 101),
+            nativeVersion = "test",
+            blockTime = 1_100,
+        )
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            createdOutputIds = emptyList(),
+        )
         val engine = engineWith(
-            daemonClient = FakeDaemonClient(
-                status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
-                streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
-                dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
-                createdOutputIds = emptyList(),
-            ),
+            daemonClient = daemonClient,
         )
         engine.start()
 
@@ -447,7 +453,16 @@ class LitecoinMwebEngineLifecycleTest {
         val transaction = engine.transactions().first { it.kind == MwebTransactionKind.MwebToPublic }
         assertEquals(MwebTransactionKind.MwebToPublic, transaction.kind)
         assertEquals(emptyList<String>(), transaction.outputIds)
-        assertFalse(transaction.pending)
+        assertTrue(transaction.pending)
+
+        daemonClient.status = confirmedStatus
+        daemonClient.spentOutputIds = listOf(SELECTED_OUTPUT_ID)
+        engine.refresh()
+
+        val confirmedTransaction = engine.transactions().first { it.kind == MwebTransactionKind.MwebToPublic }
+        assertEquals(101, confirmedTransaction.height)
+        assertEquals(1_100L, confirmedTransaction.timestamp)
+        assertFalse(confirmedTransaction.pending)
     }
 
     @Test

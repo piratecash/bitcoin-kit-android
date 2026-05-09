@@ -7,7 +7,9 @@ import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -74,12 +76,104 @@ class MwebRoomStorageTest {
         assertEquals(listOf("valid"), storage.localTransactions().map { it.uid })
     }
 
+    @Test
+    fun localTransactions_confirmedFields_restoresCompletedTransaction() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "confirmed",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                confirmedHeight = 123,
+                confirmedTimestamp = 2_000,
+            )
+        )
+
+        val transaction = storage.localTransactions().single()
+
+        assertEquals(123, transaction.height)
+        assertEquals(2_000L, transaction.timestamp)
+        assertFalse(transaction.pending)
+    }
+
+    @Test
+    fun confirmTransactionsSpending_requiresAllSpentOutputs() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "single-input",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                spentOutputIds = listOf("input-a"),
+            )
+        )
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "multi-input",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                spentOutputIds = listOf("input-a", "input-b"),
+            )
+        )
+
+        storage.confirmTransactionsSpending(listOf("input-a"), height = 200, timestamp = 3_000)
+
+        val partiallyConfirmed = storage.localTransactions().associateBy { it.uid }
+        assertEquals(200, partiallyConfirmed.getValue("single-input").height)
+        assertNull(partiallyConfirmed.getValue("multi-input").height)
+
+        storage.confirmTransactionsSpending(listOf("input-a", "input-b"), height = 201, timestamp = null)
+
+        val confirmed = storage.localTransactions().associateBy { it.uid }
+        assertEquals(200, confirmed.getValue("single-input").height)
+        assertEquals(3_000L, confirmed.getValue("single-input").timestamp)
+        assertEquals(201, confirmed.getValue("multi-input").height)
+        assertEquals(1_000L, confirmed.getValue("multi-input").timestamp)
+    }
+
+    @Test
+    fun confirmTransactionsSpending_emptyLocalSpentOutputs_keepsTransactionPending() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "peg-in",
+                type = MwebTransactionType.Incoming.name,
+                kind = MwebTransactionKind.PublicToMweb.name,
+                spentOutputIds = emptyList(),
+            )
+        )
+
+        storage.confirmTransactionsSpending(listOf("input-a"), height = 200, timestamp = 3_000)
+
+        val transaction = storage.localTransactions().single()
+        assertNull(transaction.height)
+        assertTrue(transaction.pending)
+    }
+
+    @Test
+    fun confirmTransactionsSpending_nonPositiveHeight_keepsTransactionPending() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "pending",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                spentOutputIds = listOf("input-a"),
+            )
+        )
+
+        storage.confirmTransactionsSpending(listOf("input-a"), height = 0, timestamp = 3_000)
+
+        val transaction = storage.localTransactions().single()
+        assertNull(transaction.height)
+        assertTrue(transaction.pending)
+    }
+
     private fun entity(
         uid: String,
         type: String,
         kind: String,
         fee: Long? = 1,
         destinationAddress: String? = "destination",
+        spentOutputIds: List<String> = emptyList(),
+        confirmedHeight: Int? = null,
+        confirmedTimestamp: Long? = null,
     ) = MwebOutgoingTransactionEntity(
         uid = uid,
         type = type,
@@ -89,7 +183,9 @@ class MwebRoomStorageTest {
         destinationAddress = destinationAddress,
         canonicalTransactionHash = "hash-$uid",
         createdOutputIds = listOf("output-$uid"),
-        spentOutputIds = emptyList(),
+        spentOutputIds = spentOutputIds,
+        confirmedHeight = confirmedHeight,
+        confirmedTimestamp = confirmedTimestamp,
         timestamp = 1_000,
     )
 }
