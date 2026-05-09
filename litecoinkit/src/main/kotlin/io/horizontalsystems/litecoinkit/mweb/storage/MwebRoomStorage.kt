@@ -86,15 +86,29 @@ class MwebRoomStorage(
         if (outputIds.isEmpty() || height <= 0) return
 
         val spentOutputIds = outputIds.toSet()
-        val confirmedUids = database.outgoingTransactionDao.pendingOutgoingTransactions()
+        val confirmedTransactions = database.outgoingTransactionDao.pendingOutgoingTransactions()
             .filter { transaction ->
                 transaction.spentOutputIds.isNotEmpty() &&
                     transaction.spentOutputIds.all { it in spentOutputIds }
             }
-            .map { it.uid }
+        val confirmedUids = confirmedTransactions.map { it.uid }
         if (confirmedUids.isEmpty()) return
 
-        database.outgoingTransactionDao.confirm(confirmedUids, height, timestamp)
+        database.runInTransaction {
+            database.outgoingTransactionDao.confirm(confirmedUids, height, timestamp)
+            confirmedTransactions.forEach { transaction ->
+                confirmCreated(transaction, height, timestamp)
+            }
+        }
+    }
+
+    fun confirmCreatedUtxosForConfirmedTransactions() {
+        database.runInTransaction {
+            database.outgoingTransactionDao.confirmedOutgoingTransactions().forEach { transaction ->
+                val height = transaction.confirmedHeight ?: return@forEach
+                confirmCreated(transaction, height, transaction.confirmedTimestamp)
+            }
+        }
     }
 
     fun saveBroadcastResult(
@@ -158,6 +172,11 @@ class MwebRoomStorage(
             blockTime = blockTime,
             spent = spent,
         )
+    }
+
+    private fun confirmCreated(transaction: MwebOutgoingTransactionEntity, height: Int, timestamp: Long?) {
+        if (transaction.createdOutputIds.isEmpty()) return
+        database.utxoDao.confirmCreated(transaction.createdOutputIds, height, timestamp)
     }
 
     private fun MwebPendingTransactionEntity.toPendingTransaction(): MwebPendingTransaction {

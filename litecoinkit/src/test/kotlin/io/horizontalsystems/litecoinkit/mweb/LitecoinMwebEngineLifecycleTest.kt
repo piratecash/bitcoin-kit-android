@@ -488,6 +488,42 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun refresh_mwebToPublicConfirmedSpentInputs_confirmsCreatedChangeOutput() = runBlocking {
+        val bridge = FakePublicTransactionBridge()
+        val confirmedStatus = MwebDaemonStatus(
+            syncState = MwebSyncState(101, 101, 101),
+            nativeVersion = "test",
+            blockTime = 1_100,
+        )
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            createdOutputIds = listOf("change-output"),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        daemonClient.emitUtxo(MwebUtxo("change-output", "", 0, 90_000, 0, 0, spent = false))
+        waitUntil { engine.balance == MwebBalance(confirmed = 0, unconfirmed = 90_000) }
+
+        daemonClient.status = confirmedStatus
+        daemonClient.spentOutputIds = listOf(SELECTED_OUTPUT_ID)
+        engine.refresh()
+        waitUntil { engine.balance == MwebBalance(confirmed = 90_000, unconfirmed = 0) }
+
+        val changeOutput = engine.mwebUtxos().first { it.outputId == "change-output" }
+        assertEquals(101, changeOutput.height)
+        assertEquals(1_100L, changeOutput.blockTime)
+        assertFalse(changeOutput.spent)
+    }
+
+    @Test
     fun transactions_stalePendingLocalTransaction_prunesTransactionAndPendingRaw() = runBlocking {
         var now = 1_000_000L
         val destination = mwebDestination()

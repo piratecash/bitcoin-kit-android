@@ -128,6 +128,7 @@ internal class MwebUtxoSynchronizer(
     }
 
     fun loadSnapshot(): MwebUtxoSnapshot {
+        storage.confirmCreatedUtxosForConfirmedTransactions()
         val utxos = storage.utxos()
         return MwebUtxoSnapshot(utxos, calculateBalance(utxos))
     }

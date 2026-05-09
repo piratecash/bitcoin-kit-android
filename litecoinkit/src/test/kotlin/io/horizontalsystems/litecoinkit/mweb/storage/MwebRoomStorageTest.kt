@@ -167,6 +167,51 @@ class MwebRoomStorageTest {
     }
 
     @Test
+    fun confirmTransactionsSpending_createdUtxo_confirmsCreatedUtxo() {
+        storage.saveUtxos(listOf(utxo(outputId = "change-output", height = 0, blockTime = 0)))
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "peg-out",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                spentOutputIds = listOf("input-a"),
+                createdOutputIds = listOf("change-output"),
+            )
+        )
+
+        storage.confirmTransactionsSpending(listOf("input-a"), height = 200, timestamp = 3_000)
+
+        val transaction = storage.localTransactions().single()
+        val utxo = storage.utxos().single()
+        assertEquals(200, transaction.height)
+        assertEquals(200, utxo.height)
+        assertEquals(3_000L, utxo.blockTime)
+        assertFalse(utxo.spent)
+    }
+
+    @Test
+    fun confirmCreatedUtxosForConfirmedTransactions_existingConfirmedTransaction_confirmsCreatedUtxo() {
+        storage.saveUtxos(listOf(utxo(outputId = "change-output", height = 0, blockTime = 123)))
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "confirmed-peg-out",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                createdOutputIds = listOf("change-output"),
+                confirmedHeight = 200,
+                confirmedTimestamp = 3_000,
+            )
+        )
+
+        storage.confirmCreatedUtxosForConfirmedTransactions()
+
+        val utxo = storage.utxos().single()
+        assertEquals(200, utxo.height)
+        assertEquals(3_000L, utxo.blockTime)
+        assertFalse(utxo.spent)
+    }
+
+    @Test
     fun markSpent_unconfirmedUtxo_keepsUnspent() {
         storage.saveUtxos(listOf(utxo(outputId = "unconfirmed", height = 0)))
 
@@ -184,13 +229,13 @@ class MwebRoomStorageTest {
         assertTrue(storage.utxos().single().spent)
     }
 
-    private fun utxo(outputId: String, height: Int) = MwebUtxo(
+    private fun utxo(outputId: String, height: Int, blockTime: Long = 1_000) = MwebUtxo(
         outputId = outputId,
         address = "address",
         addressIndex = 1,
         value = 100,
         height = height,
-        blockTime = 1_000,
+        blockTime = blockTime,
         spent = false,
     )
 
@@ -201,6 +246,7 @@ class MwebRoomStorageTest {
         fee: Long? = 1,
         destinationAddress: String? = "destination",
         spentOutputIds: List<String> = emptyList(),
+        createdOutputIds: List<String> = listOf("output-$uid"),
         confirmedHeight: Int? = null,
         confirmedTimestamp: Long? = null,
     ) = MwebOutgoingTransactionEntity(
@@ -211,7 +257,7 @@ class MwebRoomStorageTest {
         fee = fee,
         destinationAddress = destinationAddress,
         canonicalTransactionHash = "hash-$uid",
-        createdOutputIds = listOf("output-$uid"),
+        createdOutputIds = createdOutputIds,
         spentOutputIds = spentOutputIds,
         confirmedHeight = confirmedHeight,
         confirmedTimestamp = confirmedTimestamp,
