@@ -1,5 +1,7 @@
 package io.horizontalsystems.bitcoincore.core
 
+import io.horizontalsystems.bitcoincore.crypto.Bech32Segwit
+import io.horizontalsystems.bitcoincore.exceptions.AddressFormatException
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInput
 import io.horizontalsystems.bitcoincore.models.InvalidTransaction
@@ -12,6 +14,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionOutputInfo
 import io.horizontalsystems.bitcoincore.models.TransactionStatus
 import io.horizontalsystems.bitcoincore.models.rbfEnabled
 import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
+import io.horizontalsystems.bitcoincore.storage.InputWithPreviousOutput
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import java.io.ByteArrayInputStream
 
@@ -40,7 +43,7 @@ class BaseTransactionInfoConverter(private val pluginManager: PluginManager) {
                 }
             }
 
-            inputsInfo.add(TransactionInputInfo(mine, value, input.input.address))
+            inputsInfo.add(TransactionInputInfo(mine, value, input.walletAddress()))
         }
 
         fullTransaction.outputs.forEach { output ->
@@ -89,6 +92,35 @@ class BaseTransactionInfoConverter(private val pluginManager: PluginManager) {
         }
     }
 
+    private fun InputWithPreviousOutput.walletAddress(): String? {
+        if (previousOutput?.scriptType == ScriptType.UNKNOWN) return null
+
+        val address = input.address?.takeIf { it.isNotBlank() } ?: return null
+        if (previousOutput != null) return address
+
+        return address.takeUnless { it.hasUnsupportedWitnessVersion() }
+    }
+
+    private fun String.hasUnsupportedWitnessVersion(): Boolean {
+        if (!isPotentialBech32()) return false
+
+        val witnessVersion = try {
+            Bech32Segwit.decode(this).data.firstOrNull()?.toInt()
+        } catch (e: AddressFormatException) {
+            null
+        }
+
+        return witnessVersion != null && witnessVersion > MAX_SUPPORTED_WITNESS_VERSION
+    }
+
+    private fun String.isPotentialBech32(): Boolean {
+        val separatorIndex = lastIndexOf(BECH32_SEPARATOR)
+        return length in MIN_BECH32_LENGTH..MAX_BECH32_LENGTH &&
+                separatorIndex >= 1 &&
+                separatorIndex + MIN_BECH32_DATA_PART_LENGTH <= length &&
+                BECH32_EXCLUDED_SEPARATOR !in this
+    }
+
     private fun getInvalidTransactionInfo(
         transaction: InvalidTransaction,
         metadata: TransactionMetadata
@@ -112,4 +144,12 @@ class BaseTransactionInfoConverter(private val pluginManager: PluginManager) {
         }
     }
 
+    private companion object {
+        const val MAX_SUPPORTED_WITNESS_VERSION = 1
+        const val MIN_BECH32_LENGTH = 8
+        const val MAX_BECH32_LENGTH = 90
+        const val MIN_BECH32_DATA_PART_LENGTH = 7
+        const val BECH32_SEPARATOR = '1'
+        const val BECH32_EXCLUDED_SEPARATOR = ':'
+    }
 }

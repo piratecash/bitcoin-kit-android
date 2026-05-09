@@ -8,3 +8,4 @@
 .externalNativeBuild
 /.claude/
 /CLAUDE.md
+/.githooks/*

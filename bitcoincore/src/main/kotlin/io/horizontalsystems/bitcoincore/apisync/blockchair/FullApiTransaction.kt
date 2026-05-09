@@ -35,8 +35,15 @@ data class ApiInput(
     val spendingSequence: Long,
     @SerialName("script_hex")
     val scriptHex: String,
-    val value: Long
+    val value: Long,
+    val type: String? = null
 )
+
+internal val ApiInput.walletRecipient: String?
+    get() = recipient.takeIf { it.isNotBlank() && !isWitnessUnknown }
+
+private val ApiInput.isWitnessUnknown: Boolean
+    get() = type.equals("witness_unknown", ignoreCase = true)
 
 @Serializable
 data class ApiOutput(

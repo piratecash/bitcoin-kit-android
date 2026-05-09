@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.transactions
 
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.FullApiTransaction
+import io.horizontalsystems.bitcoincore.apisync.blockchair.walletRecipient
 import io.horizontalsystems.bitcoincore.blocks.IBlockchainDataListener
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
@@ -98,7 +99,7 @@ class AddressExtractor(
             // For case when API doesn't return spendingTransactionHash and spendingSequence
             fullTransaction.inputs.forEachIndexed { index, input ->
                 apiTx.inputs.getOrNull(index)?.let {
-                    input.address = it.recipient
+                    input.address = it.walletRecipient
                 }
             }
         } else {
@@ -107,7 +108,7 @@ class AddressExtractor(
                     it.spendingSequence == input.sequence &&
                             it.spendingTransactionHash == input.transactionHash.toReversedHex()
                 }?.let {
-                    input.address = it.recipient
+                    input.address = it.walletRecipient
                 }
             }
         }
