@@ -1,0 +1,162 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "litecoinkit",
+    "version": "7a40b17",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "7a40b17"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "7a40b17"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "litecoinkit-7a40b17.aar",
+          "url": "litecoinkit-7a40b17.aar",
+          "size": 362126,
+          "sha512": "f485df14d8ffa0c18bf9fe8fe438a254e8283145f4dcae3d05e11feff2550458adf07603411a5bbd8cb6b0969f82d3257a33ab98ad4d2708d543dfd54cf3b3d4",
+          "sha256": "b04404bd44cf66197d451e1b93d76486d6514eb846862678f2ab8d3fc97dc381",
+          "sha1": "63d6143cd540421bfd20e8537ea7bd0ff1e93a76",
+          "md5": "49dd270df1140aae2f8a357cad699447"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk7",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash",
+          "module": "mwebd-android",
+          "version": {
+            "requires": "v0.1.19-pcash.3"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "7a40b17"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "7a40b17"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "litecoinkit-7a40b17.aar",
+          "url": "litecoinkit-7a40b17.aar",
+          "size": 362126,
+          "sha512": "f485df14d8ffa0c18bf9fe8fe438a254e8283145f4dcae3d05e11feff2550458adf07603411a5bbd8cb6b0969f82d3257a33ab98ad4d2708d543dfd54cf3b3d4",
+          "sha256": "b04404bd44cf66197d451e1b93d76486d6514eb846862678f2ab8d3fc97dc381",
+          "sha1": "63d6143cd540421bfd20e8537ea7bd0ff1e93a76",
+          "md5": "49dd270df1140aae2f8a357cad699447"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "litecoinkit-7a40b17-sources.jar",
+          "url": "litecoinkit-7a40b17-sources.jar",
+          "size": 235650,
+          "sha512": "ac6c543379ba782f292990af6b8f601f3ebb7fe8116cb45abb5f323576fbb17e8cb3275182959fdd8db585fdbd8abd6c205c333881d1dc7c5d1a8cff40c8f161",
+          "sha256": "190702f1fbf0b81018734eddd448649157b6e57354d8d0b667aa09c5c852d0f6",
+          "sha1": "dad9f8d329b1bb0a18fa1008a3eadce8b4a73906",
+          "md5": "0ee78137175f5b74cbe72346e4bc41fc"
+        }
+      ]
+    }
+  ]
+}
