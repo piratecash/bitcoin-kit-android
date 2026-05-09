@@ -95,7 +95,7 @@ internal class MwebUtxoSynchronizer(
     }
 
     fun refreshSpentOutputs(client: MwebDaemonClient) {
-        val unspentOutputIds = storage.unspentUtxos().map { it.outputId }
+        val unspentOutputIds = storage.confirmedUnspentUtxos().map { it.outputId }
         val localTransactionOutputIds = storage.pendingLocalSpentOutputIds()
         val outputIds = (unspentOutputIds + localTransactionOutputIds).distinct()
         if (outputIds.isEmpty()) return

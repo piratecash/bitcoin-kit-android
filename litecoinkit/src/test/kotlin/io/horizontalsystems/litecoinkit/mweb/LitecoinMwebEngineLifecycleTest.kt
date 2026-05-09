@@ -207,6 +207,28 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun refresh_mixedConfirmedAndUnconfirmedOutputs_checksOnlyConfirmedOutputs() {
+        val daemonClient = FakeDaemonClient(
+            streamUtxos = listOf(
+                MwebUtxo("confirmed-output", "address", 1, 100, 10, 1_000, spent = false),
+                MwebUtxo("unconfirmed-change", "", 0, 2_161_921, 0, 0, spent = false),
+            ),
+            spentOutputIds = listOf("confirmed-output", "unconfirmed-change"),
+        )
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        waitUntil { engine.balance == MwebBalance(confirmed = 100, unconfirmed = 2_161_921) }
+        engine.refresh()
+        waitUntil { engine.balance == MwebBalance(confirmed = 0, unconfirmed = 2_161_921) }
+
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 2_161_921), engine.balance)
+        assertEquals(listOf(listOf("confirmed-output")), daemonClient.spentRequests)
+        assertTrue(engine.mwebUtxos().first { it.outputId == "confirmed-output" }.spent)
+        assertFalse(engine.mwebUtxos().first { it.outputId == "unconfirmed-change" }.spent)
+    }
+
+    @Test
     fun spentPoll_started_marksSpentOutputsPeriodically() {
         val daemonClient = FakeDaemonClient(
             streamUtxos = listOf(MwebUtxo("spent-output", "address", 1, 100, 10, 1_000, spent = false)),
@@ -858,6 +880,7 @@ class LitecoinMwebEngineLifecycleTest {
             private set
         var stopCount = 0
             private set
+        val spentRequests = mutableListOf<List<String>>()
         private var streamed = false
         private var streamCompleted = false
         private var utxoHandler: ((MwebUtxo) -> Unit)? = null
@@ -921,7 +944,10 @@ class LitecoinMwebEngineLifecycleTest {
             utxoErrorHandler?.invoke(error)
         }
 
-        override fun spent(outputIds: List<String>): List<String> = spentOutputIds.filter { it in outputIds }
+        override fun spent(outputIds: List<String>): List<String> {
+            spentRequests.add(outputIds)
+            return spentOutputIds.filter { it in outputIds }
+        }
 
         override fun create(rawTransaction: ByteArray, feeRate: Int, dryRun: Boolean): MwebCreateResult {
             createRequests.add(CreateRequest(rawTransaction, dryRun))

@@ -25,11 +25,14 @@ interface MwebUtxoDao {
     @Query("SELECT * FROM MwebUtxo WHERE spent = 0 ORDER BY height DESC, blockTime DESC")
     fun unspentUtxos(): List<MwebUtxoEntity>
 
+    @Query("SELECT * FROM MwebUtxo WHERE spent = 0 AND height > 0 ORDER BY height DESC, blockTime DESC")
+    fun confirmedUnspentUtxos(): List<MwebUtxoEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(utxos: List<MwebUtxoEntity>)
 
-    @Query("UPDATE MwebUtxo SET spent = 1 WHERE outputId IN (:outputIds)")
-    fun markSpent(outputIds: List<String>)
+    @Query("UPDATE MwebUtxo SET spent = 1 WHERE outputId IN (:outputIds) AND height > 0")
+    fun markConfirmedSpent(outputIds: List<String>)
 }
 
 @Dao

@@ -51,13 +51,17 @@ class MwebRoomStorage(
         return database.utxoDao.unspentUtxos().map { it.toUtxo() }
     }
 
+    fun confirmedUnspentUtxos(): List<MwebUtxo> {
+        return database.utxoDao.confirmedUnspentUtxos().map { it.toUtxo() }
+    }
+
     fun saveUtxos(utxos: List<MwebUtxo>) {
         database.utxoDao.save(utxos.map { it.toEntity() })
     }
 
     fun markSpent(outputIds: List<String>) {
         if (outputIds.isEmpty()) return
-        database.utxoDao.markSpent(outputIds)
+        database.utxoDao.markConfirmedSpent(outputIds)
     }
 
     fun pendingTransactions(): List<MwebPendingTransaction> {
@@ -102,7 +106,7 @@ class MwebRoomStorage(
             database.pendingTransactionDao.save(pendingTransaction.toEntity())
             localTransaction?.let { database.outgoingTransactionDao.save(it.toOutgoingEntity()) }
             if (spentOutputIds.isNotEmpty()) {
-                database.utxoDao.markSpent(spentOutputIds)
+                database.utxoDao.markConfirmedSpent(spentOutputIds)
             }
         }
     }

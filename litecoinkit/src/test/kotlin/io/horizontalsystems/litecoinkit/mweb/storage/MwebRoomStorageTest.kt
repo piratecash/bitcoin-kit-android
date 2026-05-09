@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
+import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -164,6 +165,34 @@ class MwebRoomStorageTest {
         assertNull(transaction.height)
         assertTrue(transaction.pending)
     }
+
+    @Test
+    fun markSpent_unconfirmedUtxo_keepsUnspent() {
+        storage.saveUtxos(listOf(utxo(outputId = "unconfirmed", height = 0)))
+
+        storage.markSpent(listOf("unconfirmed"))
+
+        assertFalse(storage.utxos().single().spent)
+    }
+
+    @Test
+    fun markSpent_confirmedUtxo_marksSpent() {
+        storage.saveUtxos(listOf(utxo(outputId = "confirmed", height = 100)))
+
+        storage.markSpent(listOf("confirmed"))
+
+        assertTrue(storage.utxos().single().spent)
+    }
+
+    private fun utxo(outputId: String, height: Int) = MwebUtxo(
+        outputId = outputId,
+        address = "address",
+        addressIndex = 1,
+        value = 100,
+        height = height,
+        blockTime = 1_000,
+        spent = false,
+    )
 
     private fun entity(
         uid: String,
