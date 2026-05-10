@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>bitcoinkit</artifactId>
   <versioning>
-    <latest>361ac97</latest>
-    <release>361ac97</release>
+    <latest>edd535d</latest>
+    <release>edd535d</release>
     <versions>
-      <version>361ac97</version>
+      <version>edd535d</version>
     </versions>
-    <lastUpdated>20260510074455</lastUpdated>
+    <lastUpdated>20260510090822</lastUpdated>
   </versioning>
 </metadata>
