@@ -689,7 +689,7 @@ class LitecoinMwebEngineLifecycleTest {
             publicUtxos = listOf(publicUtxo(value = 5_000)),
             signedRawTransaction = signedRaw,
         )
-        val daemonClient = FakeDaemonClient()
+        val daemonClient = FakeDaemonClient(createRawTransaction = ::mwebCreateResponseForPublicPegIn)
         val engine = engineWith(daemonClient)
         engine.start()
 
@@ -701,6 +701,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertEquals(1, bridge.signCalls.size)
         assertEquals(1, bridge.processRelayedCount)
+        assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
         assertArrayEquals(signedRaw, result.rawTransaction)
         assertEquals("test-transaction", result.canonicalTransactionHash)
@@ -795,7 +796,7 @@ class LitecoinMwebEngineLifecycleTest {
     @Test
     fun publicPegInSender_sendWithoutEngine_signsAndBroadcastsPublicToMweb() = runBlocking {
         val signedRaw = byteArrayOf(9, 8, 7, 6)
-        val daemonClient = FakeDaemonClient()
+        val daemonClient = FakeDaemonClient(createRawTransaction = ::mwebCreateResponseForPublicPegIn)
         val sender = publicPegInSender(daemonClient)
         val bridge = FakePublicTransactionBridge(
             publicUtxos = listOf(publicUtxo(value = 5_000)),
@@ -811,6 +812,7 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals("test-transaction", result.canonicalTransactionHash)
         assertEquals(listOf("created-output"), result.outputIds)
         assertEquals(1, bridge.signCalls.size)
+        assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertEquals(1, daemonClient.startCount)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
     }
@@ -1022,6 +1024,9 @@ class LitecoinMwebEngineLifecycleTest {
         private val createdOutputIds: List<String> = listOf("created-output"),
         private val createError: Throwable? = null,
         private val broadcastError: Throwable? = null,
+        private val createRawTransaction: (ByteArray, Int, Boolean) -> ByteArray = { rawTransaction, _, dryRun ->
+            dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction
+        },
     ) : MwebDaemonClient {
         private val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         var status: MwebDaemonStatus = status
@@ -1108,7 +1113,7 @@ class LitecoinMwebEngineLifecycleTest {
             createRequests.add(CreateRequest(rawTransaction, dryRun))
             createError?.let { throw it }
             return MwebCreateResult(
-                rawTransaction = dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction,
+                rawTransaction = createRawTransaction(rawTransaction, feeRate, dryRun),
                 outputIds = createdOutputIds,
             )
         }
@@ -1296,6 +1301,51 @@ class LitecoinMwebEngineLifecycleTest {
                 outputs = emptyList(),
                 transactionSerializer = transactionSerializer,
             )
+        )
+    }
+
+    private fun mwebCreateResponseForPublicPegIn(
+        rawTransaction: ByteArray,
+        feeRate: Int,
+        dryRun: Boolean,
+    ): ByteArray {
+        if (dryRun) return rawTransaction
+
+        val template = transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
+        val markerValue = template.outputs.sumOf { it.value } +
+            MwebFeeFormula.estimate(template.outputs, feeRate, isPegIn = true)
+        val markerOutput = TransactionOutput(
+            value = markerValue,
+            index = 0,
+            script = ByteArray(34),
+            type = ScriptType.UNKNOWN,
+        )
+        return transactionSerializer.serialize(
+            FullTransaction(
+                header = mwebTransactionHeader(),
+                inputs = template.inputs,
+                outputs = listOf(markerOutput),
+                transactionSerializer = transactionSerializer,
+            )
+        )
+    }
+
+    private fun assertPublicPegInRawToSign(rawTransaction: ByteArray, recipientValue: Long, feeRate: Int) {
+        val rawToSign = transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
+        val expectedMwebFee = MwebFeeFormula.estimate(listOf(mwebTemplateOutput(recipientValue)), feeRate, isPegIn = true)
+
+        assertEquals(2, rawToSign.outputs.size)
+        assertEquals(recipientValue + expectedMwebFee, rawToSign.outputs[0].value)
+        assertEquals(34, rawToSign.outputs[0].lockingScript.size)
+        assertArrayEquals(byteArrayOf(1), rawToSign.outputs[1].lockingScript)
+    }
+
+    private fun mwebTemplateOutput(value: Long): TransactionOutput {
+        return TransactionOutput(
+            value = value,
+            index = 0,
+            script = fakeMwebPubkey(0x11) + fakeMwebPubkey(0x22),
+            type = ScriptType.UNKNOWN,
         )
     }
 

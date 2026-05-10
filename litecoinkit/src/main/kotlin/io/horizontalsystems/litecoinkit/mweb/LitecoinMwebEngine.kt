@@ -278,8 +278,9 @@ internal class LitecoinMwebEngine(
             val createResult = MwebDaemonErrorMapper.mapSuspend {
                 client.create(prepared.rawTemplate, request.feeRate, dryRun = false)
             }
+            val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
             val signedPublicTransaction = signPublicInputs(
-                rawTransaction = createResult.rawTransaction,
+                rawTransaction = rawTransaction,
                 selectedPublicUtxos = prepared.selectedPublicUtxos,
                 publicTransactionBridge = publicTransactionBridge,
             )

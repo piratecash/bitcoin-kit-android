@@ -254,10 +254,12 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         val txHashes = transactions.map { it.transaction.hash }
         val inputs = store.input.getInputsWithPrevouts(txHashes)
         val outputs = store.output.getTransactionsOutputs(txHashes)
-        val metadata = store.transactionMetadata.getTransactionMetadata(txHashes)
+        val metadataByTransaction = store.transactionMetadata.getTransactionMetadata(txHashes)
+            .associateBy { it.transactionHash.toHexString() }
         val transactionSerializer = requireNotNull(transactionSerializer)
 
         return transactions.map { tx ->
+            val transactionHash = tx.transaction.hash
             FullTransactionInfo(
                 tx.block,
                 if (tx.transaction.status == Transaction.Status.INVALID) InvalidTransaction(
@@ -265,9 +267,9 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
                     tx.transaction.serializedTxInfo,
                     tx.transaction.rawTransaction
                 ) else tx.transaction,
-                inputs.filter { it.input.transactionHash.contentEquals(tx.transaction.hash) },
-                outputs.filter { it.transactionHash.contentEquals(tx.transaction.hash) },
-                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) },
+                inputs.filter { it.input.transactionHash.contentEquals(transactionHash) },
+                outputs.filter { it.transactionHash.contentEquals(transactionHash) },
+                metadataByTransaction[transactionHash.toHexString()] ?: TransactionMetadata(transactionHash),
                 transactionSerializer
             )
         }
@@ -314,7 +316,8 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
                 tx.transaction,
                 inputs.filter { it.input.transactionHash.contentEquals(tx.transaction.hash) },
                 outputs.filter { it.transactionHash.contentEquals(tx.transaction.hash) },
-                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) },
+                metadata.firstOrNull { it.transactionHash.contentEquals(tx.transaction.hash) }
+                    ?: TransactionMetadata(tx.transaction.hash),
                 transactionSerializer
             )
         }

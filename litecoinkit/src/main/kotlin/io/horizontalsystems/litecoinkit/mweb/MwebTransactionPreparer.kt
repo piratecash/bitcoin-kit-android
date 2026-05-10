@@ -1,6 +1,7 @@
 package io.horizontalsystems.litecoinkit.mweb
 
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
+import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
@@ -259,28 +260,33 @@ internal class MwebTransactionPreparer(
         if (changeValue < 0) return null
 
         val inputs = publicInputs(selectedPublicUtxos, publicOptions) + mwebInputs(selectedMwebUtxos)
-        val outputs = mutableListOf<TransactionOutput>()
-        outputs.add(recipientOutput(request, index = outputs.size))
-        val changeAddress = if (changeValue > 0) {
-            val changeOutput = changeOutput(request, selectedPublicUtxos, changeValue, publicOptions)
-            outputs.add(indexedOutput(changeOutput, outputs.size))
-            changeOutput.address
+        val recipientOutput = recipientOutput(request, index = 0)
+        val draftChangeOutput = if (changeValue > 0) {
+            indexedOutput(
+                changeOutput(request, selectedPublicUtxos, changeValue, publicOptions),
+                index = 1,
+            )
         } else {
             null
         }
-        val indexedOutputs = outputs.mapIndexed { index, output -> indexedOutput(output, index) }
+        val publicChangeOutput = if (request is MwebSendRequest.PublicToMweb) draftChangeOutput else null
+        val templateOutputs = listOfNotNull(
+            recipientOutput,
+            draftChangeOutput?.takeUnless { request is MwebSendRequest.PublicToMweb },
+        ).mapIndexed { index, output -> indexedOutput(output, index) }
         val rawTemplate = transactionSerializer.serialize(
-            FullTransaction(transactionHeader(), inputs, indexedOutputs, transactionSerializer)
+            FullTransaction(transactionHeader(), inputs, templateOutputs, transactionSerializer)
         )
         return MwebTransactionDraft(
             selectedPublicUtxos = selectedPublicUtxos,
             selectedMwebUtxos = selectedMwebUtxos,
-            outputs = indexedOutputs,
+            templateOutputs = templateOutputs,
             rawTemplate = rawTemplate,
             inputValue = inputValue,
-            outputValue = indexedOutputs.sumOf { it.value },
             changeValue = changeValue.takeIf { it > 0 },
-            changeAddress = changeAddress,
+            changeAddress = draftChangeOutput?.address,
+            publicChangeOutput = publicChangeOutput,
+            transactionSerializer = transactionSerializer,
         )
     }
 
@@ -299,12 +305,13 @@ internal class MwebTransactionPreparer(
         return MwebTransactionDraft(
             selectedPublicUtxos = selectedPublicUtxos,
             selectedMwebUtxos = selectedMwebUtxos,
-            outputs = outputs,
+            templateOutputs = outputs,
             rawTemplate = rawTemplate,
             inputValue = inputValue,
-            outputValue = outputs.sumOf { it.value },
             changeValue = null,
             changeAddress = null,
+            publicChangeOutput = null,
+            transactionSerializer = transactionSerializer,
         )
     }
 
@@ -386,7 +393,7 @@ internal class MwebTransactionPreparer(
     ): MwebFeeEstimate {
         val isPegIn = request is MwebSendRequest.PublicToMweb
         val mwebFee = MwebFeeFormula.estimate(
-            outputs = draft.outputs,
+            outputs = draft.templateOutputs,
             feeRate = request.feeRate,
             isPegIn = isPegIn,
         )
@@ -401,7 +408,7 @@ internal class MwebTransactionPreparer(
     private fun canonicalPegInFeeBytes(draft: MwebTransactionDraft): Long {
         return transactionSizeCalculator.transactionSize(
             previousOutputs = draft.selectedPublicUtxos.map { it.output },
-            outputs = listOf(PEG_IN_MARKER_OUTPUT),
+            outputs = listOfNotNull(PEG_IN_MARKER_OUTPUT, draft.publicChangeOutput),
         ).toLong()
     }
 
@@ -412,12 +419,13 @@ internal class MwebTransactionPreparer(
     private class MwebTransactionDraft(
         val selectedPublicUtxos: List<UnspentOutput>,
         val selectedMwebUtxos: List<MwebUtxo>,
-        val outputs: List<TransactionOutput>,
+        val templateOutputs: List<TransactionOutput>,
         val rawTemplate: ByteArray,
         val inputValue: Long,
-        val outputValue: Long,
         val changeValue: Long?,
         val changeAddress: String?,
+        val publicChangeOutput: TransactionOutput?,
+        val transactionSerializer: BaseTransactionSerializer,
     ) {
         fun prepared(fees: MwebFeeEstimate): PreparedMwebTransaction {
             return PreparedMwebTransaction(
@@ -428,6 +436,8 @@ internal class MwebTransactionPreparer(
                 mwebFee = fees.mwebFee,
                 changeValue = changeValue,
                 changeAddress = changeAddress,
+                publicChangeOutput = publicChangeOutput,
+                transactionSerializer = transactionSerializer,
             )
         }
     }
@@ -536,7 +546,20 @@ internal class PreparedMwebTransaction(
     val mwebFee: Long,
     val changeValue: Long?,
     val changeAddress: String?,
+    private val publicChangeOutput: TransactionOutput?,
+    private val transactionSerializer: BaseTransactionSerializer,
 ) {
+    fun rawTransactionWithPublicChange(rawTransaction: ByteArray): ByteArray {
+        val changeOutput = publicChangeOutput ?: return rawTransaction
+        val transaction = transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
+        val outputs = transaction.outputs + TransactionOutput(changeOutput).apply {
+            index = transaction.outputs.size
+        }
+        return transactionSerializer.serialize(
+            FullTransaction(transaction.header, transaction.inputs, outputs, transactionSerializer)
+        )
+    }
+
     fun sendInfo(): MwebSendInfo {
         return MwebSendInfo(
             selectedPublicUtxos = selectedPublicUtxos.map { UnspentOutputInfo.fromUnspentOutput(it) },

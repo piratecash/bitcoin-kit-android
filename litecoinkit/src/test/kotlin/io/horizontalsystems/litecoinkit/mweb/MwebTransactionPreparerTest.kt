@@ -11,6 +11,7 @@ import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -323,11 +324,10 @@ class MwebTransactionPreparerTest {
             dryRun = daemonClient::dryRun,
         )
 
-        // Outputs: MWEB recipient (66B, MWEB) + public change (script size 1 in fake bridge).
-        // weight = 3 + 18 + ceilDiv(1,42)=1 = 22 wu -> 2200 sat
-        // canonical txOutSize = 8 + 1 + 1 = 10 bytes -> 10 sat at feeRate 1
+        // The mwebd template keeps only the MWEB recipient; public change is appended after mwebd.create.
+        // weight = 3 + 18 = 21 wu -> 2100 sat
         // HogEx surcharge = 1 * 41 = 41
-        val expectedMwebFee = 2_200L + 10L + 41L
+        val expectedMwebFee = 2_100L + 41L
         assertEquals(expectedMwebFee, prepared.mwebFee)
         // Canonical post-daemon broadcast tx contains the public input(s) and the peg-in marker (34-byte script).
         assertTrue("normalFee must be positive for peg-in", prepared.normalFee > 0L)
@@ -338,6 +338,23 @@ class MwebTransactionPreparerTest {
         )
         assertEquals(1, prepared.selectedPublicUtxos.size)
         assertEquals(1, daemonClient.dryRunCalls)
+
+        val template = transactionSerializer.deserialize(BitcoinInputMarkable(prepared.rawTemplate))
+        assertEquals(1, template.outputs.size)
+        assertTrue(MwebFeeFormula.isMwebOutput(template.outputs.single()))
+
+        val postCreateTransaction = transactionSerializer.deserialize(
+            BitcoinInputMarkable(
+                prepared.rawTransactionWithPublicChange(
+                    rawTransactionWithOutput(value = recipientValue + prepared.mwebFee, script = ByteArray(34))
+                )
+            )
+        )
+        assertEquals(2, postCreateTransaction.outputs.size)
+        assertEquals(recipientValue + prepared.mwebFee, postCreateTransaction.outputs[0].value)
+        assertEquals(prepared.changeValue, postCreateTransaction.outputs[1].value)
+        assertArrayEquals(byteArrayOf(0), postCreateTransaction.outputs[1].lockingScript)
+        assertEquals(publicValue - prepared.normalFee, postCreateTransaction.outputs.sumOf { it.value })
     }
 
     @Test
@@ -370,20 +387,18 @@ class MwebTransactionPreparerTest {
 
     @Test
     fun prepare_publicToMwebExactCoverageOfRecipientPlusOneOutputFee_skipsPublicChange() {
-        // Single public UTXO whose value sits between R + 1-output canonical
-        // fee and R + 2-output canonical fee. The 2-output draft cannot fit and
+        // Single public UTXO whose value sits between R + no-change canonical
+        // fee and R + public-change canonical fee. The change draft cannot fit and
         // there are no more candidates to grow into, but a no-change peg-in is
         // valid: leftover (V - R) >= canonical 1-output fee.
         //
         // FakeBridge gives a 1-byte change script and a 25-byte recipient
         // script (unused for peg-in). For 1 P2WPKH input + peg-in marker output:
         // canonicalPegInFeeBytes = 122 -> normalFee_canonical = 122 sat at feeRate 1.
-        // 2-output mwebFee = kernel(3) + standard(18) + ceilDiv(1,42)=1 = 22 wu * 100
-        //   + canonical TxOut (8+1+1=10) at feeRate 1 + HogEx (1*41) = 2_251 sat.
-        // 1-output mwebFee = kernel(3) + standard(18) = 21 wu * 100 + 0 + HogEx 41 = 2_141 sat.
-        // F2 = 2_251 + 122 = 2_373; F1 = 2_141 + 122 = 2_263; window of 110 sat.
+        // With public change, canonical fee bytes add the change TxOut (10 bytes):
+        // F2 = 2_141 + 132 = 2_273; F1 = 2_141 + 122 = 2_263; window of 10 sat.
         val publicValue = 10_000L
-        val recipientValue = 7_700L  // V - R = 2_300 -> in (F1=2_263, F2=2_373).
+        val recipientValue = 7_730L  // V - R = 2_270 -> in (F1=2_263, F2=2_273).
         val daemonClient = stubDryRunDaemon()
         val preparer = preparer(
             bridge = FakeBridge(publicUtxos = listOf(publicUtxo(value = publicValue))),
@@ -568,6 +583,17 @@ class MwebTransactionPreparerTest {
                 header = Transaction(version = 2, lockTime = 0).apply { extraPayload = byteArrayOf(1) },
                 inputs = emptyList(),
                 outputs = emptyList(),
+                transactionSerializer = transactionSerializer,
+            )
+        )
+    }
+
+    private fun rawTransactionWithOutput(value: Long, script: ByteArray): ByteArray {
+        return transactionSerializer.serialize(
+            FullTransaction(
+                header = Transaction(version = 2, lockTime = 0).apply { extraPayload = byteArrayOf(1) },
+                inputs = emptyList(),
+                outputs = listOf(TransactionOutput(value = value, index = 0, script = script)),
                 transactionSerializer = transactionSerializer,
             )
         )

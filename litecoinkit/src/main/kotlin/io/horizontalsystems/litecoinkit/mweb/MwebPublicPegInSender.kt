@@ -88,8 +88,9 @@ internal class MwebPublicPegInSender(
                     "Public peg-in daemon create finished: rawBytes=${createResult.rawTransaction.size}, " +
                         "outputIds=${createResult.outputIds.size}"
                 )
+                val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
                 val signedPublicTransaction = publicTransactionBridge.signPublicInputs(
-                    rawTransaction = createResult.rawTransaction,
+                    rawTransaction = rawTransaction,
                     selectedPublicUtxos = prepared.selectedPublicUtxos,
                 )
                 Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
