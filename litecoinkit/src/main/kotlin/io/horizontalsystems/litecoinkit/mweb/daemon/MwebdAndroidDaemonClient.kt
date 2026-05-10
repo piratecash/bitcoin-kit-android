@@ -9,6 +9,7 @@ import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.litecoinkit.mweb.MwebError
 import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
+import timber.log.Timber
 import java.io.Closeable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -111,21 +112,52 @@ private class MwebdAndroidDaemonClient(
     }
 
     override fun create(rawTransaction: ByteArray, feeRate: Int, dryRun: Boolean): MwebCreateResult {
-        val result = requireDaemon().create(
-            rawTransaction,
-            config.accountKeys.scanSecret,
-            config.accountKeys.spendSecret,
-            feeRate.toLong() * FEE_RATE_KB_MULTIPLIER,
-            dryRun,
-        )
-        return MwebCreateResult(
-            rawTransaction = result.rawTx(),
-            outputIds = result.outputIds().toKotlinList(),
-        )
+        val daemon = requireDaemon()
+        logCreate(dryRun, "mwebd.create started: rawBytes=${rawTransaction.size}, feeRate=$feeRate, dryRun=$dryRun")
+        try {
+            val result = daemon.create(
+                rawTransaction,
+                config.accountKeys.scanSecret,
+                config.accountKeys.spendSecret,
+                feeRate.toLong() * FEE_RATE_KB_MULTIPLIER,
+                dryRun,
+            )
+            val rawTx = result.rawTx()
+            val outputIds = result.outputIds().toKotlinList()
+            logCreate(dryRun, "mwebd.create finished: rawBytes=${rawTx.size}, outputIds=${outputIds.size}, dryRun=$dryRun")
+            return MwebCreateResult(
+                rawTransaction = rawTx,
+                outputIds = outputIds,
+            )
+        } catch (error: Throwable) {
+            logCreateFailure(dryRun, error)
+            throw error
+        }
     }
 
     override fun broadcast(rawTransaction: ByteArray): String {
-        return requireDaemon().broadcast(rawTransaction).txId()
+        val daemon = requireDaemon()
+        Timber.tag(LOG_TAG).d("mwebd.broadcast started: rawBytes=${rawTransaction.size}")
+        try {
+            val transactionHash = daemon.broadcast(rawTransaction).txId()
+            Timber.tag(LOG_TAG).d("mwebd.broadcast finished: tx=$transactionHash")
+            return transactionHash
+        } catch (error: Throwable) {
+            Timber.tag(LOG_TAG).d(error, "mwebd.broadcast failed")
+            throw error
+        }
+    }
+
+    private fun logCreate(dryRun: Boolean, message: String) {
+        if (!dryRun) {
+            Timber.tag(LOG_TAG).d(message)
+        }
+    }
+
+    private fun logCreateFailure(dryRun: Boolean, error: Throwable) {
+        if (!dryRun) {
+            Timber.tag(LOG_TAG).d(error, "mwebd.create failed")
+        }
     }
 
     private fun createDaemon(): Daemon {
@@ -185,6 +217,7 @@ private class MwebdAndroidDaemonClient(
         const val PORT_AUTO_SELECT = 0L
         const val PROXY_DISABLED = ""
         const val THREAD_NAME = "litecoin-mwebd"
+        const val LOG_TAG = "MwebDaemon"
     }
 }
 

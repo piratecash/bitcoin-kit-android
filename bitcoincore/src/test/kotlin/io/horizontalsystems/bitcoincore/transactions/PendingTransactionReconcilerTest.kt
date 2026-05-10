@@ -20,6 +20,7 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -67,12 +68,47 @@ class PendingTransactionReconcilerTest {
     fun reconcile_staleMissingOutgoingTransaction_invalidatesTransaction() {
         val transaction = transaction(hashByte = 1, timestamp = 100, isOutgoing = true)
         whenever(storage.getRelayedPendingTransactions(Transaction.Status.RELAYED)).thenReturn(listOf(transaction))
+        whenever(storage.getTransactionInputs(transaction)).thenReturn(listOf(input()))
 
         reconcile(nowSeconds = 1_000)
 
         assertEquals(listOf(transaction), invalidatedTransactions)
         verify(storage, never()).deleteRelayedPendingTransactions(any())
         verify(dataListener, never()).onTransactionsDelete(any())
+    }
+
+    @Test
+    fun reconcile_malformedOutgoingTransactionWithoutInputs_deletesAndNotifies() {
+        val transaction = transaction(hashByte = 1, timestamp = 900, isOutgoing = true)
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.RELAYED)).thenReturn(listOf(transaction))
+        whenever(storage.getTransactionInputs(transaction)).thenReturn(emptyList())
+        whenever(storage.deleteRelayedPendingTransactions(listOf(transaction))).thenReturn(listOf(transaction))
+
+        reconcile(nowSeconds = 1_000)
+
+        verify(storage).deleteRelayedPendingTransactions(listOf(transaction))
+        verify(dataListener).onTransactionsDelete(listOf(transaction.hash.toReversedHex()))
+        assertEquals(emptyList(), invalidatedTransactions)
+        assertEquals(emptyList(), statusProvider.requests)
+    }
+
+    @Test
+    fun reconcile_malformedAndWellFormedOutgoingTransactions_deletesMalformedAndLooksUpWellFormed() {
+        val malformedTransaction = transaction(hashByte = 1, timestamp = 900, isOutgoing = true)
+        val wellFormedTransaction = transaction(hashByte = 2, timestamp = 900, isOutgoing = true)
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.RELAYED))
+            .thenReturn(listOf(malformedTransaction, wellFormedTransaction))
+        whenever(storage.getTransactionInputs(malformedTransaction)).thenReturn(emptyList())
+        whenever(storage.getTransactionInputs(wellFormedTransaction)).thenReturn(listOf(input()))
+        whenever(storage.deleteRelayedPendingTransactions(listOf(malformedTransaction))).thenReturn(listOf(malformedTransaction))
+        statusProvider.statuses = listOf(PendingTransactionStatus(wellFormedTransaction.hash.toReversedHex(), null))
+
+        reconcile(nowSeconds = 1_000)
+
+        verify(storage).deleteRelayedPendingTransactions(listOf(malformedTransaction))
+        verify(dataListener).onTransactionsDelete(listOf(malformedTransaction.hash.toReversedHex()))
+        assertEquals(listOf(listOf(wellFormedTransaction.hash.toReversedHex())), statusProvider.requests)
+        assertEquals(emptyList(), invalidatedTransactions)
     }
 
     @Test
@@ -343,11 +379,21 @@ class PendingTransactionReconcilerTest {
         return transaction(hashByte.toByte(), timestamp, isOutgoing)
     }
 
+    private fun input(): TransactionInput {
+        return TransactionInput(
+            previousOutputTxHash = byteArrayOf(9),
+            previousOutputIndex = 0,
+            sequence = 0
+        )
+    }
+
     private class FakeStatusProvider : PendingTransactionStatusProvider {
         var statuses = emptyList<PendingTransactionStatus>()
         var error: Throwable? = null
+        val requests = mutableListOf<List<String>>()
 
         override suspend fun transactionStatuses(hashes: List<String>): PendingTransactionLookupResult {
+            requests += hashes
             error?.let { throw it }
             return PendingTransactionLookupResult(
                 checkedHashes = hashes.toSet(),

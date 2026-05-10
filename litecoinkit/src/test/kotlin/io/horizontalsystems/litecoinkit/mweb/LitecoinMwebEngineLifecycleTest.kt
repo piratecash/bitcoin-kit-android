@@ -778,6 +778,33 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun publicPegInSender_signedPublicTransactionWithoutInputs_failsBeforeBroadcastAndPersist() {
+        val daemonClient = FakeDaemonClient()
+        val sender = publicPegInSender(daemonClient)
+        val malformedSignedTransaction = transactionSerializer.deserialize(
+            BitcoinInputMarkable(rawTransactionWithOutput(value = 1_000))
+        )
+        val bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            signedTransaction = malformedSignedTransaction,
+        )
+
+        assertThrows(MwebError.SyncFailure::class.java) {
+            runBlocking {
+                sender.send(
+                    request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                    publicOptions = publicOptions(),
+                    publicTransactionBridge = bridge,
+                )
+            }
+        }
+
+        assertEquals(1, bridge.signCalls.size)
+        assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
+        assertEquals(0, bridge.processRelayedCount)
+    }
+
+    @Test
     fun publicPegInSender_concurrentSendInfo_serializesOperations() = runBlocking {
         val sender = publicPegInSender(FakeDaemonClient())
         val bridge = FakePublicTransactionBridge(
@@ -1054,6 +1081,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val publicUtxos: List<UnspentOutput> = emptyList(),
         private val signedRawTransaction: ByteArray = byteArrayOf(1),
         private val spendableDelayMillis: Long = 0,
+        private val signedTransaction: FullTransaction? = null,
     ) : MwebPublicTransactionBridge {
         private val transactionSerializer = BaseTransactionSerializer()
         val signCalls = mutableListOf<SignCall>()
@@ -1120,7 +1148,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {
             signCalls.add(SignCall(rawTransaction.copyOf(), selectedUtxos))
-            return signedNewTransaction(rawTransaction)
+            return signedTransaction ?: signedNewTransaction(rawTransaction)
         }
 
         private fun signedNewTransaction(rawTransaction: ByteArray): FullTransaction {

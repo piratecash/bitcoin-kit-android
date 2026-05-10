@@ -3,9 +3,9 @@ package io.horizontalsystems.bitcoincore.transactions
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.blocks.IBlockchainDataListener
 import io.horizontalsystems.bitcoincore.core.IStorage
+import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
-import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.Transaction
 import kotlinx.coroutines.CancellationException
@@ -165,8 +165,16 @@ class PendingTransactionReconciler(
             return
         }
 
+        val (malformedTransactions, lookupTransactions) =
+            pendingTransactions.partition(::isMalformedOutgoingTransaction)
+        deleteMalformedTransactions(malformedTransactions)
+
+        if (lookupTransactions.isEmpty()) {
+            return
+        }
+
         try {
-            val transactionsByHash = pendingTransactions.associateBy { it.hash.toReversedHex() }
+            val transactionsByHash = lookupTransactions.associateBy { it.hash.toReversedHex() }
             val lookupResult = statusProvider.transactionStatuses(transactionsByHash.keys.toList())
             val existingHashes = lookupResult.statuses.map { it.hash }.toSet()
             addConfirmedBlockHashes(lookupResult.statuses.mapNotNull { it.blockHash })
@@ -183,6 +191,14 @@ class PendingTransactionReconciler(
         } catch (error: Throwable) {
             Timber.tag(logTag).d(error, "Failed to reconcile pending transactions")
         }
+    }
+
+    private fun isMalformedOutgoingTransaction(transaction: Transaction): Boolean {
+        if (!transaction.isOutgoing) {
+            return false
+        }
+
+        return storage.getTransactionInputs(transaction).isEmpty()
     }
 
     private fun addConfirmedBlockHashes(blockHashes: List<BlockHash>) {
@@ -211,12 +227,29 @@ class PendingTransactionReconciler(
         deleteIncomingTransactions(incoming)
     }
 
+    private fun deleteMalformedTransactions(transactions: List<Transaction>) {
+        if (transactions.isEmpty()) {
+            return
+        }
+
+        Timber.tag(logTag).d(
+            "Deleting malformed relayed outgoing transactions without inputs: " +
+                transactions.joinToString { it.hash.toReversedHex() }
+        )
+        val deletedTransactions = storage.deleteRelayedPendingTransactions(transactions)
+        notifyDeletedTransactions(deletedTransactions)
+    }
+
     private fun deleteIncomingTransactions(transactions: List<Transaction>) {
         if (transactions.isEmpty()) {
             return
         }
 
         val deletedTransactions = storage.deleteRelayedPendingTransactions(transactions)
+        notifyDeletedTransactions(deletedTransactions)
+    }
+
+    private fun notifyDeletedTransactions(deletedTransactions: List<Transaction>) {
         if (deletedTransactions.isNotEmpty()) {
             dataListener.onTransactionsDelete(deletedTransactions.map { it.hash.toReversedHex() })
         }
