@@ -1,6 +1,7 @@
 package io.horizontalsystems.litecoinkit.mweb
 
 import android.content.Context
+import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
@@ -12,6 +13,7 @@ import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdAndroidDaemonClientFactory
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebDatabase
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -21,7 +23,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.util.concurrent.CopyOnWriteArraySet
+
+private const val MWEB_ENGINE_LOG_TAG = "MwebEngine"
 
 internal class LitecoinMwebEngine(
     context: Context,
@@ -262,7 +267,7 @@ internal class LitecoinMwebEngine(
         publicOptions: MwebPublicSendOptions,
         publicTransactionBridge: MwebPublicTransactionBridge? = null,
     ): MwebSendResult = withContext(dispatcherProvider.io) {
-        stateMutex.withLock {
+        val (result, relayedPublicTransaction) = stateMutex.withLock {
             val client = requireStartedClient()
             val prepared = prepareTransaction(
                 request = request,
@@ -280,9 +285,6 @@ internal class LitecoinMwebEngine(
             )
             val transactionHash = MwebDaemonErrorMapper.mapSuspend {
                 client.broadcast(signedPublicTransaction.rawTransaction)
-            }
-            signedPublicTransaction.publicTransaction?.let {
-                requirePublicBridge(publicTransactionBridge).processRelayed(it)
             }
             val canonicalTransactionHash = canonicalTransactionHash(request, transactionHash)
             val result = MwebSendResult(
@@ -303,8 +305,11 @@ internal class LitecoinMwebEngine(
                 spentOutputIds = selectedMwebOutputIds,
             )
             applyUtxoSnapshot(utxoSynchronizer.loadSnapshot())
-            result
+            result to signedPublicTransaction.publicTransaction
         }
+
+        processRelayedPublicTransaction(publicTransactionBridge, relayedPublicTransaction)
+        result
     }
 
     /**
@@ -529,6 +534,29 @@ internal class LitecoinMwebEngine(
 
     private fun requirePublicBridge(publicTransactionBridge: MwebPublicTransactionBridge?): MwebPublicTransactionBridge {
         return publicTransactionBridge ?: throw MwebError.NativeUnavailable()
+    }
+
+    private fun processRelayedPublicTransaction(
+        publicTransactionBridge: MwebPublicTransactionBridge?,
+        transaction: FullTransaction?,
+    ) {
+        if (transaction == null) return
+        val bridge = publicTransactionBridge ?: run {
+            Timber.tag(MWEB_ENGINE_LOG_TAG).d("Skipping relayed public MWEB transaction processing: bridge is missing")
+            return
+        }
+
+        try {
+            bridge.processRelayed(transaction)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // Broadcast already succeeded and MWEB storage is updated; public storage can recover via sync.
+            Timber.tag(MWEB_ENGINE_LOG_TAG).d(
+                error,
+                "Failed to process relayed public MWEB transaction after broadcast",
+            )
+        }
     }
 
     private fun requireStartedClient(): MwebDaemonClient {

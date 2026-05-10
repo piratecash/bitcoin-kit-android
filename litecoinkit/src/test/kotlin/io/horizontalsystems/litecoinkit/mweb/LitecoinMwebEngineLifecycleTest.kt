@@ -707,6 +707,59 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun send_publicToMwebProcessRelayedCanReadMwebState_doesNotDeadlock() = runBlocking {
+        var pendingTransactionCount: Int? = null
+        lateinit var engine: LitecoinMwebEngine
+        val bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            onProcessRelayed = {
+                pendingTransactionCount = engine.pendingTransactions().size
+            },
+        )
+        val daemonClient = FakeDaemonClient()
+        engine = engineWith(
+            daemonClient = daemonClient,
+            dispatcherProvider = CoroutineMwebDispatcherProvider(
+                io = Dispatchers.Default,
+                callback = ImmediateDispatcher,
+            ),
+        )
+        engine.start()
+
+        withTimeout(1_000) {
+            engine.send(
+                request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                publicOptions = publicOptions(),
+                publicTransactionBridge = bridge,
+            )
+        }
+
+        assertEquals(1, pendingTransactionCount)
+    }
+
+    @Test
+    fun send_publicToMwebProcessRelayedFails_stillReturnsResultAndPersistsPending() = runBlocking {
+        val bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            onProcessRelayed = { throw IllegalStateException("public-side persistence failed") },
+        )
+        val engine = engineWith(daemonClient = FakeDaemonClient())
+        engine.start()
+
+        val result = withTimeout(1_000) {
+            engine.send(
+                request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+                publicOptions = publicOptions(),
+                publicTransactionBridge = bridge,
+            )
+        }
+
+        assertEquals("test-transaction", result.canonicalTransactionHash)
+        assertEquals(1, bridge.processRelayedCount)
+        assertEquals(1, engine.pendingTransactions().size)
+    }
+
+    @Test
     fun send_publicToMwebBroadcastFailure_doesNotPersistPublicTransaction() {
         val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
         val daemonClient = FakeDaemonClient(broadcastError = IllegalStateException("broadcast failed"))
@@ -938,6 +991,7 @@ class LitecoinMwebEngineLifecycleTest {
         localTransactionTtlMillis: Long = 24 * 60 * 60 * 1_000L,
         currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
         canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider = EmptyMwebCanonicalTransactionHashProvider,
+        dispatcherProvider: MwebDispatcherProvider = this.dispatcherProvider,
     ): LitecoinMwebEngine {
         val walletId = "mweb-test-${System.nanoTime()}"
         walletIds.add(walletId)
@@ -1082,6 +1136,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val signedRawTransaction: ByteArray = byteArrayOf(1),
         private val spendableDelayMillis: Long = 0,
         private val signedTransaction: FullTransaction? = null,
+        private val onProcessRelayed: (() -> Unit)? = null,
     ) : MwebPublicTransactionBridge {
         private val transactionSerializer = BaseTransactionSerializer()
         val signCalls = mutableListOf<SignCall>()
@@ -1143,6 +1198,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         override fun processRelayed(transaction: FullTransaction): FullTransaction {
             processRelayedCount += 1
+            onProcessRelayed?.invoke()
             return transaction
         }
 
