@@ -97,6 +97,147 @@ class MwebRoomStorageTest {
     }
 
     @Test
+    fun localTransactions_mwebToPublicLegacyBroadcastHash_hidesCanonicalHash() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-outgoing:local-broadcast-hash",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = "local-broadcast-hash",
+                confirmedHeight = 123,
+            )
+        )
+
+        val transaction = storage.localTransactions().single()
+
+        assertNull(transaction.canonicalTransactionHash)
+    }
+
+    @Test
+    fun localTransactions_publicToMwebCanonicalHash_keepsCanonicalHash() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-incoming:public-hash",
+                type = MwebTransactionType.Incoming.name,
+                kind = MwebTransactionKind.PublicToMweb.name,
+                canonicalTransactionHash = "public-hash",
+                confirmedHeight = 123,
+            )
+        )
+
+        val transaction = storage.localTransactions().single()
+
+        assertEquals("public-hash", transaction.canonicalTransactionHash)
+    }
+
+    @Test
+    fun mwebToPublicCanonicalHashHeights_returnsOnlyMissingOrLegacyHashes() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-outgoing:legacy-hash",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = "legacy-hash",
+                confirmedHeight = 200,
+            )
+        )
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "missing-hash",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = null,
+                confirmedHeight = 201,
+            )
+        )
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "already-fixed",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = "canonical-hash",
+                confirmedHeight = 202,
+            )
+        )
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "public-peg-in",
+                type = MwebTransactionType.Incoming.name,
+                kind = MwebTransactionKind.PublicToMweb.name,
+                canonicalTransactionHash = null,
+                confirmedHeight = 203,
+            )
+        )
+
+        val heights = storage.mwebToPublicCanonicalHashHeights()
+
+        assertEquals(listOf(201, 200), heights)
+    }
+
+    @Test
+    fun updateMwebToPublicCanonicalHashes_updatesConfirmedPegOutsAtHeight() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-outgoing:legacy-hash",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = "legacy-hash",
+                confirmedHeight = 200,
+            )
+        )
+
+        assertTrue(storage.updateMwebToPublicCanonicalHashes(listOf(200 to "canonical-hash")))
+
+        val transaction = storage.localTransactions().single()
+        assertEquals("canonical-hash", transaction.canonicalTransactionHash)
+        assertTrue(storage.mwebToPublicCanonicalHashHeights().isEmpty())
+    }
+
+    @Test
+    fun updateMwebToPublicCanonicalHashes_multiplePegOutsSameHeight_assignsSameHash() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-outgoing:legacy-a",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = "legacy-a",
+                confirmedHeight = 200,
+            )
+        )
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-outgoing:legacy-b",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToPublic.name,
+                canonicalTransactionHash = "legacy-b",
+                confirmedHeight = 200,
+            )
+        )
+
+        assertTrue(storage.updateMwebToPublicCanonicalHashes(listOf(200 to "canonical-hash")))
+
+        val transactions = storage.localTransactions()
+        assertEquals(listOf("canonical-hash", "canonical-hash"), transactions.map { it.canonicalTransactionHash })
+    }
+
+    @Test
+    fun localTransactions_mwebToMwebLegacyBroadcastHash_hidesCanonicalHash() {
+        database.outgoingTransactionDao.save(
+            entity(
+                uid = "mweb-outgoing:local-mweb-hash",
+                type = MwebTransactionType.Outgoing.name,
+                kind = MwebTransactionKind.MwebToMweb.name,
+                canonicalTransactionHash = "local-mweb-hash",
+                confirmedHeight = 123,
+            )
+        )
+
+        val transaction = storage.localTransactions().single()
+
+        assertNull(transaction.canonicalTransactionHash)
+    }
+
+    @Test
     fun confirmTransactionsSpending_requiresAllSpentOutputs() {
         database.outgoingTransactionDao.save(
             entity(
@@ -323,6 +464,7 @@ class MwebRoomStorageTest {
         kind: String,
         fee: Long? = 1,
         destinationAddress: String? = "destination",
+        canonicalTransactionHash: String? = "hash-$uid",
         spentOutputIds: List<String> = emptyList(),
         createdOutputIds: List<String> = listOf("output-$uid"),
         confirmedHeight: Int? = null,
@@ -334,7 +476,7 @@ class MwebRoomStorageTest {
         amount = 100,
         fee = fee,
         destinationAddress = destinationAddress,
-        canonicalTransactionHash = "hash-$uid",
+        canonicalTransactionHash = canonicalTransactionHash,
         createdOutputIds = createdOutputIds,
         spentOutputIds = spentOutputIds,
         confirmedHeight = confirmedHeight,

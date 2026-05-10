@@ -25,12 +25,14 @@ internal class MwebUtxoSynchronizer(
     private val syncStateProvider: () -> MwebSyncState,
     private val activeClientProvider: () -> MwebDaemonClient?,
     private val isActiveClient: (MwebDaemonClient) -> Boolean,
+    private val canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider,
     private val onNativeUnavailable: () -> Unit,
     private val onStatus: (MwebDaemonStatus) -> Unit,
     private val onSnapshot: (MwebUtxoSnapshot) -> Unit,
 ) {
     private var statusPollJob: Job? = null
     private var spentPollJob: Job? = null
+    private var canonicalHashJob: Job? = null
     private var utxoStream: Closeable? = null
 
     fun stop() {
@@ -38,11 +40,14 @@ internal class MwebUtxoSynchronizer(
         statusPollJob = null
         spentPollJob?.cancel()
         spentPollJob = null
+        canonicalHashJob?.cancel()
+        canonicalHashJob = null
         closeUtxoStream()
     }
 
     fun refresh(client: MwebDaemonClient) {
         refreshSpentOutputs(client)
+        scheduleCanonicalTransactionHashRefresh()
         startUtxoStream(client)
     }
 
@@ -110,6 +115,26 @@ internal class MwebUtxoSynchronizer(
         applySpentOutputs(spentOutputIds, status)
     }
 
+    fun scheduleCanonicalTransactionHashRefresh() {
+        if (canonicalHashJob?.isActive == true) return
+
+        canonicalHashJob = coroutineScope.launch {
+            val updates = storage.mwebToPublicCanonicalHashHeights().mapNotNull { height ->
+                canonicalTransactionHashProvider.transactionHash(height)?.let { height to it }
+            }
+            if (updates.isEmpty()) return@launch
+
+            stateMutex.withLock {
+                val client = activeClient ?: return@withLock
+                if (!isActiveClient(client)) return@withLock
+
+                if (storage.updateMwebToPublicCanonicalHashes(updates)) {
+                    onSnapshot(loadSnapshot())
+                }
+            }
+        }
+    }
+
     private fun refreshStatus(client: MwebDaemonClient) {
         val status = MwebDaemonErrorMapper.map {
             client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
@@ -124,6 +149,7 @@ internal class MwebUtxoSynchronizer(
             height = status.syncState.mwebUtxosHeight,
             timestamp = status.blockTime.takeIf { it > 0 },
         )
+        scheduleCanonicalTransactionHashRefresh()
         onSnapshot(loadSnapshot())
     }
 

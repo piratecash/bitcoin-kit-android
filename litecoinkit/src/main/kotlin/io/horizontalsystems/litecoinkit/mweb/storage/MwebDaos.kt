@@ -85,6 +85,15 @@ interface MwebOutgoingTransactionDao {
     )
     fun confirmedOutgoingTransactionsWithCreatedOutputs(): List<MwebOutgoingTransactionEntity>
 
+    @Query(
+        """
+        SELECT * FROM MwebOutgoingTransaction
+        WHERE kind = :kind AND confirmedHeight > 0
+        ORDER BY confirmedHeight DESC
+        """
+    )
+    fun confirmedOutgoingTransactions(kind: String): List<MwebOutgoingTransactionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun save(transaction: MwebOutgoingTransactionEntity)
 
@@ -96,6 +105,15 @@ interface MwebOutgoingTransactionDao {
         """
     )
     fun confirm(uids: List<String>, height: Int, timestamp: Long?)
+
+    @Query(
+        """
+        UPDATE MwebOutgoingTransaction
+        SET canonicalTransactionHash = :canonicalTransactionHash
+        WHERE kind = :kind AND confirmedHeight = :height
+        """
+    )
+    fun updateCanonicalHash(kind: String, height: Int, canonicalTransactionHash: String): Int
 
     @Query("DELETE FROM MwebOutgoingTransaction WHERE uid IN (:uids)")
     fun delete(uids: List<String>)

@@ -36,6 +36,8 @@ internal class LitecoinMwebEngine(
     private val statusPollIntervalMillis: Long = STATUS_POLL_INTERVAL_MILLIS,
     private val localTransactionTtlMillis: Long = LOCAL_TRANSACTION_TTL_MILLIS,
     private val currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
+    private val canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider =
+        MwebExplorerCanonicalTransactionHashProvider.create(networkType),
 ) {
     interface Listener {
         fun onMwebBalanceUpdate(balance: MwebBalance) = Unit
@@ -88,6 +90,7 @@ internal class LitecoinMwebEngine(
         syncStateProvider = { syncState },
         activeClientProvider = { daemonClient },
         isActiveClient = { client -> started && daemonClient === client },
+        canonicalTransactionHashProvider = canonicalTransactionHashProvider,
         onNativeUnavailable = { started = false },
         onStatus = { status -> applyStatus(status) },
         onSnapshot = { snapshot -> applyUtxoSnapshot(snapshot) },
@@ -127,8 +130,7 @@ internal class LitecoinMwebEngine(
                 started = true
                 addressPool().addresses(MwebAddressPool.CHANGE_INDEX, MwebAddressPool.FIRST_RECEIVE_INDEX)
                 applyStatus(status)
-                utxoSynchronizer.refreshSpentOutputs(client)
-                utxoSynchronizer.startUtxoStream(client)
+                utxoSynchronizer.refresh(client)
                 utxoSynchronizer.startStatusPolling(client)
                 utxoSynchronizer.startSpentPolling(client)
             }
@@ -282,8 +284,9 @@ internal class LitecoinMwebEngine(
             signedPublicTransaction.publicTransaction?.let {
                 requirePublicBridge(publicTransactionBridge).processRelayed(it)
             }
+            val canonicalTransactionHash = canonicalTransactionHash(request, transactionHash)
             val result = MwebSendResult(
-                canonicalTransactionHash = transactionHash,
+                canonicalTransactionHash = canonicalTransactionHash,
                 rawTransaction = signedPublicTransaction.rawTransaction,
                 outputIds = createResult.outputIds,
             )
@@ -483,7 +486,7 @@ internal class LitecoinMwebEngine(
             is MwebSendRequest.MwebToMweb -> MwebTransactionType.Outgoing
         }
         return MwebTransaction(
-            uid = "mweb-${type.name.lowercase()}:${result.canonicalTransactionHash ?: result.outputIds.firstOrNull() ?: timestamp}",
+            uid = MwebTransactionUid.local(type, result.canonicalTransactionHash ?: result.outputIds.firstOrNull() ?: timestamp.toString()),
             type = type,
             kind = kind,
             amount = request.value,
@@ -500,6 +503,14 @@ internal class LitecoinMwebEngine(
                 is MwebSendRequest.MwebToMweb -> prepared.selectedMwebUtxos.isNotEmpty()
             },
         )
+    }
+
+    private fun canonicalTransactionHash(request: MwebSendRequest, broadcastHash: String): String? {
+        return when (request) {
+            is MwebSendRequest.PublicToMweb -> broadcastHash
+            is MwebSendRequest.MwebToPublic,
+            is MwebSendRequest.MwebToMweb -> null
+        }
     }
 
     private suspend fun signPublicInputs(

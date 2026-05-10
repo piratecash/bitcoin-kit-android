@@ -4,6 +4,7 @@ import io.horizontalsystems.litecoinkit.mweb.MwebPendingTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
+import io.horizontalsystems.litecoinkit.mweb.MwebTransactionUid
 import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressRecord
@@ -120,6 +121,30 @@ class MwebRoomStorage(
         }
     }
 
+    fun mwebToPublicCanonicalHashHeights(): List<Int> {
+        return database.outgoingTransactionDao.confirmedOutgoingTransactions(MwebTransactionKind.MwebToPublic.name)
+            .filter { it.needsCanonicalHash() }
+            .mapNotNull { it.confirmedHeight?.takeIf { height -> height > 0 } }
+            .distinct()
+    }
+
+    fun updateMwebToPublicCanonicalHashes(canonicalHashes: List<Pair<Int, String>>): Boolean {
+        val validHashes = canonicalHashes.filter { (height, hash) -> height > 0 && hash.isNotBlank() }
+        if (validHashes.isEmpty()) return false
+
+        var updated = false
+        database.runInTransaction {
+            validHashes.forEach { (height, hash) ->
+                updated = database.outgoingTransactionDao.updateCanonicalHash(
+                    kind = MwebTransactionKind.MwebToPublic.name,
+                    height = height,
+                    canonicalTransactionHash = hash,
+                ) > 0 || updated
+            }
+        }
+        return updated
+    }
+
     fun saveBroadcastResult(
         pendingTransaction: MwebPendingTransaction,
         localTransaction: MwebTransaction?,
@@ -218,7 +243,7 @@ class MwebRoomStorage(
             amount = amount,
             fee = fee,
             address = destinationAddress?.takeIf { it.isNotBlank() },
-            canonicalTransactionHash = canonicalTransactionHash,
+            canonicalTransactionHash = visibleCanonicalTransactionHash(transactionType, transactionKind),
             outputIds = createdOutputIds,
             inputOutputIds = spentOutputIds,
             height = confirmedHeight,
@@ -246,5 +271,20 @@ class MwebRoomStorage(
 
     private inline fun <reified T : Enum<T>> safeValueOf(value: String): T? {
         return enumValues<T>().firstOrNull { it.name == value }
+    }
+
+    private fun MwebOutgoingTransactionEntity.visibleCanonicalTransactionHash(
+        type: MwebTransactionType,
+        kind: MwebTransactionKind,
+    ): String? {
+        val hash = canonicalTransactionHash?.takeIf { it.isNotBlank() } ?: return null
+        if (kind == MwebTransactionKind.PublicToMweb) return hash
+
+        return hash.takeUnless { MwebTransactionUid.localId(type, uid) == it }
+    }
+
+    private fun MwebOutgoingTransactionEntity.needsCanonicalHash(): Boolean {
+        val hash = canonicalTransactionHash?.takeIf { it.isNotBlank() } ?: return true
+        return MwebTransactionUid.localId(MwebTransactionType.Outgoing, uid) == hash
     }
 }

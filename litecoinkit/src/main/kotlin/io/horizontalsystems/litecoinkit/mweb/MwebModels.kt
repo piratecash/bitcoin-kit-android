@@ -288,11 +288,11 @@ sealed interface MwebSendRequest {
 }
 
 /**
- * Broadcast result. `canonicalTransactionHash` is present for peg-in/peg-out
- * transactions; pure MWEB sends are primarily tracked by `outputIds`.
+ * Broadcast result. `canonicalTransactionHash` is present for peg-in transactions.
+ * MWEB-originated sends receive a public canonical hash only after the MWEB block is known.
  */
 data class MwebSendResult(
-    /** Canonical transaction hash for peg-in/peg-out, null when mwebd has only MWEB output IDs. */
+    /** Canonical transaction hash for public Litecoin explorers, when known. */
     val canonicalTransactionHash: String?,
 
     /** Broadcast raw transaction bytes returned after public input signing. */

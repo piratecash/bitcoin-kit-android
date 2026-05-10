@@ -30,6 +30,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -346,14 +347,14 @@ class LitecoinMwebEngineLifecycleTest {
         // Pure MWEB with recipient + change: kernel(3) + 2*standardOutput(18) = 39 wu * 100 = 3900 sat.
         assertEquals(3_900L, transaction.fee)
         assertEquals(destination, transaction.address)
-        assertEquals("test-transaction", transaction.canonicalTransactionHash)
+        assertNull(transaction.canonicalTransactionHash)
         assertEquals(listOf("created-output"), transaction.outputIds)
         assertEquals(listOf(SELECTED_OUTPUT_ID), transaction.inputOutputIds)
         assertTrue(transaction.pending)
     }
 
     @Test
-    fun send_mwebToPublic_savesOutgoingTransactionWithCanonicalHash() = runBlocking {
+    fun send_mwebToPublic_savesOutgoingTransactionWithoutCanonicalHashBeforeConfirmation() = runBlocking {
         val bridge = FakePublicTransactionBridge()
         val engine = engineWith(
             FakeDaemonClient(
@@ -374,7 +375,42 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(MwebTransactionKind.MwebToPublic, transaction.kind)
         assertEquals(50L, transaction.amount)
         assertEquals(PUBLIC_DESTINATION, transaction.address)
-        assertEquals("test-transaction", transaction.canonicalTransactionHash)
+        assertNull(transaction.canonicalTransactionHash)
+    }
+
+    @Test
+    fun refresh_mwebToPublicConfirmed_updatesCanonicalHashFromMwebBlock() = runBlocking {
+        val bridge = FakePublicTransactionBridge()
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val hashProvider = FakeCanonicalTransactionHashProvider(mapOf(101 to "canonical-public-hash"))
+        val engine = engineWith(daemonClient, canonicalTransactionHashProvider = hashProvider)
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        daemonClient.status = MwebDaemonStatus(
+            syncState = MwebSyncState(101, 101, 101),
+            nativeVersion = "test",
+            blockTime = 2_000,
+        )
+        daemonClient.spentOutputIds = listOf(SELECTED_OUTPUT_ID)
+        engine.refresh()
+
+        waitUntil {
+            engine.transactions()
+                .any { it.kind == MwebTransactionKind.MwebToPublic && it.canonicalTransactionHash == "canonical-public-hash" }
+        }
+        val transaction = engine.transactions().first { it.kind == MwebTransactionKind.MwebToPublic }
+        assertEquals("canonical-public-hash", transaction.canonicalTransactionHash)
+        assertEquals(101, transaction.height)
+        assertEquals(listOf(101), hashProvider.requests)
     }
 
     @Test
@@ -874,6 +910,7 @@ class LitecoinMwebEngineLifecycleTest {
         statusPollIntervalMillis: Long = 60_000L,
         localTransactionTtlMillis: Long = 24 * 60 * 60 * 1_000L,
         currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
+        canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider = EmptyMwebCanonicalTransactionHashProvider,
     ): LitecoinMwebEngine {
         val walletId = "mweb-test-${System.nanoTime()}"
         walletIds.add(walletId)
@@ -887,6 +924,7 @@ class LitecoinMwebEngineLifecycleTest {
             statusPollIntervalMillis = statusPollIntervalMillis,
             localTransactionTtlMillis = localTransactionTtlMillis,
             currentTimeMillisProvider = currentTimeMillisProvider,
+            canonicalTransactionHashProvider = canonicalTransactionHashProvider,
         )
         engines.add(engine)
         return engine
@@ -998,6 +1036,17 @@ class LitecoinMwebEngineLifecycleTest {
             broadcastRawTransactions.add(rawTransaction.copyOf())
             broadcastError?.let { throw it }
             return "test-transaction"
+        }
+    }
+
+    private class FakeCanonicalTransactionHashProvider(
+        private val hashes: Map<Int, String>,
+    ) : MwebCanonicalTransactionHashProvider {
+        val requests = mutableListOf<Int>()
+
+        override suspend fun transactionHash(height: Int): String? {
+            requests += height
+            return hashes[height]
         }
     }
 
