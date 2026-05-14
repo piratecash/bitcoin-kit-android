@@ -260,7 +260,7 @@ private class MwebdAndroidDaemonClient(
     private companion object {
         const val ADDRESS_DISCOVERY_LIMIT = 100
         const val FEE_RATE_KB_MULTIPLIER = 1_000L
-        const val NATIVE_VERSION = "ltcmweb/mwebd v0.1.19, mwebd-android v0.1.19-pcash.6"
+        const val NATIVE_VERSION = "ltcmweb/mwebd v0.1.19, mwebd-android v0.1.19-pcash.7"
         const val PORT_AUTO_SELECT = 0L
         const val PROXY_DISABLED = ""
         const val THREAD_NAME = "litecoin-mwebd"
