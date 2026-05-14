@@ -602,9 +602,9 @@ class LitecoinKit : AbstractKit {
             return bitcoinCore.serializeTransaction(transaction)
         }
 
-        override fun processRelayed(transaction: FullTransaction): FullTransaction {
-            transaction.header.status = Transaction.Status.RELAYED
-            return bitcoinCore.processRelayedTransactionLocally(transaction)
+        override fun processCreated(transaction: FullTransaction): FullTransaction {
+            transaction.header.status = Transaction.Status.NEW
+            return bitcoinCore.processCreatedTransaction(transaction)
         }
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {

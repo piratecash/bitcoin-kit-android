@@ -650,7 +650,7 @@ class MwebTransactionPreparerTest {
             return ByteArray(0)
         }
 
-        override fun processRelayed(transaction: FullTransaction): FullTransaction = transaction
+        override fun processCreated(transaction: FullTransaction): FullTransaction = transaction
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {
             throw UnsupportedOperationException("not used in preparer tests")

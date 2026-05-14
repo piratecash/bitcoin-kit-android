@@ -166,8 +166,12 @@ class TransactionCreator(
     }
 
     private fun processAndSend(transaction: FullTransaction): FullTransaction {
-        // Always save the transaction first - don't block on peer availability
-        processCreatedInStorage(transaction)
+        try {
+            processCreatedInStorage(transaction)
+        } catch (ex: TransactionAlreadyExists) {
+            // The transaction may already be in storage if local creation raced with peer/API sync.
+            // Still ask the sender to process pending NEW transactions so broadcast retries continue.
+        }
 
         // Attempt to broadcast - if no peers available, transaction will be queued
         // and automatically retried by TransactionSendTimer / SendTransactionsOnPeersSynced

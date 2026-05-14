@@ -106,7 +106,7 @@ internal class MwebPublicPegInSender(
                 val canonicalTransactionHash = signedPublicTransaction.publicTransactionHash()
                 Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG)
                     .d("Public peg-in daemon broadcast finished: tx=$broadcastHash, canonicalTx=$canonicalTransactionHash")
-                signedPublicTransaction.publicTransaction?.let(publicTransactionBridge::processRelayed)
+                signedPublicTransaction.publicTransaction?.let(publicTransactionBridge::processCreated)
                 MwebSendResult(
                     canonicalTransactionHash = canonicalTransactionHash,
                     rawTransaction = signedPublicTransaction.rawTransaction,

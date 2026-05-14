@@ -735,7 +735,8 @@ class LitecoinMwebEngineLifecycleTest {
         )
 
         assertEquals(1, bridge.signCalls.size)
-        assertEquals(1, bridge.processRelayedCount)
+        assertEquals(1, bridge.processCreatedCount)
+        assertEquals(listOf(signedTransaction), bridge.processCreatedTransactions)
         assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
         assertArrayEquals(signedRaw, result.rawTransaction)
@@ -744,12 +745,12 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun send_publicToMwebProcessRelayedCanReadMwebState_doesNotDeadlock() = runBlocking {
+    fun send_publicToMwebProcessCreatedCanReadMwebState_doesNotDeadlock() = runBlocking {
         var pendingTransactionCount: Int? = null
         lateinit var engine: LitecoinMwebEngine
         val bridge = FakePublicTransactionBridge(
             publicUtxos = listOf(publicUtxo(value = 5_000)),
-            onProcessRelayed = {
+            onProcessCreated = {
                 pendingTransactionCount = engine.pendingTransactions().size
             },
         )
@@ -775,10 +776,10 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun send_publicToMwebProcessRelayedFails_stillReturnsResultAndPersistsPending() = runBlocking {
+    fun send_publicToMwebProcessCreatedFails_stillReturnsResultAndPersistsPending() = runBlocking {
         val bridge = FakePublicTransactionBridge(
             publicUtxos = listOf(publicUtxo(value = 5_000)),
-            onProcessRelayed = { throw IllegalStateException("public-side persistence failed") },
+            onProcessCreated = { throw IllegalStateException("public-side persistence failed") },
         )
         val engine = engineWith(daemonClient = FakeDaemonClient(broadcastHash = DAEMON_BROADCAST_HASH))
         engine.start()
@@ -793,7 +794,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertEquals(publicTransactionHash(bridge.signCalls.single().rawTransaction), result.canonicalTransactionHash)
         assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
-        assertEquals(1, bridge.processRelayedCount)
+        assertEquals(1, bridge.processCreatedCount)
         assertEquals(1, engine.pendingTransactions().size)
     }
 
@@ -858,6 +859,8 @@ class LitecoinMwebEngineLifecycleTest {
         assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertEquals(1, daemonClient.startCount)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
+        assertEquals(1, bridge.processCreatedCount)
+        assertEquals(listOf(signedTransaction), bridge.processCreatedTransactions)
     }
 
     @Test
@@ -899,7 +902,7 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertEquals(1, bridge.signCalls.size)
         assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
-        assertEquals(0, bridge.processRelayedCount)
+        assertEquals(0, bridge.processCreatedCount)
     }
 
     @Test
@@ -1190,7 +1193,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val signedRawTransaction: ByteArray = byteArrayOf(1),
         private val spendableDelayMillis: Long = 0,
         private val signedTransaction: FullTransaction? = null,
-        private val onProcessRelayed: (() -> Unit)? = null,
+        private val onProcessCreated: (() -> Unit)? = null,
     ) : MwebPublicTransactionBridge {
         private val transactionSerializer = BaseTransactionSerializer()
         val signCalls = mutableListOf<SignCall>()
@@ -1200,8 +1203,9 @@ class LitecoinMwebEngineLifecycleTest {
         private var activeSpendableCalls = 0
         var spendableCalls = 0
             private set
-        var processRelayedCount = 0
+        var processCreatedCount = 0
             private set
+        val processCreatedTransactions = mutableListOf<FullTransaction>()
 
         override fun spendableUtxos(options: MwebPublicSendOptions): List<UnspentOutput> {
             synchronized(this) {
@@ -1250,9 +1254,10 @@ class LitecoinMwebEngineLifecycleTest {
             return signedRawTransaction.copyOf()
         }
 
-        override fun processRelayed(transaction: FullTransaction): FullTransaction {
-            processRelayedCount += 1
-            onProcessRelayed?.invoke()
+        override fun processCreated(transaction: FullTransaction): FullTransaction {
+            processCreatedCount += 1
+            processCreatedTransactions += transaction
+            onProcessCreated?.invoke()
             return transaction
         }
 
@@ -1333,7 +1338,7 @@ class LitecoinMwebEngineLifecycleTest {
         }
 
         assertEquals(1, bridge.signCalls.size)
-        assertEquals(0, bridge.processRelayedCount)
+        assertEquals(0, bridge.processCreatedCount)
     }
 
     private fun walletId(prefix: String): String {

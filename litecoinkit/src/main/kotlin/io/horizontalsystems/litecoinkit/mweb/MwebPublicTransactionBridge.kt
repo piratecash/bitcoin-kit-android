@@ -35,8 +35,8 @@ internal interface MwebPublicTransactionBridge {
     /** Serializes a public transaction with bitcoincore's Litecoin serializer. */
     fun serialize(transaction: FullTransaction): ByteArray
 
-    /** Persists the MWEB-broadcast canonical transaction without enqueueing public broadcast retries. */
-    fun processRelayed(transaction: FullTransaction): FullTransaction
+    /** Persists the peg-in public transaction and enqueues normal public broadcast retries. */
+    fun processCreated(transaction: FullTransaction): FullTransaction
 
     /** Signs public peg-in inputs in a raw transaction template returned by mwebd. */
     suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction

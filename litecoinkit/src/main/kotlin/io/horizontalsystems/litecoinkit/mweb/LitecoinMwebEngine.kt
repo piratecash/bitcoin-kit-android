@@ -270,7 +270,7 @@ internal class LitecoinMwebEngine(
         publicOptions: MwebPublicSendOptions,
         publicTransactionBridge: MwebPublicTransactionBridge? = null,
     ): MwebSendResult = withContext(dispatcherProvider.io) {
-        val (result, relayedPublicTransaction) = stateMutex.withLock {
+        val (result, publicTransaction) = stateMutex.withLock {
             val client = requireStartedClient()
             val prepared = prepareTransaction(
                 request = request,
@@ -312,7 +312,7 @@ internal class LitecoinMwebEngine(
             result to signedPublicTransaction.publicTransaction
         }
 
-        processRelayedPublicTransaction(publicTransactionBridge, relayedPublicTransaction)
+        processCreatedPublicTransaction(publicTransactionBridge, publicTransaction)
         result
     }
 
@@ -544,25 +544,26 @@ internal class LitecoinMwebEngine(
         return publicTransactionBridge ?: throw MwebError.NativeUnavailable()
     }
 
-    private fun processRelayedPublicTransaction(
+    private fun processCreatedPublicTransaction(
         publicTransactionBridge: MwebPublicTransactionBridge?,
         transaction: FullTransaction?,
     ) {
         if (transaction == null) return
         val bridge = publicTransactionBridge ?: run {
-            Timber.tag(MWEB_ENGINE_LOG_TAG).d("Skipping relayed public MWEB transaction processing: bridge is missing")
+            Timber.tag(MWEB_ENGINE_LOG_TAG).d("Skipping public MWEB transaction processing: bridge is missing")
             return
         }
 
         try {
-            bridge.processRelayed(transaction)
+            bridge.processCreated(transaction)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            // Broadcast already succeeded and MWEB storage is updated; public storage can recover via sync.
+            // The daemon broadcast and MWEB storage update already succeeded, so this
+            // secondary public-side enqueue failure must not leave Send spinning.
             Timber.tag(MWEB_ENGINE_LOG_TAG).d(
                 error,
-                "Failed to process relayed public MWEB transaction after broadcast",
+                "Failed to enqueue public MWEB transaction after daemon broadcast",
             )
         }
     }

@@ -186,6 +186,29 @@ object TransactionCreatorTest : Spek({
         }
     }
 
+    describe("#processCreated") {
+        beforeEachTest {
+            doNothing().whenever(processor).processCreated(any())
+            doNothing().whenever(transactionSender).sendPendingTransactions()
+        }
+
+        it("saves transaction and attempts broadcast") {
+            transactionCreator.processCreated(mockTransaction)
+
+            verify(processor).processCreated(mockTransaction)
+            verify(transactionSender).sendPendingTransactions()
+        }
+
+        it("attempts broadcast when transaction already exists") {
+            doThrow(TransactionCreator.TransactionAlreadyExists("hash exists"))
+                .whenever(processor).processCreated(any())
+
+            transactionCreator.processCreated(mockTransaction)
+
+            verify(transactionSender).sendPendingTransactions()
+        }
+    }
+
     describe("#processRelayedLocally") {
         beforeEachTest {
             doNothing().whenever(processor).processRelayed(any())
