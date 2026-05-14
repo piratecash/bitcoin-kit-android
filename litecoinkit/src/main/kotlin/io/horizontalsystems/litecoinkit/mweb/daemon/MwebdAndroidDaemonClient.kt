@@ -11,6 +11,7 @@ import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import timber.log.Timber
 import java.io.Closeable
+import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -162,7 +163,53 @@ private class MwebdAndroidDaemonClient(
 
     private fun createDaemon(): Daemon {
         config.dataDir.mkdirs()
-        return Mwebdandroid.newDaemon(chain(), config.dataDir.absolutePath, config.peerAddress.orEmpty(), PROXY_DISABLED)
+        val chain = chain()
+        val dataDir = config.dataDir.absolutePath
+        val peerAddress = config.peerAddress.orEmpty()
+        val restoreCheckpoint = config.restoreCheckpoint
+        return if (restoreCheckpoint.isNullOrEmpty()) {
+            newDaemon(chain, dataDir, peerAddress)
+        } else {
+            newDaemonWithRestoreCheckpoint(chain, dataDir, peerAddress, restoreCheckpoint)
+        }
+    }
+
+    private fun newDaemon(chain: String, dataDir: String, peerAddress: String): Daemon {
+        return Mwebdandroid.newDaemon(chain, dataDir, peerAddress, PROXY_DISABLED)
+    }
+
+    private fun newDaemonWithRestoreCheckpoint(
+        chain: String,
+        dataDir: String,
+        peerAddress: String,
+        restoreCheckpoint: String,
+    ): Daemon {
+        val method = try {
+            Mwebdandroid::class.java.getMethod(
+                "newDaemonWithRestoreCheckpoint",
+                String::class.java,
+                String::class.java,
+                String::class.java,
+                String::class.java,
+                String::class.java,
+            )
+        } catch (error: NoSuchMethodException) {
+            Timber.tag(LOG_TAG).d("mwebd checkpoint bootstrap is unavailable in this native library")
+            return newDaemon(chain, dataDir, peerAddress)
+        }
+
+        return try {
+            method.invoke(null, chain, dataDir, peerAddress, PROXY_DISABLED, restoreCheckpoint) as? Daemon
+                ?: run {
+                    Timber.tag(LOG_TAG).d("mwebd checkpoint bootstrap returned unexpected daemon type")
+                    newDaemon(chain, dataDir, peerAddress)
+                }
+        } catch (error: IllegalAccessException) {
+            Timber.tag(LOG_TAG).d(error, "mwebd checkpoint bootstrap method is inaccessible")
+            newDaemon(chain, dataDir, peerAddress)
+        } catch (error: InvocationTargetException) {
+            throw error.cause ?: error
+        }
     }
 
     private fun chain(): String = when (config.networkType) {
@@ -213,7 +260,7 @@ private class MwebdAndroidDaemonClient(
     private companion object {
         const val ADDRESS_DISCOVERY_LIMIT = 100
         const val FEE_RATE_KB_MULTIPLIER = 1_000L
-        const val NATIVE_VERSION = "ltcmweb/mwebd v0.1.19, mwebd-android v0.1.19-pcash.3"
+        const val NATIVE_VERSION = "ltcmweb/mwebd v0.1.19, mwebd-android v0.1.19-pcash.4"
         const val PORT_AUTO_SELECT = 0L
         const val PROXY_DISABLED = ""
         const val THREAD_NAME = "litecoin-mwebd"

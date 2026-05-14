@@ -11,6 +11,7 @@ import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClientFactory
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonConfig
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdAndroidDaemonClientFactory
+import io.horizontalsystems.litecoinkit.mweb.daemon.MwebRestoreCheckpointProvider
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebDatabase
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
 import kotlinx.coroutines.CancellationException
@@ -43,6 +44,8 @@ internal class LitecoinMwebEngine(
     private val currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
     private val canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider =
         MwebExplorerCanonicalTransactionHashProvider.create(networkType),
+    private val restoreCheckpointProvider: (LitecoinKit.NetworkType, Int) -> String? =
+        MwebRestoreCheckpointProvider::encodedCheckpoint,
 ) {
     interface Listener {
         fun onMwebBalanceUpdate(balance: MwebBalance) = Unit
@@ -383,6 +386,7 @@ internal class LitecoinMwebEngine(
                     peerAddress = peerAddress,
                     dataDir = daemonDataDir,
                     restoreHeight = restoreHeight,
+                    restoreCheckpoint = restoreCheckpointProvider(networkType, restoreHeight),
                 )
             )
         }

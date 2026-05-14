@@ -100,6 +100,29 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun start_restorePointWithCheckpoint_passesCheckpointToDaemonConfig() {
+        var capturedConfig: MwebDaemonConfig? = null
+        val engine = engineWith(
+            daemonClient = FakeDaemonClient(),
+            restorePoint = MwebRestorePoint.BlockHeight(2_900_000),
+            restoreCheckpointProvider = { networkType, restoreHeight ->
+                assertEquals(LitecoinKit.NetworkType.MainNet, networkType)
+                assertEquals(2_900_000, restoreHeight)
+                "mweb-checkpoint-v1|2900000|checkpoint"
+            },
+            daemonClientFactory = { config ->
+                capturedConfig = config
+                FakeDaemonClient()
+            },
+        )
+
+        engine.start()
+
+        assertEquals(2_900_000, capturedConfig?.restoreHeight)
+        assertEquals("mweb-checkpoint-v1|2900000|checkpoint", capturedConfig?.restoreCheckpoint)
+    }
+
+    @Test
     fun refresh_beforeStart_doesNothing() {
         val engine = engineWith(FakeDaemonClient())
 
@@ -994,6 +1017,9 @@ class LitecoinMwebEngineLifecycleTest {
         currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
         canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider = EmptyMwebCanonicalTransactionHashProvider,
         dispatcherProvider: MwebDispatcherProvider = this.dispatcherProvider,
+        restorePoint: MwebRestorePoint = MwebRestorePoint.Activation,
+        restoreCheckpointProvider: (LitecoinKit.NetworkType, Int) -> String? = { _, _ -> null },
+        daemonClientFactory: (MwebDaemonConfig) -> MwebDaemonClient = { daemonClient },
     ): LitecoinMwebEngine {
         val walletId = "mweb-test-${System.nanoTime()}"
         walletIds.add(walletId)
@@ -1002,12 +1028,14 @@ class LitecoinMwebEngineLifecycleTest {
             seed = ByteArray(32),
             walletId = walletId,
             dispatcherProvider = dispatcherProvider,
-            daemonClientFactory = { _: MwebDaemonConfig -> daemonClient },
+            restorePoint = restorePoint,
+            daemonClientFactory = { config -> daemonClientFactory(config) },
             spentPollIntervalMillis = spentPollIntervalMillis,
             statusPollIntervalMillis = statusPollIntervalMillis,
             localTransactionTtlMillis = localTransactionTtlMillis,
             currentTimeMillisProvider = currentTimeMillisProvider,
             canonicalTransactionHashProvider = canonicalTransactionHashProvider,
+            restoreCheckpointProvider = restoreCheckpointProvider,
         )
         engines.add(engine)
         return engine

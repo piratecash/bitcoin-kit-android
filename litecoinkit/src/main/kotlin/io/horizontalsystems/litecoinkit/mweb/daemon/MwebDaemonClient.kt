@@ -62,6 +62,7 @@ data class MwebDaemonConfig(
     val peerAddress: String?,
     val dataDir: File,
     val restoreHeight: Int,
+    val restoreCheckpoint: String? = null,
 )
 
 fun interface MwebDaemonClientFactory {
