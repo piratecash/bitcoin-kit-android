@@ -145,8 +145,7 @@ class TransactionSender(
                 Timber.tag(logTag).w(error, "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast.")
                 val sent = fallback()
                 if (!sent) {
-                    Timber.tag(logTag).w("API fallback could not broadcast tx=$txHash because no eligible peers were available.")
-                    transactionSyncer.handleInvalid(transaction)
+                    queueBroadcastRetry(transaction)
                 }
             }
         }
@@ -178,20 +177,36 @@ class TransactionSender(
 
     private fun transactionSendStart(transaction: FullTransaction, peers: List<Peer>) {
         val txHash = transaction.header.hash.toReversedHex()
-        val sentTransaction = storage.getSentTransaction(transaction.header.hash)
+        val sentTransaction = recordBroadcastAttempt(transaction)
         ensureDiagnostics(transaction.header.hash)
 
-        if (sentTransaction == null) {
-            storage.addSentTransaction(SentTransaction(transaction.header.hash))
+        Timber.tag(logTag).d(
+            "Broadcast attempt for tx=$txHash sendType=P2P retry=${sentTransaction.retriesCount + 1} peers=${peers.joinToString { it.host }}"
+        )
+    }
+
+    private fun queueBroadcastRetry(transaction: FullTransaction) {
+        val txHash = transaction.header.hash.toReversedHex()
+        // No peer attempted the transaction, so this must not consume the P2P retry budget.
+        recordBroadcastAttempt(transaction)
+        ensureDiagnostics(transaction.header.hash)
+        timer.startIfNotRunning()
+        Timber.tag(logTag).w("API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry.")
+    }
+
+    private fun recordBroadcastAttempt(transaction: FullTransaction): SentTransaction {
+        val storedTransaction = storage.getSentTransaction(transaction.header.hash)
+        val sentTransaction = storedTransaction ?: SentTransaction(transaction.header.hash)
+        sentTransaction.lastSendTime = System.currentTimeMillis()
+        sentTransaction.sendSuccess = false
+
+        if (storedTransaction == null) {
+            storage.addSentTransaction(sentTransaction)
         } else {
-            sentTransaction.lastSendTime = System.currentTimeMillis()
-            sentTransaction.sendSuccess = false
             storage.updateSentTransaction(sentTransaction)
         }
 
-        Timber.tag(logTag).d(
-            "Broadcast attempt for tx=$txHash sendType=P2P retry=${(sentTransaction?.retriesCount ?: 0) + 1} peers=${peers.joinToString { it.host }}"
-        )
+        return sentTransaction
     }
 
     @Synchronized
