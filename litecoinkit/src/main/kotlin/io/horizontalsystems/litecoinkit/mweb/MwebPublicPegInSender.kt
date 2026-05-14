@@ -100,13 +100,15 @@ internal class MwebPublicPegInSender(
                         "rawBytes=${signedPublicTransaction.rawTransaction.size}"
                 )
                 Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon broadcast started")
-                val transactionHash = MwebDaemonErrorMapper.mapSuspend {
+                val broadcastHash = MwebDaemonErrorMapper.mapSuspend {
                     activeClient.broadcast(signedPublicTransaction.rawTransaction)
                 }
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon broadcast finished: tx=$transactionHash")
+                val canonicalTransactionHash = signedPublicTransaction.publicTransactionHash()
+                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG)
+                    .d("Public peg-in daemon broadcast finished: tx=$broadcastHash, canonicalTx=$canonicalTransactionHash")
                 signedPublicTransaction.publicTransaction?.let(publicTransactionBridge::processRelayed)
                 MwebSendResult(
-                    canonicalTransactionHash = transactionHash,
+                    canonicalTransactionHash = canonicalTransactionHash,
                     rawTransaction = signedPublicTransaction.rawTransaction,
                     outputIds = createResult.outputIds,
                 )
@@ -296,6 +298,12 @@ internal class MwebSignedPublicTransaction(
     val rawTransaction: ByteArray,
     val publicTransaction: FullTransaction?,
 )
+
+internal fun MwebSignedPublicTransaction.publicTransactionHash(): String {
+    return checkNotNull(publicTransaction) {
+        "Public peg-in requires a signed public transaction"
+    }.header.hash.toReversedHex()
+}
 
 internal suspend fun MwebPublicTransactionBridge.signPublicInputs(
     rawTransaction: ByteArray,

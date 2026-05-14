@@ -287,10 +287,10 @@ internal class LitecoinMwebEngine(
                 selectedPublicUtxos = prepared.selectedPublicUtxos,
                 publicTransactionBridge = publicTransactionBridge,
             )
-            val transactionHash = MwebDaemonErrorMapper.mapSuspend {
+            MwebDaemonErrorMapper.mapSuspend {
                 client.broadcast(signedPublicTransaction.rawTransaction)
             }
-            val canonicalTransactionHash = canonicalTransactionHash(request, transactionHash)
+            val canonicalTransactionHash = canonicalTransactionHash(request, signedPublicTransaction)
             val result = MwebSendResult(
                 canonicalTransactionHash = canonicalTransactionHash,
                 rawTransaction = signedPublicTransaction.rawTransaction,
@@ -515,9 +515,12 @@ internal class LitecoinMwebEngine(
         )
     }
 
-    private fun canonicalTransactionHash(request: MwebSendRequest, broadcastHash: String): String? {
+    private fun canonicalTransactionHash(
+        request: MwebSendRequest,
+        signedPublicTransaction: MwebSignedPublicTransaction,
+    ): String? {
         return when (request) {
-            is MwebSendRequest.PublicToMweb -> broadcastHash
+            is MwebSendRequest.PublicToMweb -> signedPublicTransaction.publicTransactionHash()
             is MwebSendRequest.MwebToPublic,
             is MwebSendRequest.MwebToMweb -> null
         }

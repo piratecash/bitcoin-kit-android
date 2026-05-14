@@ -3,9 +3,11 @@ package io.horizontalsystems.litecoinkit.mweb
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.horizontalsystems.bitcoincore.extensions.toHexString
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.Transaction
+import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -439,8 +441,12 @@ class LitecoinMwebEngineLifecycleTest {
     @Test
     fun send_publicToMweb_savesIncomingLocalTransaction() = runBlocking {
         val destination = mwebDestination()
-        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
-        val engine = engineWith(FakeDaemonClient())
+        val signedTransaction = signedPublicTransaction()
+        val bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            signedTransaction = signedTransaction,
+        )
+        val engine = engineWith(FakeDaemonClient(broadcastHash = DAEMON_BROADCAST_HASH))
         engine.start()
 
         engine.send(
@@ -454,7 +460,8 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(MwebTransactionKind.PublicToMweb, transaction.kind)
         assertEquals(1_000L, transaction.amount)
         assertEquals(destination, transaction.address)
-        assertEquals("test-transaction", transaction.canonicalTransactionHash)
+        assertEquals(signedTransaction.header.hash.toReversedHex(), transaction.canonicalTransactionHash)
+        assertFalse(transaction.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
         assertEquals(listOf("created-output"), transaction.outputIds)
         assertTrue(transaction.pending)
     }
@@ -708,11 +715,16 @@ class LitecoinMwebEngineLifecycleTest {
     @Test
     fun send_publicToMweb_signsPublicInputsAndBroadcastsSignedRaw() = runBlocking {
         val signedRaw = byteArrayOf(9, 8, 7, 6)
+        val signedTransaction = signedPublicTransaction()
         val bridge = FakePublicTransactionBridge(
             publicUtxos = listOf(publicUtxo(value = 5_000)),
             signedRawTransaction = signedRaw,
+            signedTransaction = signedTransaction,
         )
-        val daemonClient = FakeDaemonClient(createRawTransaction = ::mwebCreateResponseForPublicPegIn)
+        val daemonClient = FakeDaemonClient(
+            broadcastHash = DAEMON_BROADCAST_HASH,
+            createRawTransaction = ::mwebCreateResponseForPublicPegIn,
+        )
         val engine = engineWith(daemonClient)
         engine.start()
 
@@ -727,7 +739,8 @@ class LitecoinMwebEngineLifecycleTest {
         assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
         assertArrayEquals(signedRaw, result.rawTransaction)
-        assertEquals("test-transaction", result.canonicalTransactionHash)
+        assertEquals(signedTransaction.header.hash.toReversedHex(), result.canonicalTransactionHash)
+        assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
     }
 
     @Test
@@ -767,7 +780,7 @@ class LitecoinMwebEngineLifecycleTest {
             publicUtxos = listOf(publicUtxo(value = 5_000)),
             onProcessRelayed = { throw IllegalStateException("public-side persistence failed") },
         )
-        val engine = engineWith(daemonClient = FakeDaemonClient())
+        val engine = engineWith(daemonClient = FakeDaemonClient(broadcastHash = DAEMON_BROADCAST_HASH))
         engine.start()
 
         val result = withTimeout(1_000) {
@@ -778,7 +791,8 @@ class LitecoinMwebEngineLifecycleTest {
             )
         }
 
-        assertEquals("test-transaction", result.canonicalTransactionHash)
+        assertEquals(publicTransactionHash(bridge.signCalls.single().rawTransaction), result.canonicalTransactionHash)
+        assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
         assertEquals(1, bridge.processRelayedCount)
         assertEquals(1, engine.pendingTransactions().size)
     }
@@ -819,11 +833,16 @@ class LitecoinMwebEngineLifecycleTest {
     @Test
     fun publicPegInSender_sendWithoutEngine_signsAndBroadcastsPublicToMweb() = runBlocking {
         val signedRaw = byteArrayOf(9, 8, 7, 6)
-        val daemonClient = FakeDaemonClient(createRawTransaction = ::mwebCreateResponseForPublicPegIn)
+        val signedTransaction = signedPublicTransaction()
+        val daemonClient = FakeDaemonClient(
+            broadcastHash = DAEMON_BROADCAST_HASH,
+            createRawTransaction = ::mwebCreateResponseForPublicPegIn,
+        )
         val sender = publicPegInSender(daemonClient)
         val bridge = FakePublicTransactionBridge(
             publicUtxos = listOf(publicUtxo(value = 5_000)),
             signedRawTransaction = signedRaw,
+            signedTransaction = signedTransaction,
         )
 
         val result = sender.send(
@@ -832,7 +851,8 @@ class LitecoinMwebEngineLifecycleTest {
             publicTransactionBridge = bridge,
         )
 
-        assertEquals("test-transaction", result.canonicalTransactionHash)
+        assertEquals(signedTransaction.header.hash.toReversedHex(), result.canonicalTransactionHash)
+        assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
         assertEquals(listOf("created-output"), result.outputIds)
         assertEquals(1, bridge.signCalls.size)
         assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
@@ -1052,6 +1072,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val createdOutputIds: List<String> = listOf("created-output"),
         private val createError: Throwable? = null,
         private val broadcastError: Throwable? = null,
+        private val broadcastHash: String = "test-transaction",
         private val createRawTransaction: (ByteArray, Int, Boolean) -> ByteArray = { rawTransaction, _, dryRun ->
             dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction
         },
@@ -1149,7 +1170,7 @@ class LitecoinMwebEngineLifecycleTest {
         override fun broadcast(rawTransaction: ByteArray): String {
             broadcastRawTransactions.add(rawTransaction.copyOf())
             broadcastError?.let { throw it }
-            return "test-transaction"
+            return broadcastHash
         }
     }
 
@@ -1264,6 +1285,27 @@ class LitecoinMwebEngineLifecycleTest {
             rbfEnabled = false,
             filters = UtxoFilters(),
         )
+    }
+
+    private fun publicTransactionHash(rawTransaction: ByteArray): String {
+        return transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction)).header.hash.toReversedHex()
+    }
+
+    private fun signedPublicTransaction(): FullTransaction {
+        return FullTransaction(
+            header = Transaction(version = 2, lockTime = 0),
+            inputs = listOf(
+                TransactionInput(
+                    previousOutputTxHash = ByteArray(32) { (it + 1).toByte() },
+                    previousOutputIndex = 0,
+                    sequence = 0xffff_ffff,
+                )
+            ),
+            outputs = emptyList(),
+            transactionSerializer = transactionSerializer,
+        ).also { transaction ->
+            transaction.setHash(ByteArray(32) { (it + 64).toByte() })
+        }
     }
 
     private fun publicPegInSender(
@@ -1432,5 +1474,6 @@ class LitecoinMwebEngineLifecycleTest {
     private companion object {
         const val SELECTED_OUTPUT_ID = "0102030405060708091011121314151617181920212223242526272829303132"
         const val PUBLIC_DESTINATION = "ltc1q9z5mzd0k72k8f8g9cny70a4rvv7ne48x336jw5"
+        private const val DAEMON_BROADCAST_HASH = "daemon-broadcast-hash"
     }
 }
