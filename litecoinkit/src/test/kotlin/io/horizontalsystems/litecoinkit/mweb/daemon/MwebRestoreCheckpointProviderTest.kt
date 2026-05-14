@@ -84,7 +84,17 @@ class MwebRestoreCheckpointProviderTest {
             3_100_000,
         )
 
-        assertTrue(checkpoint?.startsWith("mweb-checkpoint-v1|3050000|") == true)
+        assertTrue(checkpoint?.startsWith("mweb-checkpoint-v1|3048192|") == true)
+    }
+
+    @Test
+    fun encodedCheckpoint_mainnetResourceWalletBirthday_returnsRetargetBoundaryCheckpoint() {
+        val checkpoint = MwebRestoreCheckpointProvider.encodedCheckpoint(
+            LitecoinKit.NetworkType.MainNet,
+            3_056_500,
+        )
+
+        assertTrue(checkpoint?.startsWith("mweb-checkpoint-v1|3048192|") == true)
     }
 
     @Test
