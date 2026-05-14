@@ -29,7 +29,6 @@ sealed class SendValueErrors : Exception() {
     object EmptyOutputs : SendValueErrors()
     object InsufficientUnspentOutputs : SendValueErrors()
     object NoSingleOutput : SendValueErrors()
-    object HasOutputFailedToSpend : SendValueErrors()
 }
 
 class UnspentOutputSelectorChain(private val unspentOutputProvider: IUnspentOutputProvider) : IUnspentOutputSelector {

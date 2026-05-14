@@ -358,6 +358,29 @@ class MwebTransactionPreparerTest {
     }
 
     @Test
+    fun prepare_publicToMwebBridgeExcludesFailedPublicUtxos_usesCleanUtxo() {
+        val daemonClient = stubDryRunDaemon()
+        val preparer = preparer(
+            bridge = FakeBridge(
+                publicUtxos = listOf(
+                    publicUtxo(value = 20_000, failedToSpend = true),
+                    publicUtxo(value = 10_000),
+                ),
+            ),
+        )
+
+        val prepared = preparer.prepare(
+            request = MwebSendRequest.PublicToMweb(mwebDestination, 5_000, feeRate = 1),
+            publicOptions = publicOptions(),
+            dryRun = daemonClient::dryRun,
+        )
+
+        assertEquals(1, prepared.selectedPublicUtxos.size)
+        assertEquals(10_000L, prepared.selectedPublicUtxos.single().output.value)
+        assertEquals(false, prepared.selectedPublicUtxos.single().output.failedToSpend)
+    }
+
+    @Test
     fun prepare_publicToMwebMultipleSmallUtxos_iteratesUntilCoverageWithGrowingFee() {
         // Two small UTXOs that individually do not cover recipient + fee.
         val daemonClient = stubDryRunDaemon()
@@ -548,7 +571,7 @@ class MwebTransactionPreparerTest {
         )
     }
 
-    private fun publicUtxo(value: Long): UnspentOutput {
+    private fun publicUtxo(value: Long, failedToSpend: Boolean = false): UnspentOutput {
         val transaction = Transaction(version = 2, lockTime = 0).apply {
             hash = ByteArray(32) { (value.toInt() + it + 1).toByte() }
         }
@@ -568,6 +591,7 @@ class MwebTransactionPreparerTest {
             publicKey = publicKey,
         ).apply {
             transactionHash = transaction.hash
+            this.failedToSpend = failedToSpend
         }
         return UnspentOutput(
             output = output,
@@ -619,7 +643,9 @@ class MwebTransactionPreparerTest {
     ) : MwebPublicTransactionBridge {
         val outputCalls = mutableListOf<String>()
 
-        override fun spendableUtxos(options: MwebPublicSendOptions): List<UnspentOutput> = publicUtxos
+        override fun spendableUtxos(options: MwebPublicSendOptions): List<UnspentOutput> {
+            return publicUtxos.filterNot { it.output.failedToSpend }
+        }
 
         override fun output(value: Long, address: String): TransactionOutput {
             outputCalls.add(address)

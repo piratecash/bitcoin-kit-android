@@ -54,6 +54,34 @@ object UnspentOutputProviderTest : Spek({
     }
 
     describe("#getSpendableUtxo") {
+        context("when output is marked failed to spend") {
+            val failedOutput = TransactionOutput(
+                value = 1,
+                index = 0,
+                script = byteArrayOf(),
+                type = ScriptType.P2PKH,
+                lockingScriptPayload = "000010000".hexToByteArray()
+            ).apply {
+                failedToSpend = true
+            }
+
+            beforeEach {
+                transaction.isOutgoing = true
+                unspentOutput = UnspentOutput(failedOutput, pubKey, transaction, null)
+
+                whenever(storage.getUnspentOutputs()).thenReturn(listOf(unspentOutput))
+                whenever(pluginManager.isSpendable(unspentOutput)).thenReturn(true)
+            }
+
+            it("doesn't return unspentOutput") {
+                assertArrayEquals(arrayOf(), provider.getSpendableUtxo(UtxoFilters()).toTypedArray())
+            }
+
+            it("excludes from spendable balance") {
+                assertEquals(0, provider.getBalance().spendable)
+            }
+        }
+
         context("when transaction is outgoing") {
             beforeEach {
                 transaction.isOutgoing = true

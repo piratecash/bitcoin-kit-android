@@ -200,10 +200,7 @@ internal class MwebTransactionPreparer(
 
         return requirePublicBridge()
             .spendableUtxos(publicOptions)
-            .sortedWith(
-                compareByDescending<UnspentOutput> { it.output.failedToSpend }
-                    .thenBy { it.output.value }
-            )
+            .sortedBy { it.output.value }
     }
 
     private fun addPublicUtxos(
