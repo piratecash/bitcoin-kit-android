@@ -62,11 +62,23 @@ open class BaseTransactionSerializer {
     }
 
     open fun serialize(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
+        return serialize(transaction, withWitness = withWitness, withExtraPayload = true)
+    }
+
+    open fun serializeForTransactionHash(transaction: FullTransaction): ByteArray {
+        return serialize(transaction, withWitness = false)
+    }
+
+    protected fun serialize(
+        transaction: FullTransaction,
+        withWitness: Boolean,
+        withExtraPayload: Boolean,
+    ): ByteArray {
         val header = transaction.header
         val buffer = BitcoinOutput()
         buffer.writeInt(header.version)
 
-        val flag = transactionFlag(header, withWitness)
+        val flag = transactionFlag(header, withWitness, withExtraPayload)
         if (flag > 0) {
             buffer.writeByte(0) // marker 0x00
             buffer.writeByte(flag)
@@ -85,7 +97,7 @@ open class BaseTransactionSerializer {
             transaction.inputs.forEach { buffer.write(InputSerializer.serializeWitness(it.witness)) }
         }
 
-        if (header.extraPayload.isNotEmpty()) {
+        if (withExtraPayload && header.extraPayload.isNotEmpty()) {
             buffer.write(header.extraPayload)
         }
 
@@ -93,10 +105,10 @@ open class BaseTransactionSerializer {
         return buffer.toByteArray()
     }
 
-    private fun transactionFlag(header: Transaction, withWitness: Boolean): Int {
+    private fun transactionFlag(header: Transaction, withWitness: Boolean, withExtraPayload: Boolean): Int {
         var flag = 0
         if (header.segwit && withWitness) flag = flag or SEGWIT_FLAG
-        if (header.extraPayload.isNotEmpty()) flag = flag or EXTENSION_PAYLOAD_FLAG
+        if (withExtraPayload && header.extraPayload.isNotEmpty()) flag = flag or EXTENSION_PAYLOAD_FLAG
         return flag
     }
 

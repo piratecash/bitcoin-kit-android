@@ -9,12 +9,12 @@ import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
-import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.litecoinkit.LitecoinKit
+import io.horizontalsystems.litecoinkit.LitecoinTransactionSerializer
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonConfig
@@ -53,7 +53,7 @@ class LitecoinMwebEngineLifecycleTest {
     private val publicPegInSenders = mutableListOf<MwebPublicPegInSender>()
     private val ioDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     private val dispatcherProvider = CoroutineMwebDispatcherProvider(io = ioDispatcher, callback = ImmediateDispatcher)
-    private val transactionSerializer = BaseTransactionSerializer()
+    private val transactionSerializer = LitecoinTransactionSerializer()
 
     @After
     fun tearDown() {
@@ -744,6 +744,30 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun send_publicToMwebDefaultSigner_processesSingleCanonicalPublicTransaction() = runBlocking {
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val daemonClient = FakeDaemonClient(
+            createRawTransaction = ::mwebCreateResponseForPublicPegIn,
+            broadcastHashProvider = { rawTransaction ->
+                transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction)).header.hash.toReversedHex()
+            },
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        val result = engine.send(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        val processedTransaction = bridge.processCreatedTransactions.single()
+        assertEquals(result.canonicalTransactionHash, processedTransaction.header.hash.toReversedHex())
+        assertEquals(Transaction.Status.NEW, processedTransaction.header.status)
+        assertNull(processedTransaction.header.conflictingTxHash)
+    }
+
+    @Test
     fun send_publicToMwebProcessCreatedCanReadMwebState_doesNotDeadlock() = runBlocking {
         var pendingTransactionCount: Int? = null
         lateinit var engine: LitecoinMwebEngine
@@ -1073,6 +1097,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val createError: Throwable? = null,
         private val broadcastError: Throwable? = null,
         private val broadcastHash: String = DAEMON_BROADCAST_HASH,
+        private val broadcastHashProvider: (ByteArray) -> String = { broadcastHash },
         private val createRawTransaction: (ByteArray, Int, Boolean) -> ByteArray = { rawTransaction, _, dryRun ->
             dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction
         },
@@ -1170,7 +1195,7 @@ class LitecoinMwebEngineLifecycleTest {
         override fun broadcast(rawTransaction: ByteArray): String {
             broadcastRawTransactions.add(rawTransaction.copyOf())
             broadcastError?.let { throw it }
-            return broadcastHash
+            return broadcastHashProvider(rawTransaction)
         }
     }
 
@@ -1187,12 +1212,12 @@ class LitecoinMwebEngineLifecycleTest {
 
     private class FakePublicTransactionBridge(
         private val publicUtxos: List<UnspentOutput> = emptyList(),
-        private val signedRawTransaction: ByteArray = byteArrayOf(1),
+        private val signedRawTransaction: ByteArray? = null,
         private val spendableDelayMillis: Long = 0,
         private val signedTransaction: FullTransaction? = null,
         private val onProcessCreated: (() -> Unit)? = null,
     ) : MwebPublicTransactionBridge {
-        private val transactionSerializer = BaseTransactionSerializer()
+        private val transactionSerializer = LitecoinTransactionSerializer()
         val signCalls = mutableListOf<SignCall>()
         val outputCalls = mutableListOf<String>()
         var maxConcurrentSpendableCalls = 0
@@ -1248,7 +1273,7 @@ class LitecoinMwebEngineLifecycleTest {
         }
 
         override fun serialize(transaction: FullTransaction): ByteArray {
-            return signedRawTransaction.copyOf()
+            return signedRawTransaction?.copyOf() ?: transactionSerializer.serialize(transaction)
         }
 
         override fun processCreated(transaction: FullTransaction): FullTransaction {

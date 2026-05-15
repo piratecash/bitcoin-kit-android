@@ -37,7 +37,6 @@ import io.horizontalsystems.bitcoincore.network.peer.PeerAddressManager
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroupHolder
-import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -635,6 +634,7 @@ class LitecoinKit : AbstractKit {
         val paymentAddressParser = PaymentAddressParser("litecoin", removeScheme = true)
         val blockValidatorSet = blockValidatorSet(storage, networkType)
 
+        val transactionSerializer = LitecoinTransactionSerializer()
         val coreBuilder = BitcoinCoreBuilder()
 
         val bitcoinCore = coreBuilder
@@ -650,6 +650,7 @@ class LitecoinKit : AbstractKit {
             .setSendType(BitcoinCore.SendType.API(blockchairApi))
             .setConfirmationThreshold(confirmationsThreshold)
             .setStorage(storage)
+            .setTransactionSerializer(transactionSerializer)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
@@ -797,7 +798,7 @@ class LitecoinKit : AbstractKit {
                 peerAddressManager.listener = peerGroup
 
                 val blockHeaderHasher = DoubleSha256Hasher()
-                val transactionSerializer = BaseTransactionSerializer()
+                val transactionSerializer = LitecoinTransactionSerializer()
 
                 networkMessageParser.add(AddrMessageParser())
                 networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))

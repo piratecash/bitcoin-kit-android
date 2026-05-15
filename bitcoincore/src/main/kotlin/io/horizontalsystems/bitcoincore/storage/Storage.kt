@@ -461,7 +461,15 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
 
     private fun convertToFullTransaction(transaction: Transaction): FullTransaction {
         val transactionSerializer = requireNotNull(transactionSerializer)
-        return FullTransaction(header = transaction, inputs = getTransactionInputs(transaction), outputs = getTransactionOutputs(transaction), transactionSerializer)
+        return FullTransaction(
+            header = transaction,
+            inputs = getTransactionInputs(transaction),
+            outputs = getTransactionOutputs(transaction),
+            transactionSerializer = transactionSerializer,
+            forceHashUpdate = false,
+        ).apply {
+            metadata = TransactionMetadata(transaction.hash)
+        }
     }
 
     private fun addWithoutTransaction(transaction: FullTransaction) {

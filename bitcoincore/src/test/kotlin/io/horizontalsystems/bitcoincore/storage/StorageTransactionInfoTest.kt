@@ -86,6 +86,34 @@ class StorageTransactionInfoTest {
         assertNull(info.metadata.fee)
     }
 
+    @Test
+    fun getFullTransaction_preservesStoredHash() {
+        storage.setTransactionSerializer(ChangingHashSerializer())
+        val transaction = insertTransaction(hash = byteArrayOf(10, 11, 12))
+
+        val fullTransaction = requireNotNull(storage.getFullTransaction(transaction.hash))
+
+        assertArrayEquals(transaction.hash, fullTransaction.header.hash)
+    }
+
+    @Test
+    fun fullTransactionInfoFullTransaction_preservesStoredHashAndMetadata() {
+        storage.setTransactionSerializer(ChangingHashSerializer())
+        val transaction = insertTransaction(hash = byteArrayOf(13, 14, 15))
+        database.transactionMetadata.insert(TransactionMetadata(transaction.hash).apply {
+            amount = 321L
+            type = TransactionType.Outgoing
+            fee = 9L
+        })
+
+        val fullTransaction = requireNotNull(storage.getFullTransactionInfo(transaction.hash)).fullTransaction
+
+        assertArrayEquals(transaction.hash, fullTransaction.header.hash)
+        assertEquals(321L, fullTransaction.metadata.amount)
+        assertEquals(TransactionType.Outgoing, fullTransaction.metadata.type)
+        assertEquals(9L, fullTransaction.metadata.fee)
+    }
+
     private fun insertTransaction(hash: ByteArray): Transaction {
         return Transaction().apply {
             uid = hash.joinToString(separator = "")
@@ -93,5 +121,11 @@ class StorageTransactionInfoTest {
             timestamp = 1_000
             status = Transaction.Status.RELAYED
         }.also(database.transaction::insert)
+    }
+
+    private class ChangingHashSerializer : BaseTransactionSerializer() {
+        override fun serializeForTransactionHash(transaction: FullTransaction): ByteArray {
+            return ByteArray(32) { 7 }
+        }
     }
 }

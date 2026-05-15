@@ -11,6 +11,7 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
+import io.horizontalsystems.litecoinkit.LitecoinTransactionSerializer
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 
 internal class MwebTransactionPreparer(
@@ -19,7 +20,7 @@ internal class MwebTransactionPreparer(
     private val changeAddressProvider: () -> String,
     private val syncStateProvider: () -> MwebSyncState,
     private val utxosProvider: () -> List<MwebUtxo>,
-    private val transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer(),
+    private val transactionSerializer: BaseTransactionSerializer = LitecoinTransactionSerializer(),
     private val transactionSizeCalculator: TransactionSizeCalculator = TransactionSizeCalculator(),
 ) {
     fun prepare(

@@ -28,7 +28,30 @@ class BaseTransactionSerializerTest {
     @Test
     fun serializeDeserialize_extensionPayload_preservesRawBytes() {
         val payload = byteArrayOf(9, 8, 7)
-        val transaction = FullTransaction(
+        val transaction = extensionPayloadTransaction(payload)
+
+        val rawTransaction = serializer.serialize(transaction)
+        val deserialized = serializer.deserialize(BitcoinInputMarkable(rawTransaction))
+
+        assertEquals(0, rawTransaction[4].toInt())
+        assertEquals(8, rawTransaction[5].toInt())
+        assertArrayEquals(payload, deserialized.header.extraPayload)
+        assertEquals(rawTransaction.toHexString(), serializer.serialize(deserialized).toHexString())
+    }
+
+    @Test
+    fun serializeForTransactionHash_extensionPayload_keepsPayloadForDefaultNetworks() {
+        val transaction = extensionPayloadTransaction(payload = byteArrayOf(9, 8, 7))
+
+        val hashBytes = serializer.serializeForTransactionHash(transaction)
+
+        assertArrayEquals(serializer.serialize(transaction, withWitness = false), hashBytes)
+        assertEquals(0, hashBytes[4].toInt())
+        assertEquals(8, hashBytes[5].toInt())
+    }
+
+    private fun extensionPayloadTransaction(payload: ByteArray): FullTransaction {
+        return FullTransaction(
             header = Transaction(version = 2, lockTime = 0).apply {
                 extraPayload = payload
             },
@@ -49,13 +72,5 @@ class BaseTransactionSerializerTest {
             ),
             transactionSerializer = serializer,
         )
-
-        val rawTransaction = serializer.serialize(transaction)
-        val deserialized = serializer.deserialize(BitcoinInputMarkable(rawTransaction))
-
-        assertEquals(0, rawTransaction[4].toInt())
-        assertEquals(8, rawTransaction[5].toInt())
-        assertArrayEquals(payload, deserialized.header.extraPayload)
-        assertEquals(rawTransaction.toHexString(), serializer.serialize(deserialized).toHexString())
     }
 }

@@ -4,12 +4,12 @@ import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
-import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.litecoinkit.LitecoinKit
+import io.horizontalsystems.litecoinkit.LitecoinTransactionSerializer
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
 class MwebTransactionPreparerTest {
     private val networkType = LitecoinKit.NetworkType.MainNet
     private val addressCodec = MwebAddressCodec(networkType)
-    private val transactionSerializer = BaseTransactionSerializer()
+    private val transactionSerializer = LitecoinTransactionSerializer()
     private val mwebDestination = addressCodec.encode(fakeMwebPubkey(0x11), fakeMwebPubkey(0x22))
     private val mwebChange = addressCodec.encode(fakeMwebPubkey(0x33), fakeMwebPubkey(0x44))
     private val publicDestination = "ltc1qpublicrecipient"
