@@ -107,7 +107,7 @@ internal class LitecoinMwebEngine(
     init {
         runOnIoBlocking {
             storage.syncState()?.let { syncState = it }
-            applyUtxoSnapshot(utxoSynchronizer.loadSnapshot(), notify = false)
+            applyUtxoSnapshot(utxoSynchronizer.loadStoredSnapshot(), notify = false)
         }
     }
 
@@ -315,7 +315,7 @@ internal class LitecoinMwebEngine(
                 localTransaction = localTransaction(request, prepared, result, timestamp / 1_000),
                 spentOutputIds = selectedMwebOutputIds,
             )
-            applyUtxoSnapshot(utxoSynchronizer.loadSnapshot())
+            applyUtxoSnapshot(utxoSynchronizer.loadStoredSnapshot())
             result to signedPublicTransaction.publicTransaction
         }
 
@@ -409,6 +409,9 @@ internal class LitecoinMwebEngine(
         client: MwebDaemonClient,
         publicTransactionBridge: MwebPublicTransactionBridge?,
     ): PreparedMwebTransaction {
+        utxoSynchronizer.flushPendingUtxosAndLoadSnapshot()?.let { snapshot ->
+            applyUtxoSnapshot(snapshot)
+        }
         val transactionPreparer = MwebTransactionPreparer(
             addressCodec = addressCodec,
             publicTransactionBridge = publicTransactionBridge,

@@ -88,6 +88,8 @@ private class MwebdAndroidDaemonClient(
             config.accountKeys.scanSecret,
             object : UtxoListener {
                 override fun onUtxo(utxo: NativeUtxo) {
+                    if (utxo.isMwebInitMarker()) return
+
                     try {
                         onUtxo(utxo.toMwebUtxo())
                     } catch (error: Throwable) {
@@ -269,3 +271,27 @@ private class MwebdAndroidDaemonClient(
 }
 
 internal fun Int.toMwebdExclusiveToIndex(): Long = toLong() + 1L
+
+internal fun isMwebInitMarker(
+    outputId: String,
+    address: String,
+    value: Long,
+    height: Long,
+    blockTime: Long,
+): Boolean {
+    return outputId.isEmpty() &&
+        address.isEmpty() &&
+        value == 0L &&
+        height == 0L &&
+        blockTime == 0L
+}
+
+private fun NativeUtxo.isMwebInitMarker(): Boolean {
+    return isMwebInitMarker(
+        outputId = outputId(),
+        address = address(),
+        value = value(),
+        height = height(),
+        blockTime = blockTime(),
+    )
+}

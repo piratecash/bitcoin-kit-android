@@ -158,6 +158,75 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun start_replayedUtxos_batchesSnapshotNotification() {
+        val daemonClient = FakeDaemonClient(
+            streamUtxos = listOf(
+                MwebUtxo("confirmed", "address", 1, 100, 10, 1_000, spent = false),
+                MwebUtxo("unconfirmed", "address", 1, 50, 0, 0, spent = false),
+            ),
+            completeUtxoStream = true,
+        )
+        val engine = engineWith(daemonClient)
+        val balanceUpdates = mutableListOf<MwebBalance>()
+        val utxoUpdates = mutableListOf<List<MwebUtxo>>()
+        engine.addListener(object : LitecoinMwebEngine.Listener {
+            override fun onMwebBalanceUpdate(balance: MwebBalance) {
+                balanceUpdates.add(balance)
+            }
+
+            override fun onMwebUtxosUpdate(utxos: List<MwebUtxo>) {
+                utxoUpdates.add(utxos)
+            }
+        })
+
+        engine.start()
+        waitUntil { balanceUpdates.isNotEmpty() }
+
+        assertEquals(listOf(MwebBalance(confirmed = 100, unconfirmed = 50)), balanceUpdates)
+        assertEquals(listOf(setOf("confirmed", "unconfirmed")), utxoUpdates.map { update ->
+            update.map { utxo -> utxo.outputId }.toSet()
+        })
+    }
+
+    @Test
+    fun start_existingUtxoSyncHeight_startsUtxoStreamWithOverlap() {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(
+                syncState = MwebSyncState(
+                    blockHeaderHeight = 3_107_750,
+                    mwebHeaderHeight = 3_107_750,
+                    mwebUtxosHeight = 3_107_750,
+                ),
+                nativeVersion = "test-native",
+            )
+        )
+        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.BlockHeight(3_056_500))
+
+        engine.start()
+
+        assertEquals(3_107_174, daemonClient.utxoFromHeights.single())
+    }
+
+    @Test
+    fun start_existingUtxoSyncHeightNearRestoreHeight_clampsOverlapToRestoreHeight() {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(
+                syncState = MwebSyncState(
+                    blockHeaderHeight = 3_056_520,
+                    mwebHeaderHeight = 3_056_520,
+                    mwebUtxosHeight = 3_056_520,
+                ),
+                nativeVersion = "test-native",
+            )
+        )
+        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.BlockHeight(3_056_500))
+
+        engine.start()
+
+        assertEquals(3_056_500, daemonClient.utxoFromHeights.single())
+    }
+
+    @Test
     fun start_emptyUtxoStreamComplete_updatesUtxoSyncHeight() {
         val daemonCompleteStatus = MwebDaemonStatus(
             syncState = MwebSyncState(

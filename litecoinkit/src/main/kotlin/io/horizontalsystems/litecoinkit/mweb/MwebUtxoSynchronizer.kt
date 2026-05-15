@@ -15,6 +15,10 @@ import java.io.Closeable
 import java.util.logging.Level
 import java.util.logging.Logger
 
+/**
+ * Direct engine entry points are serialized by the shared stateMutex; daemon callbacks
+ * and background jobs acquire the same mutex before touching mutable state or storage.
+ */
 internal class MwebUtxoSynchronizer(
     private val storage: MwebRoomStorage,
     private val coroutineScope: CoroutineScope,
@@ -33,7 +37,9 @@ internal class MwebUtxoSynchronizer(
     private var statusPollJob: Job? = null
     private var spentPollJob: Job? = null
     private var canonicalHashJob: Job? = null
+    private var utxoFlushJob: Job? = null
     private var utxoStream: Closeable? = null
+    private val pendingUtxos = mutableListOf<MwebUtxo>()
 
     fun stop() {
         statusPollJob?.cancel()
@@ -42,6 +48,9 @@ internal class MwebUtxoSynchronizer(
         spentPollJob = null
         canonicalHashJob?.cancel()
         canonicalHashJob = null
+        utxoFlushJob?.cancel()
+        utxoFlushJob = null
+        flushPendingUtxosLocked()
         closeUtxoStream()
     }
 
@@ -91,7 +100,7 @@ internal class MwebUtxoSynchronizer(
         closeUtxoStream()
         utxoStream = MwebDaemonErrorMapper.map {
             client.utxos(
-                fromHeight = syncStateProvider().mwebUtxosHeight.takeIf { it > 0 } ?: restoreHeight,
+                fromHeight = utxoStreamStartHeight(),
                 onUtxo = ::onUtxo,
                 onComplete = { onUtxoStreamComplete(client) },
                 onError = ::onUtxoStreamError,
@@ -129,7 +138,7 @@ internal class MwebUtxoSynchronizer(
                 if (!isActiveClient(client)) return@withLock
 
                 if (storage.updateMwebToPublicCanonicalHashes(updates)) {
-                    onSnapshot(loadSnapshot())
+                    onSnapshot(loadStoredSnapshot())
                 }
             }
         }
@@ -150,10 +159,16 @@ internal class MwebUtxoSynchronizer(
             timestamp = status.blockTime.takeIf { it > 0 },
         )
         scheduleCanonicalTransactionHashRefresh()
-        onSnapshot(loadSnapshot())
+        onSnapshot(loadStoredSnapshot())
     }
 
-    fun loadSnapshot(): MwebUtxoSnapshot {
+    fun flushPendingUtxosAndLoadSnapshot(): MwebUtxoSnapshot? {
+        if (!flushPendingUtxosLocked()) return null
+
+        return loadStoredSnapshot()
+    }
+
+    fun loadStoredSnapshot(): MwebUtxoSnapshot {
         storage.reconcileCreatedUtxos()
         val utxos = storage.utxos()
         return MwebUtxoSnapshot(utxos, calculateBalance(utxos))
@@ -162,10 +177,33 @@ internal class MwebUtxoSynchronizer(
     private fun onUtxo(utxo: MwebUtxo) {
         coroutineScope.launch {
             stateMutex.withLock {
-                storage.saveUtxos(listOf(utxo))
-                onSnapshot(loadSnapshot())
+                pendingUtxos.add(utxo)
+                scheduleUtxoFlushLocked()
             }
         }
+    }
+
+    private fun scheduleUtxoFlushLocked() {
+        if (utxoFlushJob?.isActive == true) return
+
+        utxoFlushJob = coroutineScope.launch {
+            delay(UTXO_SNAPSHOT_DEBOUNCE_MILLIS)
+            stateMutex.withLock {
+                utxoFlushJob = null
+                if (flushPendingUtxosLocked()) {
+                    onSnapshot(loadStoredSnapshot())
+                }
+            }
+        }
+    }
+
+    private fun flushPendingUtxosLocked(): Boolean {
+        if (pendingUtxos.isEmpty()) return false
+
+        val utxos = pendingUtxos.toList()
+        storage.saveUtxos(utxos)
+        pendingUtxos.clear()
+        return true
     }
 
     private fun onUtxoStreamError(error: Throwable) {
@@ -193,11 +231,14 @@ internal class MwebUtxoSynchronizer(
             stateMutex.withLock {
                 if (!isActiveClient(streamClient)) return@withLock
 
+                utxoFlushJob?.cancel()
+                utxoFlushJob = null
+                flushPendingUtxosLocked()
                 val status = MwebDaemonErrorMapper.mapSuspend {
                     streamClient.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
                 }
                 onStatus(status.completedUtxoScan())
-                onSnapshot(loadSnapshot())
+                onSnapshot(loadStoredSnapshot())
             }
         }
     }
@@ -228,6 +269,13 @@ internal class MwebUtxoSynchronizer(
         utxoStream = null
     }
 
+    private fun utxoStreamStartHeight(): Int {
+        val syncedHeight = syncStateProvider().mwebUtxosHeight
+        if (syncedHeight <= 0) return restoreHeight
+
+        return maxOf(restoreHeight, syncedHeight - UTXO_RESCAN_OVERLAP_BLOCKS)
+    }
+
     private fun calculateBalance(utxos: List<MwebUtxo>): MwebBalance {
         return MwebBalance(
             confirmed = utxos.filter { it.confirmed && !it.spent }.sumOf { it.value },
@@ -239,6 +287,9 @@ internal class MwebUtxoSynchronizer(
         get() = activeClientProvider()
 
     private companion object {
+        // About one Litecoin day; daemon status is a global leafset height, not a wallet delivery cursor.
+        const val UTXO_RESCAN_OVERLAP_BLOCKS = 576
+        const val UTXO_SNAPSHOT_DEBOUNCE_MILLIS = 100L
         const val UTXO_RECONNECT_DELAY_MILLIS = 1_000L
         val logger: Logger = Logger.getLogger(MwebUtxoSynchronizer::class.java.name)
     }
