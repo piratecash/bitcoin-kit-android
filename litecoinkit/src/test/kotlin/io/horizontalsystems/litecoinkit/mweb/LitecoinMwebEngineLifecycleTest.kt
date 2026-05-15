@@ -460,8 +460,8 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(MwebTransactionKind.PublicToMweb, transaction.kind)
         assertEquals(1_000L, transaction.amount)
         assertEquals(destination, transaction.address)
-        assertEquals(signedTransaction.header.hash.toReversedHex(), transaction.canonicalTransactionHash)
-        assertFalse(transaction.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
+        assertEquals(DAEMON_BROADCAST_HASH, transaction.canonicalTransactionHash)
+        assertProcessedPublicTransactionHash(bridge, DAEMON_BROADCAST_HASH)
         assertEquals(listOf("created-output"), transaction.outputIds)
         assertTrue(transaction.pending)
     }
@@ -735,13 +735,12 @@ class LitecoinMwebEngineLifecycleTest {
         )
 
         assertEquals(1, bridge.signCalls.size)
-        assertEquals(1, bridge.processCreatedCount)
         assertEquals(listOf(signedTransaction), bridge.processCreatedTransactions)
+        assertProcessedPublicTransactionHash(bridge, DAEMON_BROADCAST_HASH)
         assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
         assertArrayEquals(signedRaw, result.rawTransaction)
-        assertEquals(signedTransaction.header.hash.toReversedHex(), result.canonicalTransactionHash)
-        assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
+        assertEquals(DAEMON_BROADCAST_HASH, result.canonicalTransactionHash)
     }
 
     @Test
@@ -792,9 +791,8 @@ class LitecoinMwebEngineLifecycleTest {
             )
         }
 
-        assertEquals(publicTransactionHash(bridge.signCalls.single().rawTransaction), result.canonicalTransactionHash)
-        assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
-        assertEquals(1, bridge.processCreatedCount)
+        assertEquals(DAEMON_BROADCAST_HASH, result.canonicalTransactionHash)
+        assertProcessedPublicTransactionHash(bridge, DAEMON_BROADCAST_HASH)
         assertEquals(1, engine.pendingTransactions().size)
     }
 
@@ -852,15 +850,14 @@ class LitecoinMwebEngineLifecycleTest {
             publicTransactionBridge = bridge,
         )
 
-        assertEquals(signedTransaction.header.hash.toReversedHex(), result.canonicalTransactionHash)
-        assertFalse(result.canonicalTransactionHash == DAEMON_BROADCAST_HASH)
+        assertEquals(DAEMON_BROADCAST_HASH, result.canonicalTransactionHash)
         assertEquals(listOf("created-output"), result.outputIds)
         assertEquals(1, bridge.signCalls.size)
         assertPublicPegInRawToSign(bridge.signCalls.single().rawTransaction, recipientValue = 1_000, feeRate = 1)
         assertEquals(1, daemonClient.startCount)
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
-        assertEquals(1, bridge.processCreatedCount)
         assertEquals(listOf(signedTransaction), bridge.processCreatedTransactions)
+        assertProcessedPublicTransactionHash(bridge, DAEMON_BROADCAST_HASH)
     }
 
     @Test
@@ -1075,7 +1072,7 @@ class LitecoinMwebEngineLifecycleTest {
         private val createdOutputIds: List<String> = listOf("created-output"),
         private val createError: Throwable? = null,
         private val broadcastError: Throwable? = null,
-        private val broadcastHash: String = "test-transaction",
+        private val broadcastHash: String = DAEMON_BROADCAST_HASH,
         private val createRawTransaction: (ByteArray, Int, Boolean) -> ByteArray = { rawTransaction, _, dryRun ->
             dryRunRawTransaction?.takeIf { dryRun } ?: rawTransaction
         },
@@ -1292,10 +1289,6 @@ class LitecoinMwebEngineLifecycleTest {
         )
     }
 
-    private fun publicTransactionHash(rawTransaction: ByteArray): String {
-        return transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction)).header.hash.toReversedHex()
-    }
-
     private fun signedPublicTransaction(): FullTransaction {
         return FullTransaction(
             header = Transaction(version = 2, lockTime = 0),
@@ -1339,6 +1332,14 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertEquals(1, bridge.signCalls.size)
         assertEquals(0, bridge.processCreatedCount)
+    }
+
+    private fun assertProcessedPublicTransactionHash(
+        bridge: FakePublicTransactionBridge,
+        expectedHash: String,
+    ) {
+        assertEquals(1, bridge.processCreatedCount)
+        assertEquals(expectedHash, bridge.processCreatedTransactions.single().header.hash.toReversedHex())
     }
 
     private fun walletId(prefix: String): String {
@@ -1479,6 +1480,7 @@ class LitecoinMwebEngineLifecycleTest {
     private companion object {
         const val SELECTED_OUTPUT_ID = "0102030405060708091011121314151617181920212223242526272829303132"
         const val PUBLIC_DESTINATION = "ltc1q9z5mzd0k72k8f8g9cny70a4rvv7ne48x336jw5"
-        private const val DAEMON_BROADCAST_HASH = "daemon-broadcast-hash"
+        private const val DAEMON_BROADCAST_HASH =
+            "451282ec7da9766661d540f460987fb35c5b330be7276f111b27fe8909f23fe8"
     }
 }

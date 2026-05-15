@@ -1,6 +1,7 @@
 package io.horizontalsystems.litecoinkit.mweb
 
 import android.content.Context
+import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
@@ -103,12 +104,12 @@ internal class MwebPublicPegInSender(
                 val broadcastHash = MwebDaemonErrorMapper.mapSuspend {
                     activeClient.broadcast(signedPublicTransaction.rawTransaction)
                 }
-                val canonicalTransactionHash = signedPublicTransaction.publicTransactionHash()
+                signedPublicTransaction.setPublicTransactionHash(broadcastHash)
                 Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG)
-                    .d("Public peg-in daemon broadcast finished: tx=$broadcastHash, canonicalTx=$canonicalTransactionHash")
+                    .d("Public peg-in daemon broadcast finished: tx=$broadcastHash")
                 signedPublicTransaction.publicTransaction?.let(publicTransactionBridge::processCreated)
                 MwebSendResult(
-                    canonicalTransactionHash = canonicalTransactionHash,
+                    canonicalTransactionHash = broadcastHash,
                     rawTransaction = signedPublicTransaction.rawTransaction,
                     outputIds = createResult.outputIds,
                 )
@@ -299,10 +300,10 @@ internal class MwebSignedPublicTransaction(
     val publicTransaction: FullTransaction?,
 )
 
-internal fun MwebSignedPublicTransaction.publicTransactionHash(): String {
-    return checkNotNull(publicTransaction) {
+internal fun MwebSignedPublicTransaction.setPublicTransactionHash(hash: String) {
+    checkNotNull(publicTransaction) {
         "Public peg-in requires a signed public transaction"
-    }.header.hash.toReversedHex()
+    }.setHash(hash.toReversedByteArray())
 }
 
 internal suspend fun MwebPublicTransactionBridge.signPublicInputs(
