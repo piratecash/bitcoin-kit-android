@@ -100,10 +100,10 @@ private class MwebdAndroidDaemonClient(
                 aggregator = aggregator,
                 startedAt = startedAt,
                 addressIndex = ::addressIndex,
-                onUtxo = onUtxo,
-                onReplayComplete = onReplayComplete,
-                onComplete = onComplete,
-                onError = onError,
+                handleUtxo = onUtxo,
+                handleReplayComplete = onReplayComplete,
+                handleComplete = onComplete,
+                handleError = onError,
             ),
         )
         return Closeable { subscription.close() }
@@ -285,10 +285,10 @@ internal class MwebUtxoListenerAdapter(
     private val aggregator: UtxoStreamAggregator,
     private val startedAt: Long,
     private val addressIndex: (String) -> Int,
-    private val onUtxo: (MwebUtxo) -> Unit,
-    private val onReplayComplete: (Int) -> Unit,
-    private val onComplete: () -> Unit,
-    private val onError: (Throwable) -> Unit,
+    private val handleUtxo: (MwebUtxo) -> Unit,
+    private val handleReplayComplete: (Int) -> Unit,
+    private val handleComplete: () -> Unit,
+    private val handleError: (Throwable) -> Unit,
 ) : UtxoListener {
     override fun onUtxo(utxo: NativeUtxo) {
         if (utxo.isMwebInitMarker()) {
@@ -301,29 +301,29 @@ internal class MwebUtxoListenerAdapter(
         Timber.tag(LOG_TAG).v("utxos.onUtxo outputId=${outputId.logPrefix()} height=$height")
         aggregator.observe(height)
         try {
-            onUtxo(utxo.toMwebUtxo())
+            handleUtxo(utxo.toMwebUtxo())
         } catch (error: Throwable) {
             Timber.tag(LOG_TAG).w(error, "utxos.toMwebUtxo failed outputId=${outputId.logPrefix()} height=$height")
-            onError(error)
+            handleError(error)
         }
     }
 
     override fun onReplayComplete(height: Long) {
         aggregator.flush()
         Timber.tag(LOG_TAG).d("utxos.replayComplete height=$height uptime=${startedAt.uptimeMillis()}ms")
-        onReplayComplete(height.toInt())
+        handleReplayComplete(height.toInt())
     }
 
     override fun onError(message: String) {
         aggregator.flush()
         Timber.tag(LOG_TAG).w("utxos.onError uptime=${startedAt.uptimeMillis()}ms message=$message")
-        onError(MwebError.SyncFailure(IllegalStateException(message)))
+        handleError(MwebError.SyncFailure(IllegalStateException(message)))
     }
 
     override fun onComplete() {
         aggregator.flush()
         Timber.tag(LOG_TAG).d("utxos.onComplete uptime=${startedAt.uptimeMillis()}ms")
-        onComplete()
+        handleComplete()
     }
 
     private fun NativeUtxo.toMwebUtxo(): MwebUtxo {

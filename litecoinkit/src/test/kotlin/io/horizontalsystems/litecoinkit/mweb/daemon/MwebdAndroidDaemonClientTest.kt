@@ -96,18 +96,29 @@ class MwebdAndroidDaemonClientTest {
         assertFalse(utxoCalled)
     }
 
+    @Test
+    fun utxos_onComplete_callsOnCompleteOnce() {
+        var completeCount = 0
+        val listener = listenerAdapter(onComplete = { completeCount += 1 })
+
+        listener.onComplete()
+
+        assertEquals(1, completeCount)
+    }
+
     private fun listenerAdapter(
         onUtxo: () -> Unit = {},
         onReplayComplete: (Int) -> Unit = {},
+        onComplete: () -> Unit = {},
     ): MwebUtxoListenerAdapter {
         return MwebUtxoListenerAdapter(
             aggregator = UtxoStreamAggregator(startedAt = 0),
             startedAt = 0,
             addressIndex = { 0 },
-            onUtxo = { onUtxo() },
-            onReplayComplete = onReplayComplete,
-            onComplete = {},
-            onError = {},
+            handleUtxo = { onUtxo() },
+            handleReplayComplete = onReplayComplete,
+            handleComplete = onComplete,
+            handleError = {},
         )
     }
 
