@@ -189,7 +189,7 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun start_existingUtxoSyncHeight_startsUtxoStreamWithOverlap() {
+    fun start_daemonUtxoHeightWithoutDeliveryCursor_startsUtxoStreamFromRestoreHeight() {
         val daemonClient = FakeDaemonClient(
             status = MwebDaemonStatus(
                 syncState = MwebSyncState(
@@ -204,49 +204,44 @@ class LitecoinMwebEngineLifecycleTest {
 
         engine.start()
 
-        assertEquals(3_107_174, daemonClient.utxoFromHeights.single())
-    }
-
-    @Test
-    fun start_existingUtxoSyncHeightNearRestoreHeight_clampsOverlapToRestoreHeight() {
-        val daemonClient = FakeDaemonClient(
-            status = MwebDaemonStatus(
-                syncState = MwebSyncState(
-                    blockHeaderHeight = 3_056_520,
-                    mwebHeaderHeight = 3_056_520,
-                    mwebUtxosHeight = 3_056_520,
-                ),
-                nativeVersion = "test-native",
-            )
-        )
-        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.BlockHeight(3_056_500))
-
-        engine.start()
-
         assertEquals(3_056_500, daemonClient.utxoFromHeights.single())
     }
 
     @Test
-    fun start_emptyUtxoStreamComplete_updatesUtxoSyncHeight() {
-        val daemonCompleteStatus = MwebDaemonStatus(
-            syncState = MwebSyncState(
-                blockHeaderHeight = 100,
-                mwebHeaderHeight = 100,
-                mwebUtxosHeight = 0,
+    fun replayComplete_thenRefresh_startsUtxoStreamFromDeliveryCursorWithOverlap() {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(
+                syncState = MwebSyncState(
+                    blockHeaderHeight = 3_107_750,
+                    mwebHeaderHeight = 3_107_750,
+                    mwebUtxosHeight = 3_107_750,
+                ),
+                nativeVersion = "test-native",
             ),
-            nativeVersion = "test-native",
+            replayCompleteHeight = 3_107_750,
         )
+        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.BlockHeight(3_056_500))
+
+        engine.start()
+        waitUntil { daemonClient.utxoFromHeights.size == 1 }
+        engine.refresh()
+        waitUntil { daemonClient.utxoFromHeights.size == 2 }
+
+        assertEquals(listOf(3_056_500, 3_104_870), daemonClient.utxoFromHeights)
+    }
+
+    @Test
+    fun replayComplete_emptyUtxoStream_updatesDeliveryCursorWithoutSyncNotification() {
         val expectedSyncState = MwebSyncState(
-            blockHeaderHeight = 100,
-            mwebHeaderHeight = 100,
-            mwebUtxosHeight = 100,
+            blockHeaderHeight = 2_300_000,
+            mwebHeaderHeight = 2_300_000,
+            mwebUtxosHeight = 0,
         )
         val daemonClient = FakeDaemonClient(
-            status = MwebDaemonStatus(MwebSyncState(100, 100, 0), nativeVersion = "test-native"),
-            completeStatus = daemonCompleteStatus,
-            completeUtxoStream = true,
+            status = MwebDaemonStatus(expectedSyncState, nativeVersion = "test-native"),
+            replayCompleteHeight = 2_300_000,
         )
-        val engine = engineWith(daemonClient)
+        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.Activation)
         val syncUpdates = mutableListOf<MwebSyncState>()
         engine.addListener(object : LitecoinMwebEngine.Listener {
             override fun onMwebSyncStateUpdate(state: MwebSyncState) {
@@ -255,17 +250,32 @@ class LitecoinMwebEngineLifecycleTest {
         })
 
         engine.start()
-        waitUntil {
-            engine.syncState == expectedSyncState &&
-                syncUpdates.lastOrNull() == expectedSyncState
-        }
+        waitUntil { daemonClient.utxoFromHeights.size == 1 }
+        engine.refresh()
+        waitUntil { daemonClient.utxoFromHeights.size == 2 }
 
         assertEquals(expectedSyncState, engine.syncState)
-        assertEquals(expectedSyncState, syncUpdates.last())
+        assertEquals(listOf(2_257_920, 2_297_120), daemonClient.utxoFromHeights)
+        assertTrue(syncUpdates.all { it == expectedSyncState })
     }
 
     @Test
-    fun statusPoll_emptyOpenUtxoStream_updatesUtxoSyncHeight() {
+    fun utxoStreamComplete_reopensStreamFromDeliveryCursorWithOverlap() {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(2_300_000, 2_300_000, 2_300_000), nativeVersion = "test-native"),
+            replayCompleteHeight = 2_300_000,
+            completeUtxoStream = true,
+        )
+        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.Activation)
+
+        engine.start()
+        waitUntil(timeoutMillis = 2_500) { daemonClient.utxoFromHeights.size == 2 }
+
+        assertEquals(listOf(2_257_920, 2_297_120), daemonClient.utxoFromHeights)
+    }
+
+    @Test
+    fun statusPoll_emptyOpenUtxoStream_updatesDaemonUtxoHeightButNotDeliveryHeight() {
         val daemonClient = FakeDaemonClient(
             status = MwebDaemonStatus(MwebSyncState(100, 100, 0), nativeVersion = "test-native"),
         )
@@ -282,6 +292,65 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertEquals(expectedSyncState, engine.syncState)
         assertTrue(engine.mwebUtxos().isEmpty())
+    }
+
+    @Test
+    fun utxoStream_errorThenCompleteSameGeneration_schedulesSingleReconnect() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.emitUtxoErrorAndComplete(IllegalStateException("stream failed"))
+        waitUntil(timeoutMillis = 2_500) { daemonClient.utxoFromHeights.size == 2 }
+
+        assertEquals(2, daemonClient.utxoFromHeights.size)
+    }
+
+    @Test
+    fun utxoStream_lateUtxoAfterTerminal_isSavedBeforeReconnect() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.emitUtxoError(IllegalStateException("stream failed"))
+        daemonClient.emitUtxo(MwebUtxo("late-output", "address", 1, 100, 10, 1_000, spent = false))
+        waitUntil { engine.mwebUtxos().any { it.outputId == "late-output" } }
+
+        assertTrue(engine.mwebUtxos().any { it.outputId == "late-output" })
+    }
+
+    @Test
+    fun utxoStream_repeatedFailures_usesProgressiveBackoff() {
+        val daemonClient = FakeDaemonClient(completeEveryUtxoStream = true)
+        val engine = engineWith(daemonClient, restorePoint = MwebRestorePoint.BlockHeight(1))
+
+        engine.start()
+        waitUntil(timeoutMillis = 1_500) { daemonClient.utxoFromHeights.size == 2 }
+        assertEquals(2, daemonClient.utxoFromHeights.size)
+        Thread.sleep(1_200)
+        assertEquals(2, daemonClient.utxoFromHeights.size)
+        waitUntil(timeoutMillis = 1_500) { daemonClient.utxoFromHeights.size == 3 }
+
+        assertEquals(3, daemonClient.utxoFromHeights.size)
+    }
+
+    @Test
+    fun replayCompleteTimeout_legacyNative_usesDaemonUtxoHeightCursor() {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(3_107_750, 3_107_750, 3_107_750), nativeVersion = "test-native"),
+        )
+        val engine = engineWith(
+            daemonClient = daemonClient,
+            restorePoint = MwebRestorePoint.BlockHeight(3_056_500),
+            replayCompleteTimeoutMillis = 50,
+        )
+
+        engine.start()
+        Thread.sleep(100)
+        engine.refresh()
+        waitUntil { daemonClient.utxoFromHeights.size == 2 }
+
+        assertEquals(listOf(3_056_500, 3_104_870), daemonClient.utxoFromHeights)
     }
 
     @Test
@@ -1131,6 +1200,8 @@ class LitecoinMwebEngineLifecycleTest {
         canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider = EmptyMwebCanonicalTransactionHashProvider,
         dispatcherProvider: MwebDispatcherProvider = this.dispatcherProvider,
         restorePoint: MwebRestorePoint = MwebRestorePoint.Activation,
+        replayCompleteTimeoutMillis: Long = MwebUtxoSynchronizer.DEFAULT_REPLAY_COMPLETE_TIMEOUT_MILLIS,
+        streamHealthyThresholdMillis: Long = MwebUtxoSynchronizer.DEFAULT_STREAM_HEALTHY_THRESHOLD_MILLIS,
         restoreCheckpointProvider: (LitecoinKit.NetworkType, Int) -> String? = { _, _ -> null },
         daemonClientFactory: (MwebDaemonConfig) -> MwebDaemonClient = { daemonClient },
     ): LitecoinMwebEngine {
@@ -1145,6 +1216,8 @@ class LitecoinMwebEngineLifecycleTest {
             daemonClientFactory = { config -> daemonClientFactory(config) },
             spentPollIntervalMillis = spentPollIntervalMillis,
             statusPollIntervalMillis = statusPollIntervalMillis,
+            replayCompleteTimeoutMillis = replayCompleteTimeoutMillis,
+            streamHealthyThresholdMillis = streamHealthyThresholdMillis,
             localTransactionTtlMillis = localTransactionTtlMillis,
             currentTimeMillisProvider = currentTimeMillisProvider,
             canonicalTransactionHashProvider = canonicalTransactionHashProvider,
@@ -1158,6 +1231,8 @@ class LitecoinMwebEngineLifecycleTest {
         status: MwebDaemonStatus = MwebDaemonStatus(MwebSyncState(0, 0, 0), nativeVersion = "test"),
         private val completeStatus: MwebDaemonStatus? = null,
         private val completeUtxoStream: Boolean = false,
+        private val completeEveryUtxoStream: Boolean = false,
+        private val replayCompleteHeight: Int? = null,
         private val startError: Throwable? = null,
         private val streamUtxos: List<MwebUtxo> = emptyList(),
         spentOutputIds: List<String> = emptyList(),
@@ -1188,6 +1263,7 @@ class LitecoinMwebEngineLifecycleTest {
         private var streamCompleted = false
         private var utxoHandler: ((MwebUtxo) -> Unit)? = null
         private var utxoErrorHandler: ((Throwable) -> Unit)? = null
+        private var utxoCompleteHandler: (() -> Unit)? = null
 
         override fun start(statusTimeoutMillis: Long): MwebDaemonStatus {
             startCount += 1
@@ -1222,19 +1298,26 @@ class LitecoinMwebEngineLifecycleTest {
         override fun utxos(
             fromHeight: Int,
             onUtxo: (MwebUtxo) -> Unit,
+            onReplayComplete: (Int) -> Unit,
             onComplete: () -> Unit,
             onError: (Throwable) -> Unit,
         ): Closeable {
             utxoFromHeights.add(fromHeight)
             utxoHandler = onUtxo
             utxoErrorHandler = onError
+            utxoCompleteHandler = onComplete
             if (!streamed) {
                 streamUtxos.forEach(onUtxo)
+                replayCompleteHeight?.let(onReplayComplete)
                 if (completeUtxoStream) {
                     streamCompleted = true
                     onComplete()
                 }
                 streamed = true
+            }
+            if (completeEveryUtxoStream) {
+                streamCompleted = true
+                onComplete()
             }
             return Closeable { closedUtxoStreams += 1 }
         }
@@ -1245,6 +1328,11 @@ class LitecoinMwebEngineLifecycleTest {
 
         fun emitUtxoError(error: Throwable) {
             utxoErrorHandler?.invoke(error)
+        }
+
+        fun emitUtxoErrorAndComplete(error: Throwable) {
+            utxoErrorHandler?.invoke(error)
+            utxoCompleteHandler?.invoke()
         }
 
         override fun spent(outputIds: List<String>): List<String> {
@@ -1539,8 +1627,8 @@ class LitecoinMwebEngineLifecycleTest {
         }
     }
 
-    private fun waitUntil(condition: () -> Boolean) = runBlocking {
-        withTimeout(1_000) {
+    private fun waitUntil(timeoutMillis: Long = 1_000, condition: () -> Boolean) = runBlocking {
+        withTimeout(timeoutMillis) {
             while (!condition()) {
                 delay(10)
             }

@@ -38,6 +38,10 @@ data class MwebSyncState(
     }
 }
 
+data class MwebDeliveryState(
+    val utxoDeliveryHeight: Int,
+)
+
 /**
  * Debug-only daemon/storage snapshot. It intentionally exposes only counters and
  * heights, never scan/spend secrets or raw transactions.

@@ -13,10 +13,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MwebAddressEntity::class,
         MwebUtxoEntity::class,
         MwebStateEntity::class,
+        MwebDeliveryCursorEntity::class,
         MwebPendingTransactionEntity::class,
         MwebOutgoingTransactionEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(MwebTypeConverters::class)
@@ -24,6 +25,7 @@ abstract class MwebDatabase : RoomDatabase() {
     abstract val addressDao: MwebAddressDao
     abstract val utxoDao: MwebUtxoDao
     abstract val stateDao: MwebStateDao
+    abstract val deliveryCursorDao: MwebDeliveryCursorDao
     abstract val pendingTransactionDao: MwebPendingTransactionDao
     abstract val outgoingTransactionDao: MwebOutgoingTransactionDao
 
@@ -122,7 +124,31 @@ abstract class MwebDatabase : RoomDatabase() {
             }
         }
 
-        internal val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `MwebDeliveryCursor` (
+                        `id` INTEGER NOT NULL,
+                        `utxoDeliveryHeight` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    INSERT INTO `MwebDeliveryCursor` (`id`, `utxoDeliveryHeight`)
+                    SELECT 0, CASE
+                        WHEN `mwebUtxosHeight` > $MIGRATION_4_5_REPLAY_BLOCKS THEN `mwebUtxosHeight` - $MIGRATION_4_5_REPLAY_BLOCKS
+                        ELSE 0
+                    END FROM `MwebState` WHERE `id` = 0
+                    """.trimIndent()
+                )
+            }
+        }
+
+        internal val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        private const val MIGRATION_4_5_REPLAY_BLOCKS = 2_880
 
         fun getInstance(context: Context, dbName: String): MwebDatabase {
             return Room.databaseBuilder(context, MwebDatabase::class.java, dbName)

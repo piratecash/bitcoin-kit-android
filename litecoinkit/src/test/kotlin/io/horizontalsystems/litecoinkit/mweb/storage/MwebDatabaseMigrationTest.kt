@@ -29,7 +29,7 @@ class MwebDatabaseMigrationTest {
     }
 
     @Test
-    fun migration3To4_legacyOutgoingWithoutCreatedOutputs_preservesConfirmedHistory() {
+    fun migration3ToLatest_legacyOutgoingWithoutCreatedOutputs_preservesConfirmedHistory() {
         createV3Database()
 
         val database = Room.databaseBuilder(context, MwebDatabase::class.java, DB_NAME)
@@ -55,6 +55,36 @@ class MwebDatabaseMigrationTest {
         database.close()
     }
 
+    @Test
+    fun migration4To5_existingUtxoSyncHeight_setsDeliveryHeightWithSafetyReplay() {
+        createV4Database(mwebUtxosHeight = 3_107_750)
+
+        val database = Room.databaseBuilder(context, MwebDatabase::class.java, DB_NAME)
+            .addMigrations(*MwebDatabase.MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+
+        val storage = MwebRoomStorage(database)
+
+        assertEquals(3_104_870, storage.utxoDeliveryHeight())
+        database.close()
+    }
+
+    @Test
+    fun migration4To5_lowUtxoSyncHeight_clampsDeliveryHeightToZero() {
+        createV4Database(mwebUtxosHeight = 2_000)
+
+        val database = Room.databaseBuilder(context, MwebDatabase::class.java, DB_NAME)
+            .addMigrations(*MwebDatabase.MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+
+        val storage = MwebRoomStorage(database)
+
+        assertEquals(0, storage.utxoDeliveryHeight())
+        database.close()
+    }
+
     private fun createV3Database() {
         context.deleteDatabase(DB_NAME)
         val helper = FrameworkSQLiteOpenHelperFactory().create(
@@ -65,6 +95,31 @@ class MwebDatabaseMigrationTest {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             createV3Schema(db)
                             insertV3Rows(db)
+                        }
+
+                        override fun onUpgrade(
+                            db: SupportSQLiteDatabase,
+                            oldVersion: Int,
+                            newVersion: Int,
+                        ) = Unit
+                    }
+                )
+                .build()
+        )
+        helper.writableDatabase.close()
+        helper.close()
+    }
+
+    private fun createV4Database(mwebUtxosHeight: Int) {
+        context.deleteDatabase(DB_NAME)
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(DB_NAME)
+                .callback(
+                    object : SupportSQLiteOpenHelper.Callback(4) {
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            createV4Schema(db)
+                            insertV4State(db, mwebUtxosHeight)
                         }
 
                         override fun onUpgrade(
@@ -145,6 +200,27 @@ class MwebDatabaseMigrationTest {
                 PRIMARY KEY(`uid`)
             )
             """.trimIndent()
+        )
+    }
+
+    private fun createV4Schema(database: SupportSQLiteDatabase) {
+        createV3Schema(database)
+        database.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedHeight` INTEGER")
+        database.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedTimestamp` INTEGER")
+    }
+
+    private fun insertV4State(database: SupportSQLiteDatabase, mwebUtxosHeight: Int) {
+        database.execSQL(
+            """
+            INSERT INTO `MwebState` (
+                `id`,
+                `blockHeaderHeight`,
+                `mwebHeaderHeight`,
+                `mwebUtxosHeight`,
+                `lastSyncedAt`
+            ) VALUES (0, ?, ?, ?, 10)
+            """.trimIndent(),
+            arrayOf(mwebUtxosHeight, mwebUtxosHeight, mwebUtxosHeight),
         )
     }
 

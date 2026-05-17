@@ -57,6 +57,15 @@ interface MwebStateDao {
 }
 
 @Dao
+interface MwebDeliveryCursorDao {
+    @Query("SELECT * FROM MwebDeliveryCursor WHERE id = 0")
+    fun cursor(): MwebDeliveryCursorEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun save(cursor: MwebDeliveryCursorEntity)
+}
+
+@Dao
 interface MwebPendingTransactionDao {
     @Query("SELECT * FROM MwebPendingTransaction ORDER BY timestamp DESC")
     fun pendingTransactions(): List<MwebPendingTransactionEntity>

@@ -19,6 +19,7 @@ interface MwebDaemonClient {
     fun utxos(
         fromHeight: Int,
         onUtxo: (MwebUtxo) -> Unit,
+        onReplayComplete: (Int) -> Unit,
         onComplete: () -> Unit,
         onError: (Throwable) -> Unit,
     ): Closeable

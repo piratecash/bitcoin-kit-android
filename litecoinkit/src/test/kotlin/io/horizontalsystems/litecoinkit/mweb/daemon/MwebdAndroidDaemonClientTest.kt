@@ -1,8 +1,14 @@
 package io.horizontalsystems.litecoinkit.mweb.daemon
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
 class MwebdAndroidDaemonClientTest {
     @Test
     fun toMwebdExclusiveToIndex_inclusiveRangeEnd_convertsToExclusiveEnd() {
@@ -65,6 +71,44 @@ class MwebdAndroidDaemonClientTest {
                 )
             )
         }
+    }
+
+    @Test
+    fun utxos_onReplayCompleteMarker_callsOnReplayComplete() {
+        var replayCompleteHeight: Int? = null
+        val listener = listenerAdapter(onReplayComplete = { replayCompleteHeight = it })
+
+        listener.onReplayComplete(123)
+
+        assertEquals(123, replayCompleteHeight)
+    }
+
+    @Test
+    fun utxos_onReplayCompleteMarker_doesNotCallOnUtxo() {
+        var utxoCalled = false
+        val listener = listenerAdapter(
+            onUtxo = { utxoCalled = true },
+            onReplayComplete = {},
+        )
+
+        listener.onReplayComplete(123)
+
+        assertFalse(utxoCalled)
+    }
+
+    private fun listenerAdapter(
+        onUtxo: () -> Unit = {},
+        onReplayComplete: (Int) -> Unit = {},
+    ): MwebUtxoListenerAdapter {
+        return MwebUtxoListenerAdapter(
+            aggregator = UtxoStreamAggregator(startedAt = 0),
+            startedAt = 0,
+            addressIndex = { 0 },
+            onUtxo = { onUtxo() },
+            onReplayComplete = onReplayComplete,
+            onComplete = {},
+            onError = {},
+        )
     }
 
     private data class MarkerFields(

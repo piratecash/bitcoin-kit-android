@@ -6,14 +6,14 @@ import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 import java.io.Closeable
-import java.util.logging.Level
-import java.util.logging.Logger
 
 /**
  * Direct engine entry points are serialized by the shared stateMutex; daemon callbacks
@@ -33,12 +33,24 @@ internal class MwebUtxoSynchronizer(
     private val onNativeUnavailable: () -> Unit,
     private val onStatus: (MwebDaemonStatus) -> Unit,
     private val onSnapshot: (MwebUtxoSnapshot) -> Unit,
+    private val replayCompleteTimeoutMillis: Long = DEFAULT_REPLAY_COMPLETE_TIMEOUT_MILLIS,
+    private val streamHealthyThresholdMillis: Long = DEFAULT_STREAM_HEALTHY_THRESHOLD_MILLIS,
 ) {
     private var statusPollJob: Job? = null
     private var spentPollJob: Job? = null
     private var canonicalHashJob: Job? = null
     private var utxoFlushJob: Job? = null
+    private var streamEventsJob: Job? = null
+    private var streamReconnectJob: Job? = null
+    private var streamHealthyJob: Job? = null
+    private var replayCompleteTimeoutJob: Job? = null
     private var utxoStream: Closeable? = null
+    private var streamEvents: Channel<StreamEvent>? = null
+    private var streamGeneration = 0L
+    private var activeStreamGeneration = NO_ACTIVE_STREAM
+    private var terminallyEndedGeneration = NO_ACTIVE_STREAM
+    private var consecutiveStreamFailures = 0
+    private var nativeReplayCompleteSupported: Boolean? = null
     private val pendingUtxos = mutableListOf<MwebUtxo>()
 
     fun stop() {
@@ -98,14 +110,38 @@ internal class MwebUtxoSynchronizer(
 
     fun startUtxoStream(client: MwebDaemonClient) {
         closeUtxoStream()
+        val generation = ++streamGeneration
+        activeStreamGeneration = generation
+
+        val channel = Channel<StreamEvent>(Channel.UNLIMITED)
+        streamEvents = channel
+        streamEventsJob = coroutineScope.launch {
+            for (event in channel) {
+                stateMutex.withLock { handleStreamEvent(event) }
+            }
+        }
+
+        val fromHeight = utxoStreamStartHeight()
+        Timber.tag(LOG_TAG).d("MWEB utxo stream subscribe fromHeight=$fromHeight gen=$generation")
         utxoStream = MwebDaemonErrorMapper.map {
             client.utxos(
-                fromHeight = utxoStreamStartHeight(),
-                onUtxo = ::onUtxo,
-                onComplete = { onUtxoStreamComplete(client) },
-                onError = ::onUtxoStreamError,
+                fromHeight = fromHeight,
+                onUtxo = { utxo -> dispatchEvent(channel, StreamEvent.Utxo(utxo, generation), terminal = false) },
+                onReplayComplete = { height ->
+                    dispatchEvent(channel, StreamEvent.ReplayComplete(height, generation), terminal = false)
+                },
+                onComplete = {
+                    dispatchEvent(channel, StreamEvent.Ended(client, generation, StreamEndReason.COMPLETE), terminal = true)
+                },
+                onError = { error ->
+                    dispatchEvent(channel, StreamEvent.Ended(client, generation, StreamEndReason.ERROR, error), terminal = true)
+                },
             )
         }
+        if (nativeReplayCompleteSupported == null) {
+            scheduleReplayCompleteTimeout(generation)
+        }
+        scheduleStreamHealthyReset(generation)
     }
 
     fun refreshSpentOutputs(client: MwebDaemonClient) {
@@ -144,6 +180,18 @@ internal class MwebUtxoSynchronizer(
         }
     }
 
+    fun flushPendingUtxosAndLoadSnapshot(): MwebUtxoSnapshot? {
+        if (!flushPendingUtxosLocked()) return null
+
+        return loadStoredSnapshot()
+    }
+
+    fun loadStoredSnapshot(): MwebUtxoSnapshot {
+        storage.reconcileCreatedUtxos()
+        val utxos = storage.utxos()
+        return MwebUtxoSnapshot(utxos, calculateBalance(utxos))
+    }
+
     private fun refreshStatus(client: MwebDaemonClient) {
         val status = MwebDaemonErrorMapper.map {
             client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
@@ -162,25 +210,99 @@ internal class MwebUtxoSynchronizer(
         onSnapshot(loadStoredSnapshot())
     }
 
-    fun flushPendingUtxosAndLoadSnapshot(): MwebUtxoSnapshot? {
-        if (!flushPendingUtxosLocked()) return null
+    private fun dispatchEvent(channel: Channel<StreamEvent>, event: StreamEvent, terminal: Boolean) {
+        val result = channel.trySend(event)
+        if (result.isSuccess) return
 
-        return loadStoredSnapshot()
-    }
+        if (!terminal) {
+            Timber.tag(LOG_TAG).d("MWEB utxo stream event dropped after close: ${event.safeDescription()}")
+            return
+        }
 
-    fun loadStoredSnapshot(): MwebUtxoSnapshot {
-        storage.reconcileCreatedUtxos()
-        val utxos = storage.utxos()
-        return MwebUtxoSnapshot(utxos, calculateBalance(utxos))
-    }
-
-    private fun onUtxo(utxo: MwebUtxo) {
+        Timber.tag(LOG_TAG).w("MWEB terminal stream event dropped after close: ${event.safeDescription()}")
         coroutineScope.launch {
             stateMutex.withLock {
-                pendingUtxos.add(utxo)
-                scheduleUtxoFlushLocked()
+                if (event.generation != activeStreamGeneration) return@withLock
+                if (terminallyEndedGeneration >= event.generation) return@withLock
+                handleStreamEvent(event)
             }
         }
+    }
+
+    private fun handleStreamEvent(event: StreamEvent) {
+        when (event) {
+            is StreamEvent.Utxo -> handleStreamUtxo(event.utxo)
+            is StreamEvent.ReplayComplete -> handleReplayComplete(event)
+            is StreamEvent.Ended -> handleStreamEnded(event)
+        }
+    }
+
+    private fun handleStreamUtxo(utxo: MwebUtxo) {
+        Timber.tag(LOG_TAG).v(
+            "MWEB utxo queued outputId=${utxo.outputId.take(LOG_OUTPUT_ID_PREFIX_LENGTH)} height=${utxo.height}"
+        )
+        pendingUtxos.add(utxo)
+        scheduleUtxoFlushLocked()
+    }
+
+    private fun handleReplayComplete(event: StreamEvent.ReplayComplete) {
+        if (event.generation != activeStreamGeneration) return
+
+        nativeReplayCompleteSupported = true
+        replayCompleteTimeoutJob?.cancel()
+        replayCompleteTimeoutJob = null
+        utxoFlushJob?.cancel()
+        utxoFlushJob = null
+        val changed = flushPendingUtxosLocked()
+        storage.advanceUtxoDeliveryHeight(event.height)
+        Timber.tag(LOG_TAG).d("MWEB utxo replay complete height=${event.height} gen=${event.generation}")
+        if (changed) {
+            onSnapshot(loadStoredSnapshot())
+        }
+    }
+
+    private fun handleStreamEnded(event: StreamEvent.Ended) {
+        val generation = event.generation
+        if (generation != activeStreamGeneration) {
+            Timber.tag(LOG_TAG).d("MWEB utxo stream ended for stale gen=$generation reason=${event.reason}")
+            return
+        }
+        if (terminallyEndedGeneration >= generation) {
+            Timber.tag(LOG_TAG).d("MWEB utxo stream terminal already handled gen=$generation reason=${event.reason}")
+            return
+        }
+        terminallyEndedGeneration = generation
+
+        if (!isActiveClient(event.client)) return
+
+        val error = event.error
+        if (error is UnsatisfiedLinkError || error is NoClassDefFoundError) {
+            onNativeUnavailable()
+            closeUtxoStream()
+            return
+        }
+
+        streamHealthyJob?.cancel()
+        streamHealthyJob = null
+        utxoFlushJob?.cancel()
+        utxoFlushJob = null
+        if (flushPendingUtxosLocked()) {
+            onSnapshot(loadStoredSnapshot())
+        }
+
+        consecutiveStreamFailures += 1
+        val delayMillis = currentBackoffMillis()
+        if (error == null) {
+            Timber.tag(LOG_TAG).w(
+                "MWEB utxo stream ended reason=${event.reason} gen=$generation failures=$consecutiveStreamFailures reconnectIn=${delayMillis}ms"
+            )
+        } else {
+            Timber.tag(LOG_TAG).w(
+                error,
+                "MWEB utxo stream ended reason=${event.reason} gen=$generation failures=$consecutiveStreamFailures reconnectIn=${delayMillis}ms"
+            )
+        }
+        scheduleReconnect(event.client, generation, delayMillis)
     }
 
     private fun scheduleUtxoFlushLocked() {
@@ -201,62 +323,69 @@ internal class MwebUtxoSynchronizer(
         if (pendingUtxos.isEmpty()) return false
 
         val utxos = pendingUtxos.toList()
+        val heightRange = utxos.minOf { it.height }..utxos.maxOf { it.height }
+        Timber.tag(LOG_TAG).d("MWEB utxo flush count=${utxos.size} heights=$heightRange")
         storage.saveUtxos(utxos)
         pendingUtxos.clear()
+        storage.advanceUtxoDeliveryHeight(utxos.maxOf { it.height })
         return true
     }
 
-    private fun onUtxoStreamError(error: Throwable) {
-        if (error is UnsatisfiedLinkError || error is NoClassDefFoundError) {
-            coroutineScope.launch {
-                stateMutex.withLock {
-                    onNativeUnavailable()
-                    closeUtxoStream()
-                }
-            }
-            return
-        }
-        coroutineScope.launch {
-            delay(UTXO_RECONNECT_DELAY_MILLIS)
+    private fun scheduleReconnect(client: MwebDaemonClient, terminalGeneration: Long, delayMillis: Long) {
+        streamReconnectJob?.cancel()
+        streamReconnectJob = coroutineScope.launch {
+            delay(delayMillis)
             stateMutex.withLock {
-                val client = activeClient ?: return@withLock
-                if (!isActiveClient(client)) return@withLock
-                startUtxoStream(client)
+                if (activeStreamGeneration != terminalGeneration) return@withLock
+                val current = activeClient ?: return@withLock
+                if (!isActiveClient(current) || current !== client) return@withLock
+
+                startUtxoStream(current)
             }
         }
     }
 
-    private fun onUtxoStreamComplete(streamClient: MwebDaemonClient) {
-        coroutineScope.launch {
+    private fun scheduleStreamHealthyReset(generation: Long) {
+        streamHealthyJob?.cancel()
+        streamHealthyJob = coroutineScope.launch {
+            delay(streamHealthyThresholdMillis)
             stateMutex.withLock {
-                if (!isActiveClient(streamClient)) return@withLock
+                if (generation != activeStreamGeneration) return@withLock
+                if (terminallyEndedGeneration >= generation) return@withLock
 
-                utxoFlushJob?.cancel()
-                utxoFlushJob = null
-                flushPendingUtxosLocked()
-                val status = MwebDaemonErrorMapper.mapSuspend {
-                    streamClient.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
-                }
-                onStatus(status.completedUtxoScan())
-                onSnapshot(loadStoredSnapshot())
+                consecutiveStreamFailures = 0
+                Timber.tag(LOG_TAG).d("MWEB utxo stream healthy gen=$generation")
             }
         }
     }
 
-    private fun MwebDaemonStatus.completedUtxoScan(): MwebDaemonStatus {
-        val currentState = syncState
-        val completedHeight = minOf(currentState.blockHeaderHeight, currentState.mwebHeaderHeight)
-        return copy(
-            syncState = currentState.copy(
-                mwebUtxosHeight = maxOf(currentState.mwebUtxosHeight, completedHeight),
-            ),
-        )
+    private fun scheduleReplayCompleteTimeout(generation: Long) {
+        replayCompleteTimeoutJob?.cancel()
+        replayCompleteTimeoutJob = coroutineScope.launch {
+            delay(replayCompleteTimeoutMillis)
+            stateMutex.withLock {
+                if (generation != activeStreamGeneration) return@withLock
+                if (nativeReplayCompleteSupported != null) return@withLock
+
+                nativeReplayCompleteSupported = false
+                Timber.tag(LOG_TAG).w("MWEB native replay-complete marker missing; using legacy UTXO cursor")
+            }
+        }
+    }
+
+    private fun currentBackoffMillis(): Long {
+        return when (consecutiveStreamFailures) {
+            0, 1 -> UTXO_RECONNECT_DELAY_MILLIS
+            2 -> 2_000L
+            3 -> 5_000L
+            else -> MAX_RECONNECT_DELAY_MILLIS
+        }
     }
 
     private fun handlePollingError(error: Exception) {
         if (error is CancellationException) throw error
         if (error !is MwebError.NativeUnavailable) {
-            logger.log(Level.WARNING, "MWEB polling failed", error)
+            Timber.tag(LOG_TAG).w(error, "MWEB polling failed")
             return
         }
 
@@ -267,13 +396,27 @@ internal class MwebUtxoSynchronizer(
     private fun closeUtxoStream() {
         utxoStream?.close()
         utxoStream = null
+        streamEvents?.close()
+        streamEvents = null
+        streamEventsJob?.cancel()
+        streamEventsJob = null
+        streamReconnectJob?.cancel()
+        streamReconnectJob = null
+        streamHealthyJob?.cancel()
+        streamHealthyJob = null
+        replayCompleteTimeoutJob?.cancel()
+        replayCompleteTimeoutJob = null
+        activeStreamGeneration = NO_ACTIVE_STREAM
     }
 
     private fun utxoStreamStartHeight(): Int {
-        val syncedHeight = syncStateProvider().mwebUtxosHeight
-        if (syncedHeight <= 0) return restoreHeight
+        val cursor = when (nativeReplayCompleteSupported) {
+            false -> syncStateProvider().mwebUtxosHeight
+            true, null -> storage.deliveryState().utxoDeliveryHeight
+        }
+        if (cursor <= 0) return restoreHeight
 
-        return maxOf(restoreHeight, syncedHeight - UTXO_RESCAN_OVERLAP_BLOCKS)
+        return maxOf(restoreHeight, cursor - UTXO_RESCAN_OVERLAP_BLOCKS)
     }
 
     private fun calculateBalance(utxos: List<MwebUtxo>): MwebBalance {
@@ -286,12 +429,42 @@ internal class MwebUtxoSynchronizer(
     private val activeClient: MwebDaemonClient?
         get() = activeClientProvider()
 
-    private companion object {
-        // About one Litecoin day; daemon status is a global leafset height, not a wallet delivery cursor.
-        const val UTXO_RESCAN_OVERLAP_BLOCKS = 576
+    private sealed class StreamEvent {
+        abstract val generation: Long
+
+        fun safeDescription(): String {
+            return when (this) {
+                is Utxo -> "utxo(gen=$generation, outputId=${utxo.outputId.take(LOG_OUTPUT_ID_PREFIX_LENGTH)}, height=${utxo.height})"
+                is ReplayComplete -> "replayComplete(gen=$generation, height=$height)"
+                is Ended -> "ended(gen=$generation, reason=$reason)"
+            }
+        }
+
+        data class Utxo(val utxo: MwebUtxo, override val generation: Long) : StreamEvent()
+        data class ReplayComplete(val height: Int, override val generation: Long) : StreamEvent()
+        data class Ended(
+            val client: MwebDaemonClient,
+            override val generation: Long,
+            val reason: StreamEndReason,
+            val error: Throwable? = null,
+        ) : StreamEvent()
+    }
+
+    private enum class StreamEndReason {
+        COMPLETE,
+        ERROR,
+    }
+
+    internal companion object {
+        const val UTXO_RESCAN_OVERLAP_BLOCKS = 2_880
         const val UTXO_SNAPSHOT_DEBOUNCE_MILLIS = 100L
         const val UTXO_RECONNECT_DELAY_MILLIS = 1_000L
-        val logger: Logger = Logger.getLogger(MwebUtxoSynchronizer::class.java.name)
+        const val MAX_RECONNECT_DELAY_MILLIS = 15_000L
+        const val DEFAULT_STREAM_HEALTHY_THRESHOLD_MILLIS = 30_000L
+        const val DEFAULT_REPLAY_COMPLETE_TIMEOUT_MILLIS = 5 * 60_000L
+        private const val LOG_OUTPUT_ID_PREFIX_LENGTH = 8
+        private const val LOG_TAG = "MwebUtxoSync"
+        private const val NO_ACTIVE_STREAM = -1L
     }
 }
 

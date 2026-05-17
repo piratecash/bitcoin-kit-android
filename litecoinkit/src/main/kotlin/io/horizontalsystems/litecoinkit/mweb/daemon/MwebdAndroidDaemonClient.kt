@@ -1,5 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb.daemon
 
+import android.os.SystemClock
 import com.piratecash.mwebdandroid.Daemon
 import com.piratecash.mwebdandroid.Mwebdandroid
 import com.piratecash.mwebdandroid.StringList
@@ -16,6 +17,11 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+
+private const val LOG_TAG = "MwebDaemon"
+private const val LOG_OUTPUT_ID_PREFIX_LENGTH = 8
+private const val LOG_AGGREGATE_BATCH = 100
+private const val LOG_AGGREGATE_INTERVAL_MILLIS = 5_000L
 
 object MwebdAndroidDaemonClientFactory : MwebDaemonClientFactory {
     override fun create(config: MwebDaemonConfig): MwebDaemonClient {
@@ -80,31 +86,25 @@ private class MwebdAndroidDaemonClient(
     override fun utxos(
         fromHeight: Int,
         onUtxo: (MwebUtxo) -> Unit,
+        onReplayComplete: (Int) -> Unit,
         onComplete: () -> Unit,
         onError: (Throwable) -> Unit,
     ): Closeable {
+        val startedAt = SystemClock.elapsedRealtime()
+        val aggregator = UtxoStreamAggregator(startedAt)
+        Timber.tag(LOG_TAG).d("utxos.subscribe fromHeight=$fromHeight")
         val subscription = requireDaemon().subscribeUtxos(
             fromHeight.toLong(),
             config.accountKeys.scanSecret,
-            object : UtxoListener {
-                override fun onUtxo(utxo: NativeUtxo) {
-                    if (utxo.isMwebInitMarker()) return
-
-                    try {
-                        onUtxo(utxo.toMwebUtxo())
-                    } catch (error: Throwable) {
-                        onError(error)
-                    }
-                }
-
-                override fun onError(message: String) {
-                    onError(MwebError.SyncFailure(IllegalStateException(message)))
-                }
-
-                override fun onComplete() {
-                    onComplete()
-                }
-            },
+            MwebUtxoListenerAdapter(
+                aggregator = aggregator,
+                startedAt = startedAt,
+                addressIndex = ::addressIndex,
+                onUtxo = onUtxo,
+                onReplayComplete = onReplayComplete,
+                onComplete = onComplete,
+                onError = onError,
+            ),
         )
         return Closeable { subscription.close() }
     }
@@ -223,19 +223,6 @@ private class MwebdAndroidDaemonClient(
         return daemon ?: throw MwebError.NativeUnavailable()
     }
 
-    private fun NativeUtxo.toMwebUtxo(): MwebUtxo {
-        val address = address()
-        return MwebUtxo(
-            outputId = outputId(),
-            address = address,
-            addressIndex = addressIndex(address),
-            value = value(),
-            height = height().toInt(),
-            blockTime = blockTime(),
-            spent = false,
-        )
-    }
-
     private fun addressIndex(address: String): Int {
         addressIndexes[address]?.let { return it }
         addresses(0, ADDRESS_DISCOVERY_LIMIT)
@@ -262,13 +249,100 @@ private class MwebdAndroidDaemonClient(
     private companion object {
         const val ADDRESS_DISCOVERY_LIMIT = 100
         const val FEE_RATE_KB_MULTIPLIER = 1_000L
-        const val NATIVE_VERSION = "ltcmweb/mwebd v0.1.19, mwebd-android v0.1.19-pcash.7"
+        const val NATIVE_VERSION = "ltcmweb/mwebd v0.1.19, mwebd-android v0.1.19-pcash.8"
         const val PORT_AUTO_SELECT = 0L
         const val PROXY_DISABLED = ""
         const val THREAD_NAME = "litecoin-mwebd"
-        const val LOG_TAG = "MwebDaemon"
     }
 }
+
+internal class UtxoStreamAggregator(private val startedAt: Long) {
+    private var count = 0
+    private var lastHeight = 0L
+    private var lastEmittedAt = startedAt
+
+    fun observe(height: Long) {
+        count += 1
+        lastHeight = height
+        val now = SystemClock.elapsedRealtime()
+        if (count % LOG_AGGREGATE_BATCH == 0 || now - lastEmittedAt >= LOG_AGGREGATE_INTERVAL_MILLIS) {
+            emit(now)
+        }
+    }
+
+    fun flush() {
+        if (count == 0) return
+        emit(SystemClock.elapsedRealtime())
+    }
+
+    private fun emit(now: Long) {
+        Timber.tag(LOG_TAG).d("utxos.batch received=$count lastHeight=$lastHeight uptime=${now - startedAt}ms")
+        lastEmittedAt = now
+    }
+}
+
+internal class MwebUtxoListenerAdapter(
+    private val aggregator: UtxoStreamAggregator,
+    private val startedAt: Long,
+    private val addressIndex: (String) -> Int,
+    private val onUtxo: (MwebUtxo) -> Unit,
+    private val onReplayComplete: (Int) -> Unit,
+    private val onComplete: () -> Unit,
+    private val onError: (Throwable) -> Unit,
+) : UtxoListener {
+    override fun onUtxo(utxo: NativeUtxo) {
+        if (utxo.isMwebInitMarker()) {
+            Timber.tag(LOG_TAG).d("utxos.initMarker")
+            return
+        }
+
+        val outputId = utxo.outputId()
+        val height = utxo.height()
+        Timber.tag(LOG_TAG).v("utxos.onUtxo outputId=${outputId.logPrefix()} height=$height")
+        aggregator.observe(height)
+        try {
+            onUtxo(utxo.toMwebUtxo())
+        } catch (error: Throwable) {
+            Timber.tag(LOG_TAG).w(error, "utxos.toMwebUtxo failed outputId=${outputId.logPrefix()} height=$height")
+            onError(error)
+        }
+    }
+
+    override fun onReplayComplete(height: Long) {
+        aggregator.flush()
+        Timber.tag(LOG_TAG).d("utxos.replayComplete height=$height uptime=${startedAt.uptimeMillis()}ms")
+        onReplayComplete(height.toInt())
+    }
+
+    override fun onError(message: String) {
+        aggregator.flush()
+        Timber.tag(LOG_TAG).w("utxos.onError uptime=${startedAt.uptimeMillis()}ms message=$message")
+        onError(MwebError.SyncFailure(IllegalStateException(message)))
+    }
+
+    override fun onComplete() {
+        aggregator.flush()
+        Timber.tag(LOG_TAG).d("utxos.onComplete uptime=${startedAt.uptimeMillis()}ms")
+        onComplete()
+    }
+
+    private fun NativeUtxo.toMwebUtxo(): MwebUtxo {
+        val address = address()
+        return MwebUtxo(
+            outputId = outputId(),
+            address = address,
+            addressIndex = addressIndex(address),
+            value = value(),
+            height = height().toInt(),
+            blockTime = blockTime(),
+            spent = false,
+        )
+    }
+}
+
+private fun Long.uptimeMillis(): Long = SystemClock.elapsedRealtime() - this
+
+private fun String.logPrefix(): String = take(LOG_OUTPUT_ID_PREFIX_LENGTH)
 
 internal fun Int.toMwebdExclusiveToIndex(): Long = toLong() + 1L
 

@@ -38,6 +38,12 @@ data class MwebStateEntity(
     }
 }
 
+@Entity(tableName = "MwebDeliveryCursor")
+data class MwebDeliveryCursorEntity(
+    @PrimaryKey val id: Int = MwebStateEntity.STATE_ID,
+    val utxoDeliveryHeight: Int,
+)
+
 @Entity(tableName = "MwebPendingTransaction")
 data class MwebPendingTransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

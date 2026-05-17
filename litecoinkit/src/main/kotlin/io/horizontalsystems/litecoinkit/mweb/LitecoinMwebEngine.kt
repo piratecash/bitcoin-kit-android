@@ -40,6 +40,8 @@ internal class LitecoinMwebEngine(
     private val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
     private val spentPollIntervalMillis: Long = SPENT_POLL_INTERVAL_MILLIS,
     private val statusPollIntervalMillis: Long = STATUS_POLL_INTERVAL_MILLIS,
+    private val replayCompleteTimeoutMillis: Long = MwebUtxoSynchronizer.DEFAULT_REPLAY_COMPLETE_TIMEOUT_MILLIS,
+    private val streamHealthyThresholdMillis: Long = MwebUtxoSynchronizer.DEFAULT_STREAM_HEALTHY_THRESHOLD_MILLIS,
     private val localTransactionTtlMillis: Long = LOCAL_TRANSACTION_TTL_MILLIS,
     private val currentTimeMillisProvider: () -> Long = { System.currentTimeMillis() },
     private val canonicalTransactionHashProvider: MwebCanonicalTransactionHashProvider =
@@ -102,6 +104,8 @@ internal class LitecoinMwebEngine(
         onNativeUnavailable = { started = false },
         onStatus = { status -> applyStatus(status) },
         onSnapshot = { snapshot -> applyUtxoSnapshot(snapshot) },
+        replayCompleteTimeoutMillis = replayCompleteTimeoutMillis,
+        streamHealthyThresholdMillis = streamHealthyThresholdMillis,
     )
 
     init {

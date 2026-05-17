@@ -1,6 +1,7 @@
 package io.horizontalsystems.litecoinkit.mweb.storage
 
 import io.horizontalsystems.litecoinkit.mweb.MwebPendingTransaction
+import io.horizontalsystems.litecoinkit.mweb.MwebDeliveryState
 import io.horizontalsystems.litecoinkit.mweb.MwebTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
@@ -42,6 +43,23 @@ class MwebRoomStorage(
                 lastSyncedAt = System.currentTimeMillis(),
             )
         )
+    }
+
+    fun utxoDeliveryHeight(): Int {
+        return deliveryState().utxoDeliveryHeight
+    }
+
+    fun deliveryState(): MwebDeliveryState {
+        return MwebDeliveryState(database.deliveryCursorDao.cursor()?.utxoDeliveryHeight ?: 0)
+    }
+
+    fun advanceUtxoDeliveryHeight(height: Int): Boolean {
+        if (height <= 0) return false
+        val currentHeight = utxoDeliveryHeight()
+        if (height <= currentHeight) return false
+
+        database.deliveryCursorDao.save(MwebDeliveryCursorEntity(utxoDeliveryHeight = height))
+        return true
     }
 
     fun utxos(): List<MwebUtxo> {

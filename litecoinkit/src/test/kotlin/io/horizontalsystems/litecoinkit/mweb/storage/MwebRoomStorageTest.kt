@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
 import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
+import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -48,6 +49,22 @@ class MwebRoomStorageTest {
         assertEquals(MwebTransactionKind.PublicToMweb, transaction.kind)
         assertNull(transaction.fee)
         assertNull(transaction.address)
+    }
+
+    @Test
+    fun deliveryCursor_advance_preservesMaximumHeight() {
+        val state = MwebSyncState(
+            blockHeaderHeight = 100,
+            mwebHeaderHeight = 100,
+            mwebUtxosHeight = 100,
+        )
+
+        storage.saveSyncState(state)
+        storage.advanceUtxoDeliveryHeight(80)
+        storage.advanceUtxoDeliveryHeight(60)
+
+        assertEquals(state, storage.syncState())
+        assertEquals(80, storage.utxoDeliveryHeight())
     }
 
     @Test
