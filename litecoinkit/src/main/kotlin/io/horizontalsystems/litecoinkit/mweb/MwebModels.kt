@@ -30,11 +30,19 @@ data class MwebSyncState(
     val mwebHeaderHeight: Int,
     val mwebUtxosHeight: Int,
 ) {
-    fun isSynced(publicTipHeight: Int?, tolerance: Int = 1): Boolean {
-        val tipHeight = publicTipHeight ?: blockHeaderHeight
-        return tipHeight - blockHeaderHeight <= tolerance &&
-            tipHeight - mwebHeaderHeight <= tolerance &&
-            tipHeight - mwebUtxosHeight <= tolerance
+    fun isSynced(publicTipHeight: Int, tolerance: Int = 1): Boolean {
+        if (
+            publicTipHeight <= 0 ||
+            blockHeaderHeight <= 0 ||
+            mwebHeaderHeight <= 0 ||
+            mwebUtxosHeight <= 0
+        ) {
+            return false
+        }
+
+        return publicTipHeight - blockHeaderHeight <= tolerance &&
+            publicTipHeight - mwebHeaderHeight <= tolerance &&
+            publicTipHeight - mwebUtxosHeight <= tolerance
     }
 }
 
