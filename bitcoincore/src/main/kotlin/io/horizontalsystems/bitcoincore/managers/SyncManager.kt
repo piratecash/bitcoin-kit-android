@@ -50,6 +50,11 @@ class SyncManager(
     private var currentBestBlockHeight = bestBlockHeight
     private var foundTransactionsCount = 0
     private var forceAddedBlocksTotal: Int = 0
+    // Tracks whether this SyncManager owns an outstanding peerGroup.start() call.
+    // The peerGroup may be a SharedPeerGroup ref-counted across kits sharing the
+    // same wallet/network (BIP44 + BIP84, MWEB, etc.), so stop() must only
+    // decrement the count when this manager actually incremented it.
+    private var peerGroupStarted = false
 
     private fun startSync() {
         if (apiSyncer.willSync) {
@@ -66,7 +71,21 @@ class SyncManager(
 
     private fun startPeerGroup() {
         syncState = KitState.Syncing(0.0, BitcoinCore.SyncSubstatus.WaitingForPeers(0, peerSize))
-        peerGroup.start()
+        acquirePeerGroupIfNeeded()
+    }
+
+    private fun acquirePeerGroupIfNeeded() {
+        if (!peerGroupStarted) {
+            peerGroup.start()
+            peerGroupStarted = true
+        }
+    }
+
+    private fun stopPeerGroupIfStarted() {
+        if (peerGroupStarted) {
+            peerGroup.stop()
+            peerGroupStarted = false
+        }
     }
 
     fun start() {
@@ -92,17 +111,16 @@ class SyncManager(
     }
 
     fun stop() {
-        when (syncState) {
-            is KitState.ApiSyncing -> {
-                apiSyncer.terminate()
-            }
-
-            is KitState.Syncing, is KitState.Synced -> {
-                peerGroup.stop()
-            }
-
-            else -> Unit
-        }
+        // Always tear down api syncer and reconciler. PeerGroup is ref-counted via
+        // SharedPeerGroup on Bitcoin/Litecoin (BIP44+BIP84+MWEB share one group),
+        // so we only call stop() on it if this manager itself started it — otherwise
+        // we would decrement another kit's ref count and leak/kill its connection.
+        // Previously stop() also missed peerGroup teardown when the kit was halted
+        // from any NotSynced state (e.g. user switched wallets before the first
+        // sync completed), leaving peer connections and log spam alive in the
+        // background.
+        apiSyncer.terminate()
+        stopPeerGroupIfStarted()
         pendingTransactionReconciler.stop()
         syncState = KitState.NotSynced(BitcoinCore.StateError.NotStarted())
     }
@@ -115,7 +133,7 @@ class SyncManager(
         if (isConnected && syncIdle) {
             startSync()
         } else if (!isConnected && (syncState is KitState.Syncing || syncState is KitState.Synced)) {
-            peerGroup.stop()
+            stopPeerGroupIfStarted()
             syncState = KitState.NotSynced(BitcoinCore.StateError.NoInternet())
         }
     }
@@ -128,6 +146,11 @@ class SyncManager(
         forceAddedBlocksTotal = storage.getApiBlockHashesCount()
 
         if (peerGroup.running) {
+            // A sibling kit on the same SharedPeerGroup may have started it already.
+            // We are about to use it logically (Synced / refresh), so we must acquire
+            // our own ref count — otherwise the sibling's stop() would silently kill
+            // the peer group while this kit is still considered Synced.
+            acquirePeerGroupIfNeeded()
             if (foundTransactionsCount > 0) {
                 foundTransactionsCount = 0
                 syncState = KitState.Syncing(0.0, BitcoinCore.SyncSubstatus.WaitingForPeers(
