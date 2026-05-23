@@ -1,5 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
+import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressPool
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
@@ -145,19 +146,37 @@ internal class MwebUtxoSynchronizer(
     }
 
     fun refreshSpentOutputs(client: MwebDaemonClient) {
-        val unspentOutputIds = storage.confirmedUnspentUtxos().map { it.outputId }
-        val localTransactionOutputIds = storage.pendingLocalSpentOutputIds()
-        val outputIds = (unspentOutputIds + localTransactionOutputIds).distinct()
-        if (outputIds.isEmpty()) return
-
-        val spentOutputIds = MwebDaemonErrorMapper.map { client.spent(outputIds) }
-        if (spentOutputIds.isEmpty()) return
+        val pendingLocalSpentOutputIds = storage.pendingLocalSpentOutputIds().toSet()
+        val candidates = storage.utxos().filter { it.shouldCheckSpent(pendingLocalSpentOutputIds) }
+        if (candidates.isEmpty()) return
 
         val status = MwebDaemonErrorMapper.map {
             client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
         }
         onStatus(status)
+
+        val outputIds = candidates.outputIdsCoveredBy(status.syncState.mwebUtxosHeight)
+        if (outputIds.isEmpty()) return
+
+        val spentOutputIds = MwebDaemonErrorMapper.map { client.spent(outputIds) }
+        if (spentOutputIds.isEmpty()) return
+
         applySpentOutputs(spentOutputIds, status)
+    }
+
+    private fun MwebUtxo.shouldCheckSpent(pendingLocalSpentOutputIds: Set<String>): Boolean {
+        if (!confirmed) return false
+        if (outputId in pendingLocalSpentOutputIds) return true
+
+        return !spent && addressIndex == MwebAddressPool.CHANGE_INDEX
+    }
+
+    private fun List<MwebUtxo>.outputIdsCoveredBy(mwebUtxosHeight: Int): List<String> {
+        if (mwebUtxosHeight <= 0) return emptyList()
+
+        return filter { it.height <= mwebUtxosHeight }
+            .map { it.outputId }
+            .distinct()
     }
 
     fun scheduleCanonicalTransactionHashRefresh() {

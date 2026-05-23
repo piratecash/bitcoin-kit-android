@@ -355,9 +355,11 @@ class LitecoinMwebEngineLifecycleTest {
 
     @Test
     fun refresh_spentOutputs_marksSpentAndUpdatesBalance() {
+        val spentUtxo = changeUtxo(outputId = "spent-output")
         val daemonClient = FakeDaemonClient(
-            streamUtxos = listOf(MwebUtxo("spent-output", "address", 1, 100, 10, 1_000, spent = false)),
-            spentOutputIds = listOf("spent-output"),
+            status = syncedStatus(spentUtxo.height),
+            streamUtxos = listOf(spentUtxo),
+            spentOutputIds = listOf(spentUtxo.outputId),
         )
         val engine = engineWith(daemonClient)
 
@@ -371,10 +373,125 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
-    fun refresh_mixedConfirmedAndUnconfirmedOutputs_checksOnlyConfirmedOutputs() {
+    fun refresh_receiveUtxoReportedSpent_keepsReceiveUtxoUnspent() {
+        val receiveUtxo = receiveUtxo()
         val daemonClient = FakeDaemonClient(
+            status = syncedStatus(receiveUtxo.height),
+            streamUtxos = listOf(receiveUtxo),
+        )
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        waitUntil { engine.balance == MwebBalance(confirmed = receiveUtxo.value, unconfirmed = 0) }
+
+        daemonClient.spentOutputIds = listOf(receiveUtxo.outputId)
+        engine.refresh()
+
+        val transaction = engine.transactions().single()
+        assertFalse(engine.mwebUtxos().single().spent)
+        assertEquals(MwebBalance(confirmed = receiveUtxo.value, unconfirmed = 0), engine.balance)
+        assertEquals(MwebTransactionType.Incoming, transaction.type)
+        assertFalse(transaction.pending)
+    }
+
+    @Test
+    fun start_storedReceiveUtxoReportedSpent_keepsReceiveUtxoUnspent() {
+        val receiveUtxo = receiveUtxo()
+        val daemonClient = FakeDaemonClient(
+            status = syncedStatus(receiveUtxo.height),
+            streamUtxos = listOf(receiveUtxo),
+        )
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        waitUntil { engine.balance == MwebBalance(confirmed = receiveUtxo.value, unconfirmed = 0) }
+        engine.stop()
+
+        daemonClient.spentOutputIds = listOf(receiveUtxo.outputId)
+        engine.start()
+
+        assertFalse(engine.mwebUtxos().single().spent)
+        assertEquals(MwebBalance(confirmed = receiveUtxo.value, unconfirmed = 0), engine.balance)
+    }
+
+    @Test
+    fun spentPoll_receiveUtxoReportedSpent_keepsReceiveUtxoUnspent() {
+        val receiveUtxo = receiveUtxo()
+        val pollMarkerUtxo = changeUtxo(outputId = "poll-marker-output")
+        val daemonClient = FakeDaemonClient(
+            status = syncedStatus(receiveUtxo.height),
+            streamUtxos = listOf(receiveUtxo, pollMarkerUtxo),
+        )
+        val engine = engineWith(daemonClient, spentPollIntervalMillis = 10)
+
+        engine.start()
+        waitUntil {
+            engine.balance == MwebBalance(
+                confirmed = receiveUtxo.value + pollMarkerUtxo.value,
+                unconfirmed = 0,
+            )
+        }
+
+        val spentCallCountBefore = daemonClient.spentRequests.size
+        daemonClient.spentOutputIds = listOf(receiveUtxo.outputId)
+
+        // Exit either when the bug fires (UTXO marked spent) or after two poll cycles
+        // have checked the marker output, whichever happens first.
+        waitUntil {
+            engine.mwebUtxos().first { it.outputId == receiveUtxo.outputId }.spent ||
+                daemonClient.spentRequests.size >= spentCallCountBefore + 2
+        }
+
+        assertFalse(engine.mwebUtxos().first { it.outputId == receiveUtxo.outputId }.spent)
+        assertEquals(
+            MwebBalance(confirmed = receiveUtxo.value + pollMarkerUtxo.value, unconfirmed = 0),
+            engine.balance,
+        )
+    }
+
+    @Test
+    fun refresh_mixedSpentOutputsAtAndAboveDaemonUtxoHeight_marksOnlyOutputsAtOrBelowHeight() {
+        val trustedUtxo = changeUtxo(outputId = "trusted-output", height = 10)
+        val aheadUtxo = changeUtxo(outputId = "ahead-output", value = 200, height = 20)
+        val daemonClient = FakeDaemonClient(
+            status = syncedStatus(aheadUtxo.height),
+            streamUtxos = listOf(trustedUtxo, aheadUtxo),
+        )
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        waitUntil {
+            engine.balance == MwebBalance(
+                confirmed = trustedUtxo.value + aheadUtxo.value,
+                unconfirmed = 0,
+            )
+        }
+
+        // Daemon CoinDB is behind local Room while headers still cover both UTXOs.
+        daemonClient.status = statusWithUtxoHeight(
+            chainHeight = aheadUtxo.height,
+            mwebUtxosHeight = trustedUtxo.height,
+        )
+        daemonClient.spentOutputIds = listOf(trustedUtxo.outputId, aheadUtxo.outputId)
+        engine.refresh()
+
+        waitUntil {
+            engine.mwebUtxos().firstOrNull { it.outputId == trustedUtxo.outputId }?.spent == true
+        }
+
+        val utxosById = engine.mwebUtxos().associateBy { it.outputId }
+        assertTrue(utxosById.getValue(trustedUtxo.outputId).spent)
+        assertFalse(utxosById.getValue(aheadUtxo.outputId).spent)
+        assertEquals(MwebBalance(confirmed = aheadUtxo.value, unconfirmed = 0), engine.balance)
+    }
+
+    @Test
+    fun refresh_mixedConfirmedAndUnconfirmedOutputs_checksOnlyConfirmedOutputs() {
+        val confirmedUtxo = changeUtxo(outputId = "confirmed-output")
+        val daemonClient = FakeDaemonClient(
+            status = syncedStatus(confirmedUtxo.height),
             streamUtxos = listOf(
-                MwebUtxo("confirmed-output", "address", 1, 100, 10, 1_000, spent = false),
+                confirmedUtxo,
                 MwebUtxo("unconfirmed-change", "", 0, 2_161_921, 0, 0, spent = false),
             ),
             spentOutputIds = listOf("confirmed-output", "unconfirmed-change"),
@@ -394,14 +511,16 @@ class LitecoinMwebEngineLifecycleTest {
 
     @Test
     fun spentPoll_started_marksSpentOutputsPeriodically() {
+        val spentUtxo = changeUtxo(outputId = "spent-output")
         val daemonClient = FakeDaemonClient(
-            streamUtxos = listOf(MwebUtxo("spent-output", "address", 1, 100, 10, 1_000, spent = false)),
+            status = syncedStatus(spentUtxo.height),
+            streamUtxos = listOf(spentUtxo),
         )
         val engine = engineWith(daemonClient, spentPollIntervalMillis = 10)
 
         engine.start()
         waitUntil { engine.mwebUtxos().isNotEmpty() }
-        daemonClient.spentOutputIds = listOf("spent-output")
+        daemonClient.spentOutputIds = listOf(spentUtxo.outputId)
         waitUntil { engine.balance == MwebBalance(confirmed = 0, unconfirmed = 0) }
 
         assertEquals(MwebBalance(confirmed = 0, unconfirmed = 0), engine.balance)
@@ -539,6 +658,45 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(50L, transaction.amount)
         assertEquals(PUBLIC_DESTINATION, transaction.address)
         assertNull(transaction.canonicalTransactionHash)
+    }
+
+    @Test
+    fun refresh_pendingLocalSpentOutputAboveDaemonUtxoHeight_keepsTransactionPendingUntilCovered() = runBlocking {
+        val destination = mwebDestination()
+        val inputUtxo = receiveUtxo(outputId = SELECTED_OUTPUT_ID, value = 100_000)
+        val daemonClient = FakeDaemonClient(
+            status = syncedStatus(inputUtxo.height),
+            streamUtxos = listOf(inputUtxo),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+        val spentRequestsBefore = daemonClient.spentRequests.size
+        daemonClient.spentOutputIds = listOf(inputUtxo.outputId)
+        daemonClient.status = statusWithUtxoHeight(
+            chainHeight = inputUtxo.height + 1,
+            mwebUtxosHeight = inputUtxo.height - 1,
+        )
+
+        engine.refresh()
+
+        assertEquals(spentRequestsBefore, daemonClient.spentRequests.size)
+        assertTrue(engine.transactions().first { it.type == MwebTransactionType.Outgoing }.pending)
+
+        daemonClient.status = statusWithUtxoHeight(
+            chainHeight = inputUtxo.height + 1,
+            mwebUtxosHeight = inputUtxo.height + 1,
+            blockTime = 2_000,
+        )
+        engine.refresh()
+
+        val transaction = engine.transactions().first { it.type == MwebTransactionType.Outgoing }
+        assertEquals(listOf(listOf(inputUtxo.outputId)), daemonClient.spentRequests.drop(spentRequestsBefore))
+        assertEquals(inputUtxo.height + 1, transaction.height)
+        assertEquals(2_000L, transaction.timestamp)
+        assertFalse(transaction.pending)
     }
 
     @Test
@@ -1634,6 +1792,53 @@ class LitecoinMwebEngineLifecycleTest {
             }
         }
     }
+
+    private fun receiveUtxo(
+        outputId: String = "receive-output",
+        value: Long = 100,
+        height: Int = 10,
+    ) = MwebUtxo(
+        outputId = outputId,
+        address = "address",
+        addressIndex = 1,
+        value = value,
+        height = height,
+        blockTime = 1_000,
+        spent = false,
+    )
+
+    private fun changeUtxo(
+        outputId: String = "change-output",
+        value: Long = 100,
+        height: Int = 10,
+    ) = MwebUtxo(
+        outputId = outputId,
+        address = "",
+        addressIndex = 0,
+        value = value,
+        height = height,
+        blockTime = 1_000,
+        spent = false,
+    )
+
+    private fun syncedStatus(height: Int) = statusWithUtxoHeight(
+        chainHeight = height,
+        mwebUtxosHeight = height,
+    )
+
+    private fun statusWithUtxoHeight(
+        chainHeight: Int,
+        mwebUtxosHeight: Int,
+        blockTime: Long = 0,
+    ) = MwebDaemonStatus(
+        syncState = MwebSyncState(
+            blockHeaderHeight = chainHeight,
+            mwebHeaderHeight = chainHeight,
+            mwebUtxosHeight = mwebUtxosHeight,
+        ),
+        nativeVersion = "test-native",
+        blockTime = blockTime,
+    )
 
     private fun publicUtxo(value: Long): UnspentOutput {
         val transaction = Transaction(version = 2, lockTime = 0).apply {
