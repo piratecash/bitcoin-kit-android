@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>cosantakit</artifactId>
   <versioning>
-    <latest>v0.1.0-pcash.7</latest>
-    <release>v0.1.0-pcash.7</release>
+    <latest>308dd6a</latest>
+    <release>308dd6a</release>
     <versions>
-      <version>v0.1.0-pcash.7</version>
+      <version>308dd6a</version>
     </versions>
-    <lastUpdated>20260524154027</lastUpdated>
+    <lastUpdated>20260524154034</lastUpdated>
   </versioning>
 </metadata>
