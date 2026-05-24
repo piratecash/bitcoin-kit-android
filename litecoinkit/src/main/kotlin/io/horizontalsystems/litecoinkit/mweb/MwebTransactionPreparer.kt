@@ -181,16 +181,17 @@ internal class MwebTransactionPreparer(
     }
 
     private fun selectedMwebUtxos(request: MwebSendRequest): List<MwebUtxo> {
+        val mwebUtxosHeight = syncStateProvider().mwebUtxosHeight
         return when (request) {
             is MwebSendRequest.PublicToMweb -> emptyList()
-            is MwebSendRequest.MwebToMweb -> confirmedMwebUtxos()
-            is MwebSendRequest.MwebToPublic -> confirmedMwebUtxos()
-                .filter { it.confirmations(syncStateProvider().mwebUtxosHeight) >= PEG_OUT_CONFIRMATIONS }
+            is MwebSendRequest.MwebToMweb -> confirmedMwebUtxos(mwebUtxosHeight)
+            is MwebSendRequest.MwebToPublic -> confirmedMwebUtxos(mwebUtxosHeight)
+                .filter { it.confirmations(mwebUtxosHeight) >= PEG_OUT_CONFIRMATIONS }
         }
     }
 
-    private fun confirmedMwebUtxos(): List<MwebUtxo> {
-        return utxosProvider().filter { it.confirmed && !it.spent }
+    private fun confirmedMwebUtxos(mwebUtxosHeight: Int): List<MwebUtxo> {
+        return utxosProvider().filter { !it.spent && it.visibleToDaemon(mwebUtxosHeight) }
     }
 
     private fun publicCandidates(
@@ -235,15 +236,25 @@ internal class MwebTransactionPreparer(
     }
 
     private fun confirmationPendingMwebValue(request: MwebSendRequest): Long {
+        val mwebUtxosHeight = syncStateProvider().mwebUtxosHeight
         return when (request) {
             is MwebSendRequest.PublicToMweb -> 0
             is MwebSendRequest.MwebToMweb -> utxosProvider()
-                .filter { !it.confirmed && !it.spent }
+                .filter { !it.spent && !it.visibleToDaemon(mwebUtxosHeight) }
                 .sumOf { it.value }
             is MwebSendRequest.MwebToPublic -> utxosProvider()
-                .filter { !it.spent && it.confirmations(syncStateProvider().mwebUtxosHeight) < PEG_OUT_CONFIRMATIONS }
+                .filter { !it.spent && it.confirmations(mwebUtxosHeight) < PEG_OUT_CONFIRMATIONS }
                 .sumOf { it.value }
         }
+    }
+
+    // Spendable from the daemon's perspective: locally confirmed AND covered by
+    // its mwebUtxosHeight. If the daemon has not yet loaded the coin into its
+    // CoinDB, mwebd silently treats the MWEB input as a public one (ErrCoinNotFound
+    // branch in mwebd Create), and the resulting transaction fails downstream as a
+    // misleading "daemon stopped unexpectedly".
+    private fun MwebUtxo.visibleToDaemon(mwebUtxosHeight: Int): Boolean {
+        return confirmed && height in 1..mwebUtxosHeight
     }
 
     private fun buildTransactionDraft(

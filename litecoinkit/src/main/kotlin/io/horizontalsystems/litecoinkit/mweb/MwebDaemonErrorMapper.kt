@@ -1,5 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeoutException
 
 internal object MwebDaemonErrorMapper {
@@ -21,6 +22,7 @@ internal object MwebDaemonErrorMapper {
 
     private fun throwMapped(error: Throwable): Nothing {
         when (error) {
+            is CancellationException -> throw error
             is MwebError -> throw error
             is UnsatisfiedLinkError,
             is NoClassDefFoundError -> throw MwebError.NativeUnavailable(error)

@@ -12,6 +12,11 @@ buildscript {
             process.inputStream.text.trim() ?: "unknown"
         })
         .get()
+    ext.libraryVersion = providers.environmentVariable("JITPACK_VERSION")
+        .orElse(providers.environmentVariable("VERSION"))
+        .orElse(providers.environmentVariable("VERSION_NAME"))
+        .orElse(provider { ext.shortSha })
+        .get()
     repositories {
         google()
         mavenCentral()
@@ -26,6 +31,7 @@ buildscript {
 }
 
 plugins {
+    id 'maven-publish'
     id 'com.google.devtools.ksp' version '2.0.21-1.0.27' apply false
 }
 
@@ -43,6 +49,40 @@ def libraryModules = [
     'ecashkit', 'hodler'
 ]
 
+def localMavenRepository = { repositories ->
+    repositories.maven {
+        name = "local"
+        url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
+    }
+}
+
+def addLibraryModuleDependencies = { pom ->
+    pom.withXml {
+        def dependenciesNode = asNode().appendNode('dependencies')
+        libraryModules.each { mod ->
+            def dependencyNode = dependenciesNode.appendNode('dependency')
+            dependencyNode.appendNode('groupId', 'com.github.piratecash.bitcoin-kit-android')
+            dependencyNode.appendNode('artifactId', mod)
+            dependencyNode.appendNode('version', rootProject.ext.libraryVersion)
+            dependencyNode.appendNode('type', 'aar')
+        }
+    }
+}
+
+publishing {
+    publications {
+        release(MavenPublication) {
+            groupId = "com.github.piratecash"
+            artifactId = "bitcoin-kit-android"
+            version = rootProject.ext.libraryVersion
+            addLibraryModuleDependencies(pom)
+        }
+    }
+    repositories {
+        localMavenRepository(delegate)
+    }
+}
+
 subprojects { sub ->
     if (libraryModules.contains(sub.name)) {
         sub.afterEvaluate {
@@ -50,49 +90,13 @@ subprojects { sub ->
                 publications.withType(MavenPublication).configureEach {
                     groupId = "com.github.piratecash.bitcoin-kit-android"
                     artifactId = sub.name
-                    version = rootProject.ext.shortSha
+                    version = rootProject.ext.libraryVersion
                 }
                 repositories {
-                    maven {
-                        name = "local"
-                        url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
-                    }
+                    localMavenRepository(delegate)
                 }
             }
         }
-    }
-}
-
-tasks.register('generateRootPom') {
-    def repoDir = rootProject.layout.buildDirectory.dir("maven-repo/com/github/piratecash/bitcoin-kit-android/${rootProject.ext.shortSha}")
-    outputs.dir(repoDir)
-    doLast {
-        def dir = repoDir.get().asFile
-        dir.mkdirs()
-        def deps = libraryModules.collect { mod ->
-            """    <dependency>
-      <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
-      <artifactId>${mod}</artifactId>
-      <version>${rootProject.ext.shortSha}</version>
-      <type>aar</type>
-    </dependency>"""
-        }.join('\n')
-
-        new File(dir, "bitcoin-kit-android-${rootProject.ext.shortSha}.pom").text = """\
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.github.piratecash</groupId>
-  <artifactId>bitcoin-kit-android</artifactId>
-  <version>${rootProject.ext.shortSha}</version>
-  <packaging>pom</packaging>
-  <dependencies>
-${deps}
-  </dependencies>
-</project>
-"""
     }
 }
 

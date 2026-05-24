@@ -26,13 +26,18 @@ jobs:
       - name: Create local.properties
         run: touch local.properties
 
-      - name: Set short SHA
-        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+      - name: Set publication version
+        run: |
+          short_sha="$(echo "$GITHUB_SHA" | cut -c1-7)"
+          echo "SHORT_SHA=$short_sha" >> "$GITHUB_ENV"
+          echo "PUBLISH_VERSION=$short_sha" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "VERSION_NAME=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+            echo "PUBLISH_VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          fi
 
       - name: Build and publish all modules to local repo
-        run: ./gradlew publishReleasePublicationToLocalRepository generateRootPom
-        env:
-          SHORT_SHA: ${{ env.SHORT_SHA }}
+        run: ./gradlew publishReleasePublicationToLocalRepository
 
       - name: Prepare gh-pages
         run: |
@@ -69,7 +74,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Publish ${{ env.SHORT_SHA }}"
+          git commit -m "Publish $PUBLISH_VERSION"
           git remote remove origin 2>/dev/null || true
           git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git push --force origin gh-pages

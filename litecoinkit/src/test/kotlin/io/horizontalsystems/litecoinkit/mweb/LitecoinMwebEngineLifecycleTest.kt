@@ -561,6 +561,7 @@ class LitecoinMwebEngineLifecycleTest {
         val addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet)
         val destination = addressCodec.encode(fakeMwebPubkey(0x11), fakeMwebPubkey(0x22))
         val daemonClient = FakeDaemonClient(
+            status = syncedStatus(10),
             streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
             dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
         )
@@ -615,6 +616,7 @@ class LitecoinMwebEngineLifecycleTest {
         val destination = mwebDestination()
         val engine = engineWith(
             FakeDaemonClient(
+                status = syncedStatus(10),
                 streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
                 dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
             )
@@ -633,6 +635,63 @@ class LitecoinMwebEngineLifecycleTest {
         assertEquals(listOf("created-output"), transaction.outputIds)
         assertEquals(listOf(SELECTED_OUTPUT_ID), transaction.inputOutputIds)
         assertTrue(transaction.pending)
+    }
+
+    @Test
+    fun send_mwebToMweb_utxoAboveDaemonUtxosHeight_throwsInsufficientMwebConfirmations() {
+        val destination = mwebDestination()
+        // The kit's storage already marks the UTXO confirmed at height 100, but the daemon's
+        // mwebUtxosHeight still lags at 50. Spending it would make mwebd's Create fall through
+        // ErrCoinNotFound and silently reclassify the MWEB input as a public one, which then
+        // fails downstream as "MWEB daemon stopped unexpectedly" via the catch-all error mapper.
+        val utxoHeight = 100
+        val daemonMwebUtxosHeight = 50
+        val daemonClient = FakeDaemonClient(
+            status = statusWithUtxoHeight(
+                chainHeight = utxoHeight,
+                mwebUtxosHeight = daemonMwebUtxosHeight,
+            ),
+            streamUtxos = listOf(
+                MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, utxoHeight, 1_000, spent = false),
+            ),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        assertThrows(MwebError.InsufficientMwebConfirmations::class.java) {
+            runBlocking {
+                engine.send(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+            }
+        }
+        // The hidden UTXO must be rejected before any daemon call; otherwise mwebd's
+        // ErrCoinNotFound branch would still reclassify it as a public input.
+        assertTrue(daemonClient.createRequests.isEmpty())
+        assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
+    }
+
+    @Test
+    fun send_mwebToMweb_utxoAtDaemonUtxosHeight_succeeds() = runBlocking {
+        val destination = mwebDestination()
+        val daemonMwebUtxosHeight = 100
+        val daemonClient = FakeDaemonClient(
+            status = statusWithUtxoHeight(
+                chainHeight = daemonMwebUtxosHeight,
+                mwebUtxosHeight = daemonMwebUtxosHeight,
+            ),
+            streamUtxos = listOf(
+                MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, daemonMwebUtxosHeight, 1_000, spent = false),
+            ),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(MwebSendRequest.MwebToMweb(destination, 50, 1), publicOptions())
+
+        val transaction = engine.transactions().first { it.type == MwebTransactionType.Outgoing }
+        assertEquals(MwebTransactionKind.MwebToMweb, transaction.kind)
+        assertEquals(listOf(SELECTED_OUTPUT_ID), transaction.inputOutputIds)
     }
 
     @Test
@@ -766,6 +825,7 @@ class LitecoinMwebEngineLifecycleTest {
     fun transactions_createdOutputFromOutgoing_doesNotReturnIncoming() = runBlocking {
         val destination = mwebDestination()
         val daemonClient = FakeDaemonClient(
+            status = syncedStatus(10),
             streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
             dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
         )
@@ -891,6 +951,7 @@ class LitecoinMwebEngineLifecycleTest {
         val destination = mwebDestination()
         val engine = engineWith(
             daemonClient = FakeDaemonClient(
+                status = syncedStatus(10),
                 streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 10, 1_000, spent = false)),
                 dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
             ),
@@ -916,6 +977,7 @@ class LitecoinMwebEngineLifecycleTest {
         val confirmedValue = 100_000L
         val recipientValue = 50L
         val daemonClient = FakeDaemonClient(
+            status = syncedStatus(10),
             streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 7, confirmedValue, 10, 1_000, spent = false)),
             // Daemon-stripped dry-run output value MUST NOT influence the fee in the new contract.
             dryRunRawTransaction = rawTransactionWithOutput(value = 999_999),
