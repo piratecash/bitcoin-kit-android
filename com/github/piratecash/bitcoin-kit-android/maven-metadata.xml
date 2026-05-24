@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>com.github.piratecash</groupId>
+  <artifactId>bitcoin-kit-android</artifactId>
+  <versioning>
+    <latest>v0.1.0-pcash.1</latest>
+    <release>v0.1.0-pcash.1</release>
+    <versions>
+      <version>v0.1.0-pcash.1</version>
+    </versions>
+    <lastUpdated>20260524030807</lastUpdated>
+  </versioning>
+</metadata>
