@@ -720,6 +720,67 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun send_mwebToPublicWithChange_savesLocalUnconfirmedChangeOutput() = runBlocking {
+        val bridge = FakePublicTransactionBridge()
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(receiveUtxo(outputId = SELECTED_OUTPUT_ID, value = 100_000, height = 95)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            createdOutputIds = listOf("change-output"),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        val changeOutput = engine.mwebUtxos().first { it.outputId == "change-output" }
+        assertEquals(0, changeOutput.height)
+        assertEquals(0, changeOutput.blockTime)
+        assertEquals(0, changeOutput.addressIndex)
+        assertEquals(97_740L, changeOutput.value)
+        assertFalse(changeOutput.spent)
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 97_740), engine.balance)
+    }
+
+    @Test
+    fun refresh_mwebToPublicConfirmedSpentInputs_confirmsLocallySavedChangeOutput() = runBlocking {
+        val bridge = FakePublicTransactionBridge()
+        val confirmedStatus = MwebDaemonStatus(
+            syncState = MwebSyncState(101, 101, 101),
+            nativeVersion = "test",
+            blockTime = 1_100,
+        )
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(receiveUtxo(outputId = SELECTED_OUTPUT_ID, value = 100_000, height = 95)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+            createdOutputIds = listOf("change-output"),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        daemonClient.status = confirmedStatus
+        daemonClient.spentOutputIds = listOf(SELECTED_OUTPUT_ID)
+        engine.refresh()
+        waitUntil { engine.balance == MwebBalance(confirmed = 97_740, unconfirmed = 0) }
+
+        val changeOutput = engine.mwebUtxos().first { it.outputId == "change-output" }
+        assertEquals(101, changeOutput.height)
+        assertEquals(1_100L, changeOutput.blockTime)
+        assertFalse(changeOutput.spent)
+    }
+
+    @Test
     fun refresh_pendingLocalSpentOutputAboveDaemonUtxoHeight_keepsTransactionPendingUntilCovered() = runBlocking {
         val destination = mwebDestination()
         val inputUtxo = receiveUtxo(outputId = SELECTED_OUTPUT_ID, value = 100_000)
@@ -968,6 +1029,68 @@ class LitecoinMwebEngineLifecycleTest {
 
         assertTrue(engine.transactions().none { it.type == MwebTransactionType.Outgoing })
         assertTrue(engine.pendingTransactions().isEmpty())
+    }
+
+    @Test
+    fun transactions_staleMwebToPublicLocalChange_prunesTransactionPendingRawAndChangeUtxo() = runBlocking {
+        var now = 1_000_000L
+        val bridge = FakePublicTransactionBridge()
+        val engine = engineWith(
+            daemonClient = FakeDaemonClient(
+                status = syncedStatus(100),
+                streamUtxos = listOf(receiveUtxo(outputId = SELECTED_OUTPUT_ID, value = 100_000, height = 95)),
+                dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+                createdOutputIds = listOf("change-output"),
+            ),
+            localTransactionTtlMillis = 1_000L,
+            currentTimeMillisProvider = { now },
+        )
+        engine.start()
+        engine.send(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertEquals(1, engine.transactions().count { it.kind == MwebTransactionKind.MwebToPublic })
+        assertEquals(1, engine.pendingTransactions().size)
+        assertTrue(engine.mwebUtxos().any { it.outputId == "change-output" })
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 97_740), engine.balance)
+
+        now += 2_000L
+
+        assertTrue(engine.transactions().none { it.kind == MwebTransactionKind.MwebToPublic })
+        assertTrue(engine.pendingTransactions().isEmpty())
+        assertTrue(engine.mwebUtxos().none { it.outputId == "change-output" })
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 0), engine.balance)
+    }
+
+    @Test
+    fun transactions_stalePublicToMwebUnconfirmedCreatedOutput_prunesWithoutIncomingFallback() = runBlocking {
+        var now = 1_000_000L
+        val destination = mwebDestination()
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(
+            daemonClient = daemonClient,
+            localTransactionTtlMillis = 1_000L,
+            currentTimeMillisProvider = { now },
+        )
+        engine.start()
+        engine.send(
+            request = MwebSendRequest.PublicToMweb(destination, 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        daemonClient.emitUtxo(MwebUtxo("created-output", destination, 2, 1_000, 0, 0, spent = false))
+        waitUntil { engine.balance == MwebBalance(confirmed = 0, unconfirmed = 1_000) }
+
+        now += 2_000L
+
+        assertTrue(engine.transactions().isEmpty())
+        assertTrue(engine.pendingTransactions().isEmpty())
+        assertTrue(engine.mwebUtxos().none { it.outputId == "created-output" })
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 0), engine.balance)
     }
 
     @Test

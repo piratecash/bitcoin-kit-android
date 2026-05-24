@@ -167,10 +167,14 @@ class MwebRoomStorage(
         pendingTransaction: MwebPendingTransaction,
         localTransaction: MwebTransaction?,
         spentOutputIds: List<String>,
+        createdUtxos: List<MwebUtxo> = emptyList(),
     ) {
         database.runInTransaction {
             database.pendingTransactionDao.save(pendingTransaction.toEntity())
             localTransaction?.let { database.outgoingTransactionDao.save(it.toOutgoingEntity()) }
+            if (createdUtxos.isNotEmpty()) {
+                database.utxoDao.save(createdUtxos.map { it.toEntity() })
+            }
             if (spentOutputIds.isNotEmpty()) {
                 database.utxoDao.markConfirmedSpent(spentOutputIds)
             }
@@ -180,6 +184,11 @@ class MwebRoomStorage(
     fun deleteOutgoingTransactions(uids: List<String>) {
         if (uids.isEmpty()) return
         database.outgoingTransactionDao.delete(uids)
+    }
+
+    fun deleteUnconfirmedUtxos(outputIds: List<String>) {
+        if (outputIds.isEmpty()) return
+        database.utxoDao.deleteUnconfirmed(outputIds)
     }
 
     fun deletePendingTransactionsOlderThan(timestamp: Long) {

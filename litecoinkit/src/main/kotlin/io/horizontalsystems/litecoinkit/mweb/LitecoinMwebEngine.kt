@@ -318,6 +318,7 @@ internal class LitecoinMwebEngine(
                 ),
                 localTransaction = localTransaction(request, prepared, result, timestamp / 1_000),
                 spentOutputIds = selectedMwebOutputIds,
+                createdUtxos = localCreatedUtxos(request, prepared, result),
             )
             applyUtxoSnapshot(utxoSynchronizer.loadStoredSnapshot())
             result to signedPublicTransaction.publicTransaction
@@ -434,31 +435,50 @@ internal class LitecoinMwebEngine(
         localTransactions: List<MwebTransaction>,
         knownUtxos: List<MwebUtxo>,
     ): List<MwebTransaction> {
-        val visibleLocalTransactions = pruneStaleLocalTransactions(localTransactions, knownUtxos)
+        val pruneResult = pruneStaleLocalTransactions(localTransactions, knownUtxos)
+        val visibleLocalTransactions = pruneResult.transactions
+        val visibleUtxos = pruneResult.knownUtxos
         val locallyCreatedOutputIds = visibleLocalTransactions
             .flatMap { it.outputIds }
             .toSet()
-        val incomingTransactions = knownUtxos
+        val incomingTransactions = visibleUtxos
             .filter { it.addressIndex > 0 && it.outputId !in locallyCreatedOutputIds }
             .map { it.incomingTransaction() }
-        val transactions = incomingTransactions + visibleLocalTransactions.map { it.withStatusFrom(knownUtxos) }
+        val transactions = incomingTransactions + visibleLocalTransactions.map { it.withStatusFrom(visibleUtxos) }
         return transactions.sortedWith(compareByDescending<MwebTransaction> { it.timestamp }.thenByDescending { it.uid })
     }
 
     private fun pruneStaleLocalTransactions(
         localTransactions: List<MwebTransaction>,
         knownUtxos: List<MwebUtxo>,
-    ): List<MwebTransaction> {
+    ): LocalTransactionPruneResult {
         val now = currentTimeMillisProvider()
         val staleBeforeMillis = (now - localTransactionTtlMillis).coerceAtLeast(0)
         storage.deletePendingTransactionsOlderThan(staleBeforeMillis)
 
-        val staleUids = localTransactions
+        val staleTransactions = localTransactions
             .filter { it.isStale(now / 1_000, knownUtxos) }
-            .map { it.uid }
+        val staleUids = staleTransactions.map { it.uid }
+        val staleOutputIds = staleTransactions.flatMap { it.outputIds }.distinct()
         storage.deleteOutgoingTransactions(staleUids)
-        return localTransactions.filter { it.uid !in staleUids }
+        storage.deleteUnconfirmedUtxos(staleOutputIds)
+        val freshUtxos = if (staleOutputIds.isNotEmpty()) {
+            val snapshot = utxoSynchronizer.loadStoredSnapshot()
+            applyUtxoSnapshot(snapshot, notify = false)
+            snapshot.utxos
+        } else {
+            knownUtxos
+        }
+        return LocalTransactionPruneResult(
+            transactions = localTransactions.filter { it.uid !in staleUids },
+            knownUtxos = freshUtxos,
+        )
     }
+
+    private data class LocalTransactionPruneResult(
+        val transactions: List<MwebTransaction>,
+        val knownUtxos: List<MwebUtxo>,
+    )
 
     private fun MwebUtxo.incomingTransaction(): MwebTransaction {
         return MwebTransaction(
@@ -488,7 +508,7 @@ internal class LitecoinMwebEngine(
 
     private fun MwebTransaction.isStale(now: Long, knownUtxos: List<MwebUtxo>): Boolean {
         if (!pending || height != null) return false
-        if (knownUtxos.any { it.outputId in outputIds }) return false
+        if (knownUtxos.any { it.outputId in outputIds && it.confirmed }) return false
 
         return now - timestamp >= localTransactionTtlMillis / 1_000
     }
@@ -526,6 +546,30 @@ internal class LitecoinMwebEngine(
                 is MwebSendRequest.MwebToPublic,
                 is MwebSendRequest.MwebToMweb -> prepared.selectedMwebUtxos.isNotEmpty()
             },
+        )
+    }
+
+    private fun localCreatedUtxos(
+        request: MwebSendRequest,
+        prepared: PreparedMwebTransaction,
+        result: MwebSendResult,
+    ): List<MwebUtxo> {
+        if (request !is MwebSendRequest.MwebToPublic) return emptyList()
+
+        val outputId = result.outputIds.singleOrNull() ?: return emptyList()
+        val changeValue = prepared.changeValue ?: return emptyList()
+        val changeAddress = prepared.changeAddress ?: return emptyList()
+
+        return listOf(
+            MwebUtxo(
+                outputId = outputId,
+                address = changeAddress,
+                addressIndex = MwebAddressPool.CHANGE_INDEX,
+                value = changeValue,
+                height = 0,
+                blockTime = 0,
+                spent = false,
+            )
         )
     }
 

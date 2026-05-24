@@ -465,6 +465,20 @@ class MwebRoomStorageTest {
         assertTrue(storage.utxos().single().spent)
     }
 
+    @Test
+    fun deleteUnconfirmedUtxos_mixedHeights_deletesOnlyUnconfirmed() {
+        storage.saveUtxos(
+            listOf(
+                utxo(outputId = "unconfirmed", height = 0),
+                utxo(outputId = "confirmed", height = 100),
+            )
+        )
+
+        storage.deleteUnconfirmedUtxos(listOf("unconfirmed", "confirmed"))
+
+        assertEquals(listOf("confirmed"), storage.utxos().map { it.outputId })
+    }
+
     private fun utxo(outputId: String, height: Int, blockTime: Long = 1_000) = MwebUtxo(
         outputId = outputId,
         address = "address",

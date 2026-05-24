@@ -45,6 +45,9 @@ interface MwebUtxoDao {
 
     @Query("SELECT outputId FROM MwebUtxo WHERE height = 0")
     fun unconfirmedOutputIds(): List<String>
+
+    @Query("DELETE FROM MwebUtxo WHERE outputId IN (:outputIds) AND height = 0")
+    fun deleteUnconfirmed(outputIds: List<String>)
 }
 
 @Dao
