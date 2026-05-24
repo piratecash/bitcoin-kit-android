@@ -6,6 +6,11 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 
+internal data class MwebPublicTransactionStatus(
+    val height: Int?,
+    val timestamp: Long,
+)
+
 /** Public Litecoin send options reused when MWEB performs peg-in public coin selection. */
 internal data class MwebPublicSendOptions(
     /** Optional wallet-selected public UTXOs; null means the bridge can choose all spendable UTXOs. */
@@ -37,6 +42,9 @@ internal interface MwebPublicTransactionBridge {
 
     /** Persists the peg-in public transaction and enqueues normal public broadcast retries. */
     fun processCreated(transaction: FullTransaction): FullTransaction
+
+    /** Returns the current public transaction status when bitcoincore knows this transaction. */
+    fun transactionStatus(hash: String): MwebPublicTransactionStatus?
 
     /** Signs public peg-in inputs in a raw transaction template returned by mwebd. */
     suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction

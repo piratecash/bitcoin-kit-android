@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
+import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
 import io.horizontalsystems.bitcoincore.BitcoinCoreBuilder
 import io.horizontalsystems.bitcoincore.apisync.BCoinApi
@@ -26,9 +27,12 @@ import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
 import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.models.Address
+import io.horizontalsystems.bitcoincore.models.BalanceInfo
+import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
+import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
@@ -63,6 +67,7 @@ import io.horizontalsystems.litecoinkit.mweb.MwebError
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicPegInSender
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicSendConfig
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicSendOptions
+import io.horizontalsystems.litecoinkit.mweb.MwebPublicTransactionStatus
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicTransactionBridge
 import io.horizontalsystems.litecoinkit.mweb.MwebSendRequest
 import io.horizontalsystems.litecoinkit.mweb.MwebSendInfo
@@ -91,6 +96,7 @@ class LitecoinKit : AbstractKit {
     private var mwebEngineHandle: LitecoinMwebEngineHandle? = null
     private val mwebEngine: LitecoinMwebEngine?
         get() = mwebEngineHandle?.engine
+    private val bitcoinCoreListener = MwebAwareBitcoinCoreListener()
     private var mwebEngineListener: MwebListenerAdapter? = null
     private val mwebPublicTransactionBridge: MwebPublicTransactionBridge by lazy { MwebBitcoinCoreBridge() }
     private lateinit var mwebAddressCodec: MwebAddressCodec
@@ -99,7 +105,7 @@ class LitecoinKit : AbstractKit {
     var listener: Listener? = null
         set(value) {
             field = value
-            bitcoinCore.listener = value
+            bitcoinCore.listener = bitcoinCoreListener
             setMwebListener(value)
         }
 
@@ -201,6 +207,7 @@ class LitecoinKit : AbstractKit {
             iSchnorrInputSigner = iSchnorrInputSigner,
             sharedPeerGroupHolder = sharedPeerGroupHolder
         )
+        bitcoinCore.listener = bitcoinCoreListener
         mwebEngineHandle = mwebEngineHandle(context, mwebSeed, walletId, networkType, mwebConfig)
         setMwebListener(listener)
     }
@@ -250,6 +257,7 @@ class LitecoinKit : AbstractKit {
             iSchnorrInputSigner = iSchnorrInputSigner,
             sharedPeerGroupHolder = sharedPeerGroupHolder
         )
+        bitcoinCore.listener = bitcoinCoreListener
     }
 
     /**
@@ -261,6 +269,7 @@ class LitecoinKit : AbstractKit {
     override fun start() {
         super.start()
         mwebEngineHandle?.start()
+        syncPublicMwebTransactions()
     }
 
     /**
@@ -285,6 +294,7 @@ class LitecoinKit : AbstractKit {
     override fun refresh() {
         super.refresh()
         mwebEngine?.refresh()
+        syncPublicMwebTransactions()
     }
 
     override fun dispose() {
@@ -515,6 +525,37 @@ class LitecoinKit : AbstractKit {
         mwebEngineListener?.let(engine::addListener)
     }
 
+    private fun syncPublicMwebTransactions() {
+        mwebEngine?.syncPublicTransactions(mwebPublicTransactionBridge)
+    }
+
+    private fun syncPublicMwebTransactionsAsync() {
+        mwebEngine?.syncPublicTransactionsAsync(mwebPublicTransactionBridge)
+    }
+
+    private inner class MwebAwareBitcoinCoreListener : BitcoinCore.Listener {
+        override fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>) {
+            syncPublicMwebTransactionsAsync()
+            listener?.onTransactionsUpdate(inserted, updated)
+        }
+
+        override fun onTransactionsDelete(hashes: List<String>) {
+            listener?.onTransactionsDelete(hashes)
+        }
+
+        override fun onBalanceUpdate(balance: BalanceInfo) {
+            listener?.onBalanceUpdate(balance)
+        }
+
+        override fun onLastBlockInfoUpdate(blockInfo: BlockInfo) {
+            listener?.onLastBlockInfoUpdate(blockInfo)
+        }
+
+        override fun onKitStateUpdate(state: KitState) {
+            listener?.onKitStateUpdate(state)
+        }
+    }
+
     private fun mwebEngineHandle(
         context: Context,
         seed: ByteArray?,
@@ -604,6 +645,15 @@ class LitecoinKit : AbstractKit {
         override fun processCreated(transaction: FullTransaction): FullTransaction {
             transaction.header.status = Transaction.Status.NEW
             return bitcoinCore.processCreatedTransaction(transaction)
+        }
+
+        override fun transactionStatus(hash: String): MwebPublicTransactionStatus? {
+            return bitcoinCore.getTransaction(hash)?.let { transaction ->
+                MwebPublicTransactionStatus(
+                    height = transaction.blockHeight,
+                    timestamp = transaction.timestamp,
+                )
+            }
         }
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {

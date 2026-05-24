@@ -931,6 +931,79 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun syncPublicTransactionsAsync_confirmedPublicToMwebWithoutStreamOutput_materializesCreatedUtxo() = runBlocking {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+        lateinit var bridge: FakePublicTransactionBridge
+        bridge = FakePublicTransactionBridge(
+            publicUtxos = listOf(publicUtxo(value = 5_000)),
+            onProcessCreated = { engine.syncPublicTransactionsAsync(bridge) },
+        )
+        engine.start()
+        val destination = engine.receiveAddress()
+
+        bridge.transactionStatuses[DAEMON_BROADCAST_HASH] = MwebPublicTransactionStatus(11, 1_100)
+        engine.send(
+            request = MwebSendRequest.PublicToMweb(destination, 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        waitUntil { engine.mwebUtxos().any { it.outputId == "created-output" } }
+
+        val utxo = engine.mwebUtxos().single { it.outputId == "created-output" }
+        assertEquals(destination, utxo.address)
+        assertEquals(1, utxo.addressIndex)
+        assertEquals(1_000L, utxo.value)
+        assertEquals(11, utxo.height)
+        assertEquals(1_100L, utxo.blockTime)
+        assertEquals(MwebBalance(confirmed = 1_000, unconfirmed = 0), engine.balance)
+
+        val transaction = engine.transactions().single()
+        assertEquals(MwebTransactionKind.PublicToMweb, transaction.kind)
+        assertEquals(11, transaction.height)
+        assertEquals(1_100L, transaction.timestamp)
+        assertFalse(transaction.pending)
+    }
+
+    @Test
+    fun syncPublicTransactions_unconfirmedPublicToMwebWithoutStreamOutput_keepsTransactionPending() = runBlocking {
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val engine = engineWith(FakeDaemonClient())
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.PublicToMweb(engine.receiveAddress(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        bridge.transactionStatuses[DAEMON_BROADCAST_HASH] = MwebPublicTransactionStatus(null, 1_100)
+        engine.syncPublicTransactions(bridge)
+
+        assertTrue(engine.mwebUtxos().none { it.outputId == "created-output" })
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 0), engine.balance)
+        assertTrue(engine.transactions().single().pending)
+    }
+
+    @Test
+    fun syncPublicTransactions_confirmedPublicToExternalMweb_doesNotMaterializeCreatedUtxo() = runBlocking {
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val engine = engineWith(FakeDaemonClient())
+        engine.start()
+
+        engine.send(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+        bridge.transactionStatuses[DAEMON_BROADCAST_HASH] = MwebPublicTransactionStatus(11, 1_100)
+        engine.syncPublicTransactions(bridge)
+
+        assertTrue(engine.mwebUtxos().none { it.outputId == "created-output" })
+        assertEquals(MwebBalance(confirmed = 0, unconfirmed = 0), engine.balance)
+        assertTrue(engine.transactions().single().pending)
+    }
+
+    @Test
     fun transactions_mwebToPublicWithoutCreatedMwebOutput_confirmsWhenSpentInputsConfirmed() = runBlocking {
         val bridge = FakePublicTransactionBridge()
         val confirmedStatus = MwebDaemonStatus(
@@ -1728,6 +1801,7 @@ class LitecoinMwebEngineLifecycleTest {
         var processCreatedCount = 0
             private set
         val processCreatedTransactions = mutableListOf<FullTransaction>()
+        val transactionStatuses = mutableMapOf<String, MwebPublicTransactionStatus>()
 
         override fun spendableUtxos(options: MwebPublicSendOptions): List<UnspentOutput> {
             synchronized(this) {
@@ -1781,6 +1855,10 @@ class LitecoinMwebEngineLifecycleTest {
             processCreatedTransactions += transaction
             onProcessCreated?.invoke()
             return transaction
+        }
+
+        override fun transactionStatus(hash: String): MwebPublicTransactionStatus? {
+            return transactionStatuses[hash]
         }
 
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {

@@ -373,6 +373,24 @@ internal class LitecoinMwebEngine(
         }
     }
 
+    fun syncPublicTransactions(publicTransactionBridge: MwebPublicTransactionBridge) {
+        runOnIoBlocking {
+            syncPublicTransactionsSuspending(publicTransactionBridge)
+        }
+    }
+
+    fun syncPublicTransactionsAsync(publicTransactionBridge: MwebPublicTransactionBridge) {
+        coroutineScope.launch {
+            try {
+                syncPublicTransactionsSuspending(publicTransactionBridge)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Timber.tag(MWEB_ENGINE_LOG_TAG).d(error, "Failed to sync public MWEB transactions")
+            }
+        }
+    }
+
     /**
      * Returns user-visible MWEB history built from local sends and received UTXOs.
      *
@@ -479,6 +497,67 @@ internal class LitecoinMwebEngine(
         val transactions: List<MwebTransaction>,
         val knownUtxos: List<MwebUtxo>,
     )
+
+    private suspend fun syncPublicTransactionsSuspending(publicTransactionBridge: MwebPublicTransactionBridge) {
+        stateMutex.withLock {
+            val recoveredUtxos = publicToMwebUtxosRecoveredFromPublicChain(
+                localTransactions = storage.localTransactions(),
+                knownUtxos = utxos,
+                publicTransactionBridge = publicTransactionBridge,
+            )
+            if (recoveredUtxos.isEmpty()) return@withLock
+
+            storage.saveUtxos(recoveredUtxos)
+            applyUtxoSnapshot(utxoSynchronizer.loadStoredSnapshot())
+        }
+    }
+
+    private fun publicToMwebUtxosRecoveredFromPublicChain(
+        localTransactions: List<MwebTransaction>,
+        knownUtxos: List<MwebUtxo>,
+        publicTransactionBridge: MwebPublicTransactionBridge,
+    ): List<MwebUtxo> {
+        val knownUtxosByOutputId = knownUtxos.associateBy { it.outputId }
+        val addressIndexes = storage.addresses().associate { it.address to it.index }
+
+        return localTransactions.mapNotNull { transaction ->
+            transaction.publicToMwebUtxoRecoveredFromPublicChain(
+                knownUtxosByOutputId = knownUtxosByOutputId,
+                addressIndexes = addressIndexes,
+                publicTransactionBridge = publicTransactionBridge,
+            )
+        }
+    }
+
+    private fun MwebTransaction.publicToMwebUtxoRecoveredFromPublicChain(
+        knownUtxosByOutputId: Map<String, MwebUtxo>,
+        addressIndexes: Map<String, Int>,
+        publicTransactionBridge: MwebPublicTransactionBridge,
+    ): MwebUtxo? {
+        if (kind != MwebTransactionKind.PublicToMweb || !pending) return null
+
+        val outputId = outputIds.singleOrNull() ?: return null
+        val knownUtxo = knownUtxosByOutputId[outputId]
+        if (knownUtxo?.confirmed == true) return null
+
+        val address = knownUtxo?.address?.takeIf { it.isNotBlank() } ?: address ?: return null
+        val addressIndex = knownUtxo?.addressIndex?.takeIf { it > MwebAddressPool.CHANGE_INDEX }
+            ?: addressIndexes[address]?.takeIf { it > MwebAddressPool.CHANGE_INDEX }
+            ?: return null
+        val hash = canonicalTransactionHash?.takeIf { it.isNotBlank() } ?: return null
+        val status = publicTransactionBridge.transactionStatus(hash) ?: return null
+        val height = status.height?.takeIf { it > 0 } ?: return null
+
+        return MwebUtxo(
+            outputId = outputId,
+            address = address,
+            addressIndex = addressIndex,
+            value = knownUtxo?.value?.takeIf { it > 0 } ?: amount,
+            height = height,
+            blockTime = status.timestamp.takeIf { it > 0 } ?: timestamp,
+            spent = false,
+        )
+    }
 
     private fun MwebUtxo.incomingTransaction(): MwebTransaction {
         return MwebTransaction(

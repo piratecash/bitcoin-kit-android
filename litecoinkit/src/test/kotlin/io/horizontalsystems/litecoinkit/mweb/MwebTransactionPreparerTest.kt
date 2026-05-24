@@ -678,6 +678,8 @@ class MwebTransactionPreparerTest {
 
         override fun processCreated(transaction: FullTransaction): FullTransaction = transaction
 
+        override fun transactionStatus(hash: String): MwebPublicTransactionStatus? = null
+
         override suspend fun sign(rawTransaction: ByteArray, selectedUtxos: List<UnspentOutput>): FullTransaction {
             throw UnsupportedOperationException("not used in preparer tests")
         }
