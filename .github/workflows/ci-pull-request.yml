@@ -25,4 +25,4 @@ jobs:
           echo "words=\"\"" > local.properties
 
       - name: Run Unit tests
-        run: ./gradlew :bitcoincore:testDebugUnitTest
+        run: ./gradlew :bitcoincore:testDebugUnitTest :litecoinkit:testDebugUnitTest
