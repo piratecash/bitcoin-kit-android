@@ -1,10 +1,12 @@
 package io.horizontalsystems.bitcoincore.blocks
 
+import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.doReturn
 import com.nhaarman.mockitokotlin2.mock
 import com.nhaarman.mockitokotlin2.never
 import com.nhaarman.mockitokotlin2.verify
 import com.nhaarman.mockitokotlin2.whenever
+import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.task.GetMerkleBlocksTask
@@ -115,5 +117,60 @@ class BlockDownloadTest {
 
         verify(peer1).synced = false
         verify(peer2).synced = false
+    }
+
+    @Test
+    fun `handleInventoryItems - request unknown blocks - adds block hashes`() {
+        val blockHash1 = ByteArray(32) { 1 }
+        val transactionHash = ByteArray(32) { 2 }
+        val blockHash2 = ByteArray(32) { 3 }
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        givenSyncedPeer()
+
+        blockDownload.handleInventoryItems(
+            peer,
+            listOf(
+                InventoryItem(InventoryItem.MSG_BLOCK, blockHash1),
+                InventoryItem(InventoryItem.MSG_TX, transactionHash),
+                InventoryItem(InventoryItem.MSG_BLOCK, blockHash2),
+            )
+        )
+
+        verify(blockSyncer).addBlockHashes(listOf(blockHash1, blockHash2))
+    }
+
+    @Test
+    fun `handleInventoryItems - do not request unknown blocks - does not add block hashes`() {
+        val blockHash = ByteArray(32) { 1 }
+        givenSyncedPeer()
+
+        blockDownload.handleInventoryItems(
+            peer,
+            listOf(InventoryItem(InventoryItem.MSG_BLOCK, blockHash))
+        )
+
+        verify(blockSyncer, never()).addBlockHashes(any())
+    }
+
+    @Test
+    fun `handleInventoryItems - request unknown blocks from unsynced peer - does not add block hashes`() {
+        val blockHash = ByteArray(32) { 1 }
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+
+        blockDownload.handleInventoryItems(
+            peer,
+            listOf(InventoryItem(InventoryItem.MSG_BLOCK, blockHash))
+        )
+
+        verify(blockSyncer, never()).addBlockHashes(any())
+    }
+
+    private fun givenSyncedPeer() {
+        whenever(peer.ready).thenReturn(true)
+        whenever(peerManager.sorted()).thenReturn(emptyList())
+        whenever(blockSyncer.getOrphanParents()).thenReturn(emptyList())
+        whenever(blockSyncer.getBlockHashes(50)).thenReturn(emptyList())
+        blockDownload.syncPeer = peer
+        blockDownload.onPeerReady(peer)
     }
 }

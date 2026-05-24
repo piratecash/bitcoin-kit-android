@@ -655,6 +655,7 @@ class LitecoinKit : AbstractKit {
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
+            .setRequestUnknownBlocks(syncMode is SyncMode.Blockchair)
             .apply {
                 if(iInputSigner != null && iSchnorrInputSigner != null) {
                     setSigners(iInputSigner, iSchnorrInputSigner)
