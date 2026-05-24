@@ -1,11 +1,31 @@
 package io.horizontalsystems.bitcoincore.apisync.blockchair
+
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonTransformingSerializer
 
 @Serializable
 internal data class BlockchairTransactionResponse(
+    @Serializable(with = BlockchairTransactionDataSerializer::class)
     val data: Map<String, FullApiTransaction>
 )
+
+private object BlockchairTransactionDataSerializer : JsonTransformingSerializer<Map<String, FullApiTransaction>>(
+    MapSerializer(String.serializer(), FullApiTransaction.serializer())
+) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        return if (element is JsonArray && element.isEmpty()) {
+            JsonObject(emptyMap())
+        } else {
+            element
+        }
+    }
+}
 
 @Serializable
 data class FullApiTransaction(
