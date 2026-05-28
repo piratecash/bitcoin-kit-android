@@ -4,7 +4,7 @@ import io.horizontalsystems.bitcoincore.network.Network
 
 class MainNetCosanta : Network() {
 
-    override val protocolVersion = 70227
+    override val protocolVersion = 70229
     override val noBloomVersion = 70201
 
     override var port: Int = 60606
