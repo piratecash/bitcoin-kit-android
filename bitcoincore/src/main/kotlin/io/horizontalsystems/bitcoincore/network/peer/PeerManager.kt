@@ -39,7 +39,9 @@ class PeerManager {
 
     fun readyPears(): List<Peer> {
         return peers.values.filter { peer ->
-            peer.connected && (allowBroadcastFromUnsyncedPeers || peer.ready)
+            // A peer still verifying its chain identity must never receive a broadcast, even when
+            // broadcasting from unsynced peers is allowed: it may turn out to be on the wrong chain.
+            peer.connected && !peer.awaitingChainIdentity && (allowBroadcastFromUnsyncedPeers || peer.ready)
         }
     }
 

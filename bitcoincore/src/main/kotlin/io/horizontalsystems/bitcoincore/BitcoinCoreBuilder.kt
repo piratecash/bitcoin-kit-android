@@ -67,6 +67,8 @@ import io.horizontalsystems.bitcoincore.network.messages.GetDataMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.GetDataMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.GetAddrMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.GetAddrMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.GetHeadersMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.HeadersMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.InvMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.InvMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.MempoolMessageSerializer
@@ -765,6 +767,13 @@ class BitcoinCoreBuilder {
 
             networkMessageParser.add(GetAddrMessageParser())
             networkMessageSerializer.add(GetAddrMessageSerializer())
+
+            // The chain-identity probe (see Peer) sends getheaders and parses the headers reply.
+            // Only networks that share their wire format with another chain (eCash) define an anchor.
+            if (network.chainIdentityAnchorHash != null) {
+                networkMessageParser.add(HeadersMessageParser(blockHeaderHasher))
+                networkMessageSerializer.add(GetHeadersMessageSerializer())
+            }
 
             val bloomFilterLoader = BloomFilterLoader(bloomFilterManager, peerManager)
             bloomFilterManager.listener = bloomFilterLoader

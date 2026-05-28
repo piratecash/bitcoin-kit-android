@@ -6,6 +6,7 @@ import io.horizontalsystems.bitcoincore.network.messages.*
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import java.net.InetAddress
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
 
 class Peer(
         val host: String,
@@ -13,7 +14,8 @@ class Peer(
         private val listener: Listener,
         networkMessageParser: NetworkMessageParser,
         networkMessageSerializer: NetworkMessageSerializer,
-        executorService: ExecutorService)
+        executorService: ExecutorService,
+        private val now: () -> Long = System::currentTimeMillis)
     : PeerConnection.Listener, PeerTask.Listener, PeerTask.Requester {
 
     interface Listener {
@@ -38,8 +40,12 @@ class Peer(
     private val peerConnection = PeerConnection(host, network, this, executorService, networkMessageParser, networkMessageSerializer)
     private val timer = PeerTimer()
 
+    var awaitingChainIdentity = false
+        private set
+    private var chainIdentityRequestTime: Long? = null
+
     val ready: Boolean
-        get() = connected && tasks.isEmpty()
+        get() = connected && tasks.isEmpty() && !awaitingChainIdentity
 
     fun start(peerThreadPool: ExecutorService) {
         peerThreadPool.execute(peerConnection)
@@ -88,6 +94,14 @@ class Peer(
     //
     override fun onTimePeriodPassed() {
         try {
+            chainIdentityRequestTime?.let {
+                if (now() - it > chainIdentityTimeout) {
+                    // The peer answers pings but never sent the requested headers; free the slot
+                    // without penalizing the address, it may respond on a later attempt.
+                    return close()
+                }
+            }
+
             timer.check()
 
             tasks.firstOrNull()?.checkTimeout()
@@ -109,6 +123,13 @@ class Peer(
             return handleVerackMessage()
 
         if (!connected) return
+
+        // While verifying chain identity the peer is not yet announced via onConnect, so all
+        // other messages (incl. unsolicited addr) are ignored until the probe resolves.
+        if (awaitingChainIdentity) {
+            if (message is HeadersMessage) handleChainIdentityHeaders(message)
+            return
+        }
 
         when (message) {
             is PingMessage -> peerConnection.sendMessage(PongMessage(message.nonce))
@@ -150,7 +171,35 @@ class Peer(
         connectStartTime?.let {
             connectionTime = System.currentTimeMillis() - it
         }
-        listener.onConnect(this)
+
+        val anchorHash = network.chainIdentityAnchorHash
+        if (anchorHash == null) {
+            listener.onConnect(this)
+        } else {
+            awaitingChainIdentity = true
+            chainIdentityRequestTime = now()
+            send(GetHeadersMessage(protocolVersion, listOf(anchorHash), network.zeroHashBytes))
+        }
+    }
+
+    private fun handleChainIdentityHeaders(message: HeadersMessage) {
+        // Stop the probe timeout regardless of the outcome; on the wrong-chain path it must not fire
+        // later and overwrite the WrongChain disconnect error (which routes the address to markFailed).
+        chainIdentityRequestTime = null
+
+        val anchorHash = network.chainIdentityAnchorHash
+        val onAnchorChain = anchorHash != null &&
+            message.headers.firstOrNull()?.previousBlockHeaderHash?.contentEquals(anchorHash) == true
+
+        if (onAnchorChain) {
+            awaitingChainIdentity = false
+            listener.onConnect(this)
+        } else {
+            // Keep awaitingChainIdentity = true so the peer stays not-ready until disconnect: resetting
+            // it here would briefly expose the wrong-chain peer as ready (connected, no tasks) in the
+            // window before disconnected() fires.
+            close(Error.WrongChain("Peer is not on the ${network.logTag} chain"))
+        }
     }
 
     private fun validatePeerVersion(message: VersionMessage) {
@@ -196,5 +245,10 @@ class Peer(
 
     open class Error(message: String) : Exception(message) {
         class UnsuitablePeerVersion(message: String) : Error(message)
+        class WrongChain(message: String) : Error(message)
+    }
+
+    companion object {
+        private val chainIdentityTimeout = TimeUnit.SECONDS.toMillis(10)
     }
 }

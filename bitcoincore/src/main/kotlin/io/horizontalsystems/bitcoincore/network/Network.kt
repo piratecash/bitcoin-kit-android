@@ -36,6 +36,11 @@ abstract class Network {
     open val bip44Checkpoint = Checkpoint("${javaClass.simpleName}-bip44.checkpoint")
     open val lastCheckpoint = Checkpoint("${javaClass.simpleName}.checkpoint")
 
+    // Hash of a block that exists only on this network's chain. When non-null, a peer is asked
+    // for headers building on it right after the handshake and is rejected unless its chain
+    // contains that block. Used by networks that share P2P magic/port with another chain.
+    open val chainIdentityAnchorHash: ByteArray? = null
+
     open val sigHashForked: Boolean = false
     open val sigHashValue = Sighash.ALL
 }

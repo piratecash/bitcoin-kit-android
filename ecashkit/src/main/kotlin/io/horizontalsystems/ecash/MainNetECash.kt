@@ -22,14 +22,20 @@ class MainNetECash : Network() {
     override val sigHashForked = true
     override val sigHashValue = Sighash.FORKID or Sighash.ALL
 
+    // eCash-only seeders from Bitcoin ABC (src/kernel/chainparams.cpp, CMainParams).
+    // The previous list was copied from Bitcoin Cash and returned BCH peers, which connect
+    // successfully over the shared magic/port but serve the wrong chain.
+    // The "x5." prefix filters for peers advertising NODE_NETWORK|NODE_BLOOM, required by SPV.
     override var dnsSeeds = listOf(
-        "x5.seed.bitcoinabc.org",                   // Bitcoin ABC seeder
-        "btccash-seeder.bitcoinunlimited.info",     // BU backed seeder
-        "x5.seeder.jasonbcox.com",                  // Jason B. Cox
-        "seed.deadalnix.me",                        // Amaury SÉCHET
-        "seed.bchd.cash",                           // BCHD
-        "x5.seeder.fabien.cash"                     // Fabien
+        "x5.seed.bitcoinabc.org",   // Bitcoin ABC seeder
+        "x5.seeder.fabien.cash",    // Fabien
+        "x5.seeder.status.cash"     // status.cash
     )
+
+    // eCash and Bitcoin Cash share the P2P magic and port, so a BCH peer passes the version
+    // handshake. This post-fork checkpoint block exists only on the eCash chain; the chain-identity
+    // probe rejects any peer that does not have it before it can be used for syncing.
+    override val chainIdentityAnchorHash: ByteArray = lastCheckpoint.block.headerHash
 
     override val logTag = "ECASH"
 }
