@@ -28,19 +28,11 @@ class UnspentOutputSelectorSingleNoChange(
             throw SendValueErrors.Dust
         }
 
-        val sortedOutputs =
-            unspentOutputProvider.getSpendableUtxo(filters).sortedWith(compareByDescending<UnspentOutput> {
-                it.output.failedToSpend
-            }.thenBy {
-                it.output.value
-            })
+        val sortedOutputs = unspentOutputProvider.getSpendableUtxo(filters)
+            .sortedBy { it.output.value }
 
         if (sortedOutputs.isEmpty()) {
             throw SendValueErrors.EmptyOutputs
-        }
-
-        if (sortedOutputs.any { it.output.failedToSpend }) {
-            throw SendValueErrors.HasOutputFailedToSpend
         }
 
         val params = UnspentOutputQueue.Parameters(

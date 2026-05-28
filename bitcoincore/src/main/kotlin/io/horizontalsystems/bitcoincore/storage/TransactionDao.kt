@@ -37,6 +37,9 @@ interface TransactionDao {
     @Query("SELECT * FROM `Transaction` t LEFT JOIN Block b ON t.blockHash = b.headerHash WHERE hash = :hash")
     fun getTransactionWithBlock(hash: ByteArray): TransactionWithBlock?
 
+    @Query("SELECT * FROM `Transaction` WHERE blockHash IS NULL AND status = :status AND isMine = 1")
+    fun getRelayedPendingTransactions(status: Int): List<Transaction>
+
     @Query("SELECT hash FROM `Transaction` WHERE blockHash IS NULL AND isOutgoing = 0 AND isMine = 1")
     fun getIncomingPendingTxHashes(): List<ByteArray>
 

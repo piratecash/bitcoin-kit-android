@@ -9,6 +9,7 @@ import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.InvMessage
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.RejectMessage
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import timber.log.Timber
 import java.net.Inet6Address
@@ -36,6 +37,7 @@ open class PeerGroup(
         fun onPeerConnect(peer: Peer) = Unit
         fun onPeerDisconnect(peer: Peer, e: Exception?) = Unit
         fun onPeerReady(peer: Peer) = Unit
+        fun onPeerReject(peer: Peer, rejectMessage: RejectMessage) = Unit
     }
 
     private val inventoryItemsHandlers = CopyOnWriteArrayList<IInventoryItemsHandler>()
@@ -154,26 +156,34 @@ open class PeerGroup(
     }
 
     override fun onReceiveMessage(peer: Peer, message: IMessage) {
-        if (message is AddrMessage && handleAddrMessage) {
-            val peerIps = message.addresses
-                // exclude peers those don't support bloom filter
-                .filter {
-                    it.services and network.serviceBloomFilter == network.serviceBloomFilter
-                }
-                .map {
-                    InetAddress.getByAddress(it.address)
-                }
-                // exclude ipv6 addresses
-                .filter {
-                    it !is Inet6Address
-                }
-                .map {
-                    it.hostAddress
-                }
+        when {
+            message is RejectMessage -> {
+                peerGroupListeners.forEach { it.onPeerReject(peer, message) }
+            }
 
-            hostManager.addIps(null, peerIps)
-        } else if (message is InvMessage) {
-            inventoryItemsHandlers.forEach { it.handleInventoryItems(peer, message.inventory) }
+            message is AddrMessage && handleAddrMessage -> {
+                val peerIps = message.addresses
+                    // exclude peers those don't support bloom filter
+                    .filter {
+                        it.services and network.serviceBloomFilter == network.serviceBloomFilter
+                    }
+                    .map {
+                        InetAddress.getByAddress(it.address)
+                    }
+                    // exclude ipv6 addresses
+                    .filter {
+                        it !is Inet6Address
+                    }
+                    .map {
+                        it.hostAddress
+                    }
+
+                hostManager.addIps(null, peerIps)
+            }
+
+            message is InvMessage -> {
+                inventoryItemsHandlers.forEach { it.handleInventoryItems(peer, message.inventory) }
+            }
         }
         logPeersStatusThrottled()
     }

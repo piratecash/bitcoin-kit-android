@@ -163,7 +163,7 @@ class GetMerkleBlocksTask(
                 .d("GetMerkleBlocksTask: Orphan merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
         } catch (e: Exception) {
             Timber.tag(logTag)
-                .d("Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, error=${e.message}")
+                .e(e, "Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}")
             listener?.onTaskFailed(this, e)
         }
 

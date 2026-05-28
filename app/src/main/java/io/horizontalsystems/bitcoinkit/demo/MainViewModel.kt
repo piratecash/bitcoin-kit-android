@@ -17,24 +17,27 @@ import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
-import io.horizontalsystems.bitcoinkit.BitcoinKit
-import io.horizontalsystems.cosantakit.CosantaKit
-import io.horizontalsystems.dashkit.DashKit
-import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hodler.HodlerData
 import io.horizontalsystems.hodler.HodlerPlugin
 import io.horizontalsystems.hodler.LockTimeInterval
 import io.horizontalsystems.litecoinkit.LitecoinKit
-import io.horizontalsystems.piratecashkit.PirateCashKit
+import io.horizontalsystems.litecoinkit.LitecoinReceiveAddressType
+import io.horizontalsystems.litecoinkit.LitecoinSendInfo
+import io.horizontalsystems.litecoinkit.LitecoinSendResult
+import io.horizontalsystems.litecoinkit.LitecoinSendSource
+import io.horizontalsystems.litecoinkit.mweb.CoroutineMwebDispatcherProvider
+import io.horizontalsystems.litecoinkit.mweb.MwebBalance
+import io.horizontalsystems.litecoinkit.mweb.MwebConfig
+import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
+import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
-class MainViewModel : ViewModel(), DashKit.Listener {
+class MainViewModel : ViewModel(), LitecoinKit.Listener {
 
     enum class State {
         STARTED, STOPPED
@@ -50,6 +53,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
     val status = MutableLiveData<State>()
     val transactionRaw = MutableLiveData<String?>()
     val statusInfo = MutableLiveData<Map<String, Any>>()
+    val mwebStatus = MutableLiveData<String>()
     val masternodeCount = MutableLiveData<Int>()
     lateinit var networkName: String
     private val disposables = CompositeDisposable()
@@ -61,17 +65,17 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             status.value = (if (value) State.STARTED else State.STOPPED)
         }
 
-    private lateinit var bitcoinKit: DashKit
+    private lateinit var bitcoinKit: LitecoinKit
 
     private val walletId = "MyWallet"
-    private val networkType = DashKit.NetworkType.MainNet
+    private val networkType = LitecoinKit.NetworkType.MainNet
     private val syncMode = BitcoinCore.SyncMode.Blockchair()
 
     fun init() {
         val words = BuildConfig.WORDS.split(" ")
         val passphrase = ""
 
-        bitcoinKit = DashKit(
+        bitcoinKit = LitecoinKit(
             context = App.instance,
             words = words,
             passphrase = passphrase,
@@ -79,6 +83,10 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             syncMode = syncMode,
             networkType = networkType,
             confirmationsThreshold = 3,
+            mwebConfig = MwebConfig(
+                dispatcherProvider = CoroutineMwebDispatcherProvider(Dispatchers.IO),
+                daemonClientFactory = DemoMwebDaemonClientFactory(),
+            ),
 //            purpose = Purpose.BIP84
         )
 
@@ -86,6 +94,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
 
         networkName = bitcoinKit.networkName
         balance.value = bitcoinKit.balance
+        updateMwebStatus()
 
         lastBlock.value = bitcoinKit.lastBlockInfo
         state.value = bitcoinKit.syncState
@@ -117,7 +126,7 @@ class MainViewModel : ViewModel(), DashKit.Listener {
         val wasRunning = statsJob?.isActive == true
         stopStatsUpdates()
         bitcoinKit.stop()
-        DashKit.clear(App.instance, networkType, walletId)
+        LitecoinKit.clear(App.instance, networkType, walletId)
 
         init()
         if (wasRunning) {
@@ -160,11 +169,30 @@ class MainViewModel : ViewModel(), DashKit.Listener {
         scheduleNetworkStatsUpdate()
     }
 
+    override fun onMwebBalanceUpdate(balance: MwebBalance) {
+        updateMwebStatus()
+    }
+
+    override fun onMwebSyncStateUpdate(state: MwebSyncState) {
+        updateMwebStatus()
+    }
+
+    override fun onMwebUtxosUpdate(utxos: List<MwebUtxo>) {
+        updateMwebStatus()
+    }
+
     val receiveAddressLiveData = MutableLiveData<String>()
     val feeLiveData = MutableLiveData<Long?>()
     val errorLiveData = MutableLiveData<String?>()
     val addressLiveData = MutableLiveData<String?>()
     val amountLiveData = MutableLiveData<Long?>()
+    var receiveAddressType = LitecoinReceiveAddressType.Public
+
+    var sendSource = LitecoinSendSource.Auto
+        set(value) {
+            field = value
+            updateFee()
+        }
 
     var amount: Long? = null
         set(value) {
@@ -191,26 +219,31 @@ class MainViewModel : ViewModel(), DashKit.Listener {
         }
 
     fun onReceiveClick() {
-        receiveAddressLiveData.value = bitcoinKit.receiveAddress()
+        receiveAddressLiveData.value = bitcoinKit.receiveAddress(receiveAddressType)
+        updateMwebStatus()
     }
 
     fun onSendClick() {
+        val sendAddress = address
+        val sendAmount = amount
+
         when {
-            address.isNullOrBlank() -> {
+            sendAddress.isNullOrBlank() -> {
                 errorLiveData.value = "Send address cannot be blank"
             }
 
-            amount == null -> {
+            sendAmount == null -> {
                 errorLiveData.value = "Send amount cannot be blank"
             }
 
             else -> {
                 viewModelScope.launch {
                     try {
-                        val transaction = bitcoinKit.send(
-                            address!!,
+                        val result = bitcoinKit.send(
+                            sendAddress,
                             null,
-                            amount!!,
+                            sendAmount,
+                            source = sendSource,
                             feeRate = feePriority.feeRate,
                             sortType = TransactionDataSortType.Shuffle,
                             pluginData = getPluginData(),
@@ -222,8 +255,11 @@ class MainViewModel : ViewModel(), DashKit.Listener {
                         amountLiveData.value = null
                         feeLiveData.value = null
                         addressLiveData.value = null
-                        errorLiveData.value =
-                            "Transaction sent ${transaction.header.serializedTxInfo}"
+                        errorLiveData.value = when (result) {
+                            is LitecoinSendResult.Public -> "Transaction sent ${result.transaction.header.serializedTxInfo}"
+                            is LitecoinSendResult.Mweb -> "MWEB transaction sent ${result.transaction.canonicalTransactionHash ?: result.transaction.outputIds.joinToString()}"
+                        }
+                        updateMwebStatus()
                     } catch (e: Exception) {
                         errorLiveData.value = when (e) {
                             is SendValueErrors.InsufficientUnspentOutputs,
@@ -296,14 +332,32 @@ class MainViewModel : ViewModel(), DashKit.Listener {
     private fun updateFee() {
         try {
             feeLiveData.value = amount?.let {
-                fee(it, address).fee
+                when (val sendInfo = fee(it, address)) {
+                    is LitecoinSendInfo.Public -> sendInfo.sendInfo.fee
+                    is LitecoinSendInfo.Mweb -> sendInfo.sendInfo.totalFee
+                }
             }
         } catch (e: Exception) {
             errorLiveData.value = e.message ?: e.javaClass.simpleName
         }
     }
 
-    private fun fee(value: Long, address: String? = null): BitcoinSendInfo {
+    private fun fee(value: Long, address: String? = null): LitecoinSendInfo {
+        val destination = address ?: return LitecoinSendInfo.Public(publicFee(value, null))
+        return bitcoinKit.sendInfo(
+            value = value,
+            address = destination,
+            memo = null,
+            source = sendSource,
+            feeRate = feePriority.feeRate,
+            unspentOutputs = null,
+            pluginData = getPluginData(),
+            changeToFirstInput = false,
+            filters = UtxoFilters()
+        )
+    }
+
+    private fun publicFee(value: Long, address: String? = null): BitcoinSendInfo {
         return bitcoinKit.sendInfo(
             value,
             address,
@@ -313,6 +367,17 @@ class MainViewModel : ViewModel(), DashKit.Listener {
             pluginData = getPluginData(),
             changeToFirstInput = false,
             filters = UtxoFilters()
+        )
+    }
+
+    private fun updateMwebStatus() {
+        val state = bitcoinKit.mwebState
+        mwebStatus.postValue(
+            if (state == null) {
+                "MWEB disabled"
+            } else {
+                "MWEB ${state.syncState.mwebUtxosHeight}/${state.syncState.blockHeaderHeight}, balance ${state.balance.confirmed}/${state.balance.unconfirmed}"
+            }
         )
     }
 

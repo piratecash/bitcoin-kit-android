@@ -85,8 +85,9 @@ class BlockchairApi(
         val hash = data["best_block_hash"].asString()
         val date = data["best_block_time"].asString()
         val timestamp = dateStringToTimestamp(date)
+            ?: throw ApiManagerException.Other("Invalid block time: $date")
 
-        return BlockHeaderItem(hash.hexToByteArray().reversedArray(), height, timestamp!!)
+        return BlockHeaderItem(hash.hexToByteArray().reversedArray(), height, timestamp)
     }
 
     override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
@@ -154,10 +155,10 @@ class BlockchairApi(
     private suspend fun fetchTransactionsByHashes(hashes: List<String>): List<FullApiTransaction> =
         withContext(Dispatchers.IO) {
             try {
-                val rawJson = apiManager.doOkHttpGetAsString("$chainId/dashboards/transactions/${hashes.joinToString(separator = ",")}")!!
+                val rawJson = apiManager.doOkHttpGetAsString("$chainId/dashboards/transactions/${hashes.joinToString(separator = ",")}")
+                    ?: return@withContext emptyList()
                 json.decodeFromString<BlockchairTransactionResponse>(rawJson).data.values.toList()
-            } catch (ex: Exception) {
-                Timber.d("Blockchair: No transactions found for hashes: $hashes: %s", ex.printStackTrace())
+            } catch (http404Exception: ApiManagerException.Http404Exception) {
                 emptyList()
             }
         }

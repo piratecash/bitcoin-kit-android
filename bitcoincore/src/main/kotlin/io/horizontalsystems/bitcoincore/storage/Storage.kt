@@ -254,10 +254,12 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         val txHashes = transactions.map { it.transaction.hash }
         val inputs = store.input.getInputsWithPrevouts(txHashes)
         val outputs = store.output.getTransactionsOutputs(txHashes)
-        val metadata = store.transactionMetadata.getTransactionMetadata(txHashes)
+        val metadataByTransaction = store.transactionMetadata.getTransactionMetadata(txHashes)
+            .associateBy { it.transactionHash.toHexString() }
         val transactionSerializer = requireNotNull(transactionSerializer)
 
         return transactions.map { tx ->
+            val transactionHash = tx.transaction.hash
             FullTransactionInfo(
                 tx.block,
                 if (tx.transaction.status == Transaction.Status.INVALID) InvalidTransaction(
@@ -265,9 +267,9 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
                     tx.transaction.serializedTxInfo,
                     tx.transaction.rawTransaction
                 ) else tx.transaction,
-                inputs.filter { it.input.transactionHash.contentEquals(tx.transaction.hash) },
-                outputs.filter { it.transactionHash.contentEquals(tx.transaction.hash) },
-                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) },
+                inputs.filter { it.input.transactionHash.contentEquals(transactionHash) },
+                outputs.filter { it.transactionHash.contentEquals(transactionHash) },
+                metadataByTransaction[transactionHash.toHexString()] ?: TransactionMetadata(transactionHash),
                 transactionSerializer
             )
         }
@@ -314,7 +316,8 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
                 tx.transaction,
                 inputs.filter { it.input.transactionHash.contentEquals(tx.transaction.hash) },
                 outputs.filter { it.transactionHash.contentEquals(tx.transaction.hash) },
-                metadata.first { it.transactionHash.contentEquals(tx.transaction.hash) },
+                metadata.firstOrNull { it.transactionHash.contentEquals(tx.transaction.hash) }
+                    ?: TransactionMetadata(tx.transaction.hash),
                 transactionSerializer
             )
         }
@@ -419,6 +422,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         }
     }
 
+    override fun getRelayedPendingTransactions(status: Int): List<Transaction> {
+        return store.transaction.getRelayedPendingTransactions(status)
+    }
+
     override fun getIncomingPendingTxHashes(): List<ByteArray> {
         return store.transaction.getIncomingPendingTxHashes()
     }
@@ -427,9 +434,42 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.transaction.getIncomingPendingTxCount() > 0
     }
 
+    override fun deleteRelayedPendingTransactions(transactions: List<Transaction>): List<Transaction> {
+        val deletedTransactions = mutableListOf<Transaction>()
+
+        store.runInTransaction {
+            transactions.forEach { transaction ->
+                // The transaction may be confirmed while the reconciler is doing network lookup.
+                val pendingTransaction = store.transaction.getByHash(transaction.hash)
+                    ?.takeIf { it.blockHash == null && it.status == Transaction.Status.RELAYED }
+                    ?: return@forEach
+
+                store.sentTransaction.getTransaction(pendingTransaction.hash)?.let {
+                    store.sentTransaction.delete(it)
+                }
+
+                store.input.deleteAll(getTransactionInputs(pendingTransaction))
+                store.output.deleteAll(getTransactionOutputs(pendingTransaction))
+                store.transactionMetadata.delete(pendingTransaction.hash)
+                store.transaction.delete(pendingTransaction)
+                deletedTransactions += pendingTransaction
+            }
+        }
+
+        return deletedTransactions
+    }
+
     private fun convertToFullTransaction(transaction: Transaction): FullTransaction {
         val transactionSerializer = requireNotNull(transactionSerializer)
-        return FullTransaction(header = transaction, inputs = getTransactionInputs(transaction), outputs = getTransactionOutputs(transaction), transactionSerializer)
+        return FullTransaction(
+            header = transaction,
+            inputs = getTransactionInputs(transaction),
+            outputs = getTransactionOutputs(transaction),
+            transactionSerializer = transactionSerializer,
+            forceHashUpdate = false,
+        ).apply {
+            metadata = TransactionMetadata(transaction.hash)
+        }
     }
 
     private fun addWithoutTransaction(transaction: FullTransaction) {

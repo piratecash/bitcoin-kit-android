@@ -1,0 +1,317 @@
+package io.horizontalsystems.litecoinkit.mweb.storage
+
+import io.horizontalsystems.litecoinkit.mweb.MwebPendingTransaction
+import io.horizontalsystems.litecoinkit.mweb.MwebDeliveryState
+import io.horizontalsystems.litecoinkit.mweb.MwebTransaction
+import io.horizontalsystems.litecoinkit.mweb.MwebTransactionKind
+import io.horizontalsystems.litecoinkit.mweb.MwebTransactionType
+import io.horizontalsystems.litecoinkit.mweb.MwebTransactionUid
+import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
+import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
+import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressRecord
+import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressStorage
+
+class MwebRoomStorage(
+    private val database: MwebDatabase,
+) : MwebAddressStorage {
+    fun close() {
+        database.close()
+    }
+
+    override fun address(index: Int): MwebAddressRecord? {
+        return database.addressDao.address(index)?.toRecord()
+    }
+
+    override fun addresses(): List<MwebAddressRecord> {
+        return database.addressDao.addresses().map { it.toRecord() }
+    }
+
+    override fun save(records: List<MwebAddressRecord>) {
+        database.addressDao.save(records.map { it.toEntity() })
+    }
+
+    fun syncState(): MwebSyncState? {
+        return database.stateDao.state()?.toSyncState()
+    }
+
+    fun saveSyncState(syncState: MwebSyncState) {
+        database.stateDao.save(
+            MwebStateEntity(
+                blockHeaderHeight = syncState.blockHeaderHeight,
+                mwebHeaderHeight = syncState.mwebHeaderHeight,
+                mwebUtxosHeight = syncState.mwebUtxosHeight,
+                lastSyncedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    fun utxoDeliveryHeight(): Int {
+        return deliveryState().utxoDeliveryHeight
+    }
+
+    fun deliveryState(): MwebDeliveryState {
+        return MwebDeliveryState(database.deliveryCursorDao.cursor()?.utxoDeliveryHeight ?: 0)
+    }
+
+    fun advanceUtxoDeliveryHeight(height: Int): Boolean {
+        if (height <= 0) return false
+        val currentHeight = utxoDeliveryHeight()
+        if (height <= currentHeight) return false
+
+        database.deliveryCursorDao.save(MwebDeliveryCursorEntity(utxoDeliveryHeight = height))
+        return true
+    }
+
+    fun utxos(): List<MwebUtxo> {
+        return database.utxoDao.utxos().map { it.toUtxo() }
+    }
+
+    fun unspentUtxos(): List<MwebUtxo> {
+        return database.utxoDao.unspentUtxos().map { it.toUtxo() }
+    }
+
+    fun confirmedUnspentUtxos(): List<MwebUtxo> {
+        return database.utxoDao.confirmedUnspentUtxos().map { it.toUtxo() }
+    }
+
+    fun saveUtxos(utxos: List<MwebUtxo>) {
+        database.utxoDao.save(utxos.map { it.toEntity() })
+    }
+
+    fun markSpent(outputIds: List<String>) {
+        if (outputIds.isEmpty()) return
+        database.utxoDao.markConfirmedSpent(outputIds)
+    }
+
+    fun pendingTransactions(): List<MwebPendingTransaction> {
+        return database.pendingTransactionDao.pendingTransactions().map { it.toPendingTransaction() }
+    }
+
+    fun savePendingTransaction(pendingTransaction: MwebPendingTransaction) {
+        database.pendingTransactionDao.save(pendingTransaction.toEntity())
+    }
+
+    fun localTransactions(): List<MwebTransaction> {
+        return database.outgoingTransactionDao.outgoingTransactions().mapNotNull { it.toTransaction() }
+    }
+
+    fun pendingLocalSpentOutputIds(): List<String> {
+        return database.outgoingTransactionDao.pendingOutgoingTransactions()
+            .flatMap { it.spentOutputIds }
+            .distinct()
+    }
+
+    fun confirmTransactionsSpending(outputIds: List<String>, height: Int, timestamp: Long?) {
+        if (outputIds.isEmpty() || height <= 0) return
+
+        val spentOutputIds = outputIds.toSet()
+        val confirmedTransactions = database.outgoingTransactionDao.pendingOutgoingTransactions()
+            .filter { transaction ->
+                transaction.spentOutputIds.isNotEmpty() &&
+                    transaction.spentOutputIds.all { it in spentOutputIds }
+            }
+        val confirmedUids = confirmedTransactions.map { it.uid }
+        if (confirmedUids.isEmpty()) return
+
+        database.runInTransaction {
+            database.outgoingTransactionDao.confirm(confirmedUids, height, timestamp)
+            confirmedTransactions.forEach { transaction ->
+                confirmCreated(transaction, height, timestamp)
+            }
+        }
+    }
+
+    fun reconcileCreatedUtxos() {
+        val unconfirmedOutputIds = database.utxoDao.unconfirmedOutputIds().toSet()
+        if (unconfirmedOutputIds.isEmpty()) return
+
+        val transactions = database.outgoingTransactionDao.confirmedOutgoingTransactionsWithCreatedOutputs()
+            .filter { transaction ->
+                transaction.createdOutputIds.any { it in unconfirmedOutputIds }
+            }
+        if (transactions.isEmpty()) return
+
+        database.runInTransaction {
+            transactions.forEach { transaction ->
+                val height = transaction.confirmedHeight?.takeIf { it > 0 } ?: return@forEach
+                confirmCreated(transaction, height, transaction.confirmedTimestamp)
+            }
+        }
+    }
+
+    fun mwebToPublicCanonicalHashHeights(): List<Int> {
+        return database.outgoingTransactionDao.confirmedOutgoingTransactions(MwebTransactionKind.MwebToPublic.name)
+            .filter { it.needsCanonicalHash() }
+            .mapNotNull { it.confirmedHeight?.takeIf { height -> height > 0 } }
+            .distinct()
+    }
+
+    fun updateMwebToPublicCanonicalHashes(canonicalHashes: List<Pair<Int, String>>): Boolean {
+        val validHashes = canonicalHashes.filter { (height, hash) -> height > 0 && hash.isNotBlank() }
+        if (validHashes.isEmpty()) return false
+
+        var updated = false
+        database.runInTransaction {
+            validHashes.forEach { (height, hash) ->
+                updated = database.outgoingTransactionDao.updateCanonicalHash(
+                    kind = MwebTransactionKind.MwebToPublic.name,
+                    height = height,
+                    canonicalTransactionHash = hash,
+                ) > 0 || updated
+            }
+        }
+        return updated
+    }
+
+    fun saveBroadcastResult(
+        pendingTransaction: MwebPendingTransaction,
+        localTransaction: MwebTransaction?,
+        spentOutputIds: List<String>,
+        createdUtxos: List<MwebUtxo> = emptyList(),
+    ) {
+        database.runInTransaction {
+            database.pendingTransactionDao.save(pendingTransaction.toEntity())
+            localTransaction?.let { database.outgoingTransactionDao.save(it.toOutgoingEntity()) }
+            if (createdUtxos.isNotEmpty()) {
+                database.utxoDao.save(createdUtxos.map { it.toEntity() })
+            }
+            if (spentOutputIds.isNotEmpty()) {
+                database.utxoDao.markConfirmedSpent(spentOutputIds)
+            }
+        }
+    }
+
+    fun deleteOutgoingTransactions(uids: List<String>) {
+        if (uids.isEmpty()) return
+        database.outgoingTransactionDao.delete(uids)
+    }
+
+    fun deleteUnconfirmedUtxos(outputIds: List<String>) {
+        if (outputIds.isEmpty()) return
+        database.utxoDao.deleteUnconfirmed(outputIds)
+    }
+
+    fun deletePendingTransactionsOlderThan(timestamp: Long) {
+        database.pendingTransactionDao.deleteOlderThan(timestamp)
+    }
+
+    private fun MwebAddressEntity.toRecord(): MwebAddressRecord {
+        return MwebAddressRecord(index = index, address = address, used = used)
+    }
+
+    private fun MwebAddressRecord.toEntity(): MwebAddressEntity {
+        return MwebAddressEntity(index = index, address = address, used = used)
+    }
+
+    private fun MwebStateEntity.toSyncState(): MwebSyncState {
+        return MwebSyncState(
+            blockHeaderHeight = blockHeaderHeight,
+            mwebHeaderHeight = mwebHeaderHeight,
+            mwebUtxosHeight = mwebUtxosHeight,
+        )
+    }
+
+    private fun MwebUtxoEntity.toUtxo(): MwebUtxo {
+        return MwebUtxo(
+            outputId = outputId,
+            address = address,
+            addressIndex = addressIndex,
+            value = value,
+            height = height,
+            blockTime = blockTime,
+            spent = spent,
+        )
+    }
+
+    private fun MwebUtxo.toEntity(): MwebUtxoEntity {
+        return MwebUtxoEntity(
+            outputId = outputId,
+            address = address,
+            addressIndex = addressIndex,
+            value = value,
+            height = height,
+            blockTime = blockTime,
+            spent = spent,
+        )
+    }
+
+    private fun confirmCreated(transaction: MwebOutgoingTransactionEntity, height: Int, timestamp: Long?) {
+        if (transaction.createdOutputIds.isEmpty() || height <= 0) return
+        val blockTime = timestamp?.takeIf { it > 0 } ?: transaction.timestamp.takeIf { it > 0 }
+        database.utxoDao.confirmCreated(transaction.createdOutputIds, height, blockTime)
+    }
+
+    private fun MwebPendingTransactionEntity.toPendingTransaction(): MwebPendingTransaction {
+        return MwebPendingTransaction(
+            rawTransaction = rawTransaction,
+            createdOutputIds = createdOutputIds,
+            canonicalTransactionHash = canonicalTransactionHash,
+            timestamp = timestamp,
+        )
+    }
+
+    private fun MwebPendingTransaction.toEntity(): MwebPendingTransactionEntity {
+        return MwebPendingTransactionEntity(
+            rawTransaction = rawTransaction,
+            createdOutputIds = createdOutputIds,
+            canonicalTransactionHash = canonicalTransactionHash,
+            timestamp = timestamp,
+        )
+    }
+
+    private fun MwebOutgoingTransactionEntity.toTransaction(): MwebTransaction? {
+        val transactionType = safeValueOf<MwebTransactionType>(type) ?: return null
+        val transactionKind = safeValueOf<MwebTransactionKind>(kind) ?: return null
+
+        return MwebTransaction(
+            uid = uid,
+            type = transactionType,
+            kind = transactionKind,
+            amount = amount,
+            fee = fee,
+            address = destinationAddress?.takeIf { it.isNotBlank() },
+            canonicalTransactionHash = visibleCanonicalTransactionHash(transactionType, transactionKind),
+            outputIds = createdOutputIds,
+            inputOutputIds = spentOutputIds,
+            height = confirmedHeight,
+            timestamp = confirmedTimestamp ?: timestamp,
+            pending = confirmedHeight == null,
+        )
+    }
+
+    private fun MwebTransaction.toOutgoingEntity(): MwebOutgoingTransactionEntity {
+        return MwebOutgoingTransactionEntity(
+            uid = uid,
+            type = type.name,
+            kind = kind.name,
+            amount = amount,
+            fee = fee,
+            destinationAddress = address,
+            canonicalTransactionHash = canonicalTransactionHash,
+            createdOutputIds = outputIds,
+            spentOutputIds = inputOutputIds,
+            confirmedHeight = height,
+            confirmedTimestamp = timestamp.takeIf { height != null },
+            timestamp = timestamp,
+        )
+    }
+
+    private inline fun <reified T : Enum<T>> safeValueOf(value: String): T? {
+        return enumValues<T>().firstOrNull { it.name == value }
+    }
+
+    private fun MwebOutgoingTransactionEntity.visibleCanonicalTransactionHash(
+        type: MwebTransactionType,
+        kind: MwebTransactionKind,
+    ): String? {
+        val hash = canonicalTransactionHash?.takeIf { it.isNotBlank() } ?: return null
+        if (kind == MwebTransactionKind.PublicToMweb) return hash
+
+        return hash.takeUnless { MwebTransactionUid.localId(type, uid) == it }
+    }
+
+    private fun MwebOutgoingTransactionEntity.needsCanonicalHash(): Boolean {
+        val hash = canonicalTransactionHash?.takeIf { it.isNotBlank() } ?: return true
+        return MwebTransactionUid.localId(MwebTransactionType.Outgoing, uid) == hash
+    }
+}

@@ -27,6 +27,13 @@ android {
         consumerProguardFiles 'consumer-rules.pro'
     }
 
+    kapt {
+        arguments {
+            arg("room.schemaLocation", "$projectDir/schemas".toString())
+            arg("room.incremental", true)
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -51,6 +58,7 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'androidx.annotation:annotation:1.1.0'
+    api libs.kotlinx.coroutines.core
 
     // Room
     implementation "androidx.room:room-runtime:$room_version"
@@ -60,7 +68,11 @@ dependencies {
     api project(':bitcoincore')
     api project(':hodler')
 
+    implementation libs.mwebd.android
+
     testImplementation 'junit:junit:4.13.2'
+    testImplementation libs.robolectric
+    testImplementation libs.core
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
 }

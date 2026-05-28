@@ -25,7 +25,7 @@ import timber.log.Timber
 
 class CosantaApi : IApiTransactionProvider, Api {
     private companion object {
-        const val HOST = "https://explorer.cosanta.net/"
+        const val HOST = "https://explorer.cosanta.net"
         const val GAP_LIMIT = 20
     }
 

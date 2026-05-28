@@ -172,4 +172,53 @@ object TransactionCreatorTest : Spek({
             }
         }
     }
+
+    describe("#processCreatedLocally") {
+        beforeEachTest {
+            doNothing().whenever(processor).processCreated(any())
+        }
+
+        it("saves transaction without broadcasting through public peers") {
+            transactionCreator.processCreatedLocally(mockTransaction)
+
+            verify(processor).processCreated(mockTransaction)
+            verify(transactionSender, never()).sendPendingTransactions()
+        }
+    }
+
+    describe("#processCreated") {
+        beforeEachTest {
+            doNothing().whenever(processor).processCreated(any())
+            doNothing().whenever(transactionSender).sendPendingTransactions()
+        }
+
+        it("saves transaction and attempts broadcast") {
+            transactionCreator.processCreated(mockTransaction)
+
+            verify(processor).processCreated(mockTransaction)
+            verify(transactionSender).sendPendingTransactions()
+        }
+
+        it("attempts broadcast when transaction already exists") {
+            doThrow(TransactionCreator.TransactionAlreadyExists("hash exists"))
+                .whenever(processor).processCreated(any())
+
+            transactionCreator.processCreated(mockTransaction)
+
+            verify(transactionSender).sendPendingTransactions()
+        }
+    }
+
+    describe("#processRelayedLocally") {
+        beforeEachTest {
+            doNothing().whenever(processor).processRelayed(any())
+        }
+
+        it("saves relayed transaction without broadcasting through public peers") {
+            transactionCreator.processRelayedLocally(mockTransaction)
+
+            verify(processor).processRelayed(mockTransaction)
+            verify(transactionSender, never()).sendPendingTransactions()
+        }
+    }
 })

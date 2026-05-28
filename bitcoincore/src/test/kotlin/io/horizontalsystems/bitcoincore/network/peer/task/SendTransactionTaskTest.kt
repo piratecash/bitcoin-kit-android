@@ -61,6 +61,7 @@ object SendTransactionTaskTest : Spek({
 
                         verify(requester).send(capture())
                         Assert.assertEquals(fullTransaction, (firstValue as TransactionMessage).transaction)
+                        Assert.assertEquals(SendTransactionTask.CompletionReason.REQUESTED_BY_PEER, task.completionReason)
 
                         verify(listener).onTaskCompleted(task)
                     }
@@ -86,6 +87,16 @@ object SendTransactionTaskTest : Spek({
 
         }
 
+    }
+
+    describe("#handleTimeout") {
+        it("marks completion reason as timeout and completes itself") {
+            task.handleTimeout()
+
+            Assert.assertEquals(SendTransactionTask.CompletionReason.TIMEOUT, task.completionReason)
+            verify(listener).onTaskCompleted(task)
+            verifyNoMoreInteractions(requester)
+        }
     }
 
 })

@@ -12,6 +12,7 @@ import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.InvMessage
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
+import io.horizontalsystems.bitcoincore.network.messages.RejectMessage
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import org.junit.Before
 import org.junit.Test
@@ -25,7 +26,7 @@ class PeerGroupHandlerTest {
     fun setup() {
         peerGroup = PeerGroup(
             mock<IPeerAddressManager>(),
-            mock<Network>(),
+            mock { on { logTag } doReturn "TestNetwork" },
             PeerManager(),
             10,
             mock<NetworkMessageParser>(),
@@ -75,6 +76,25 @@ class PeerGroupHandlerTest {
 
         // Should not throw
         peerGroup.onReceiveMessage(peer, message)
+    }
+
+    @Test
+    fun `peer group listener receives reject messages`() {
+        val message = RejectMessage("tx", 0x10.toByte(), "invalid")
+        var receivedPeer: Peer? = null
+        var receivedMessage: RejectMessage? = null
+        val listener = object : PeerGroup.Listener {
+            override fun onPeerReject(peer: Peer, rejectMessage: RejectMessage) {
+                receivedPeer = peer
+                receivedMessage = rejectMessage
+            }
+        }
+        peerGroup.addPeerGroupListener(listener)
+
+        peerGroup.onReceiveMessage(peer, message)
+
+        org.junit.Assert.assertSame(peer, receivedPeer)
+        org.junit.Assert.assertSame(message, receivedMessage)
     }
 
     // Task handlers (any/first-wins semantics)

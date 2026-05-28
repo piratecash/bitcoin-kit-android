@@ -29,12 +29,8 @@ class UnspentOutputSelector(
         changeToFirstInput: Boolean,
         filters: UtxoFilters
     ): SelectedUnspentOutputInfo {
-        val sortedOutputs =
-            unspentOutputProvider.getSpendableUtxo(filters).sortedWith(compareByDescending<UnspentOutput> {
-                it.output.failedToSpend
-            }.thenBy {
-                it.output.value
-            })
+        val sortedOutputs = unspentOutputProvider.getSpendableUtxo(filters)
+            .sortedBy { it.output.value }
 
         // check if value is not dust. recipientValue may be less, but not more
         if (value < dustCalculator.dust(outputScriptType)) {

@@ -29,7 +29,9 @@ class MasternodeListDiffMessage(
 
 }
 
-class MasternodeListDiffMessageParser(private val transactionSerializer: BaseTransactionSerializer) : IMessageParser {
+class MasternodeListDiffMessageParser(
+    private val transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer()
+) : IMessageParser {
     override val command: String = "mnlistdiff"
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {

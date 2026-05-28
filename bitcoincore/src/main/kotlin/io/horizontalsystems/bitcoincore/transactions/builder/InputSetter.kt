@@ -9,6 +9,7 @@ import io.horizontalsystems.bitcoincore.managers.SelectedUnspentOutputInfo
 import io.horizontalsystems.bitcoincore.managers.SendValueErrors
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputQueue
 import io.horizontalsystems.bitcoincore.models.Address
+import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.storage.InputToSign
@@ -115,14 +116,17 @@ class InputSetter(
         var changeInfo: ChangeInfo? = null
         unspentOutputInfo.changeValue?.let { changeValue ->
             val firstOutput = unspentOutputInfo.outputs.firstOrNull()
+            val changePubKey: PublicKey
             val changeAddress = if (changeToFirstInput && firstOutput != null) {
-                addressConverter.convert(firstOutput.publicKey, firstOutput.output.scriptType)
+                changePubKey = firstOutput.publicKey
+                addressConverter.convert(changePubKey, firstOutput.output.scriptType)
             } else {
-                val changePubKey = publicKeyManager.changePublicKey()
+                changePubKey = publicKeyManager.changePublicKey()
                 addressConverter.convert(changePubKey, changeScriptType)
             }
 
             mutableTransaction.changeAddress = changeAddress
+            mutableTransaction.changePublicKey = changePubKey
             mutableTransaction.changeValue = changeValue
             changeInfo = ChangeInfo(address = changeAddress, value = changeValue)
         }

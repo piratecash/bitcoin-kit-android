@@ -44,17 +44,40 @@ class PendingTransactionProcessor(
             throw TransactionCreator.TransactionAlreadyExists("hash = ${transaction.header.hash.toReversedHex()}")
         }
 
+        processNew(transaction)
+    }
+
+    fun processRelayed(transaction: FullTransaction) {
+        transaction.header.status = Transaction.Status.RELAYED
+        val existingTransaction = storage.getTransaction(transaction.header.hash)
+
+        if (existingTransaction != null) {
+            if (existingTransaction.status != Transaction.Status.RELAYED) {
+                existingTransaction.status = Transaction.Status.RELAYED
+                storage.updateTransaction(existingTransaction)
+                notifyTransactionsUpdate(inserted = listOf(), updated = listOf(existingTransaction))
+            }
+            return
+        }
+
+        processNew(transaction)
+    }
+
+    private fun processNew(transaction: FullTransaction) {
         extractor.extract(transaction)
         storage.addTransaction(transaction)
-
-        try {
-            dataListener.onTransactionsUpdate(listOf(transaction.header), listOf(), null)
-        } catch (e: Exception) {
-            // ignore any exception since the tx is inserted to the db
-        }
+        notifyTransactionsUpdate(inserted = listOf(transaction.header), updated = listOf())
 
         if (irregularOutputFinder.hasIrregularOutput(transaction.outputs)) {
             throw BloomFilterManager.BloomFilterExpired
+        }
+    }
+
+    private fun notifyTransactionsUpdate(inserted: List<Transaction>, updated: List<Transaction>) {
+        try {
+            dataListener.onTransactionsUpdate(inserted, updated, null)
+        } catch (e: Exception) {
+            // ignore any exception since the tx is inserted to the db
         }
     }
 

@@ -19,18 +19,23 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import io.horizontalsystems.hodler.LockTimeInterval
+import io.horizontalsystems.litecoinkit.LitecoinReceiveAddressType
+import io.horizontalsystems.litecoinkit.LitecoinSendSource
 
 class SendReceiveFragment : Fragment() {
     private lateinit var viewModel: MainViewModel
 
     lateinit var receiveAddressText: TextView
     lateinit var receiveAddressButton: Button
+    lateinit var receiveTypeGroup: RadioGroup
+    lateinit var mwebStatusText: TextView
     lateinit var sendAmount: EditText
     lateinit var sendAddress: EditText
     lateinit var txFeeValue: TextView
     lateinit var sendButton: Button
     lateinit var maxButton: Button
     lateinit var radioGroup: RadioGroup
+    lateinit var sendSourceGroup: RadioGroup
     lateinit var lockTimePeriodValue: Spinner
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -59,6 +64,10 @@ class SendReceiveFragment : Fragment() {
             txFeeValue.text = it?.toString()
         })
 
+        viewModel.mwebStatus.observe(viewLifecycleOwner, Observer {
+            mwebStatusText.text = it
+        })
+
         viewModel.errorLiveData.observe(viewLifecycleOwner, Observer {
             //TODO TOASTS NO PREVIOUS OUTPUT SCRIPT CHANGE THE SEED?
             val toast = Toast.makeText(context, "$it", Toast.LENGTH_LONG)
@@ -74,16 +83,26 @@ class SendReceiveFragment : Fragment() {
 
         receiveAddressText = view.findViewById(R.id.receiveAddressText)
         receiveAddressButton = view.findViewById(R.id.receiveAddressButton)
+        receiveTypeGroup = view.findViewById(R.id.receiveTypeGroup)
+        mwebStatusText = view.findViewById(R.id.mwebStatusText)
         sendAmount = view.findViewById(R.id.sendAmount)
         sendAddress = view.findViewById(R.id.sendAddress)
         txFeeValue = view.findViewById(R.id.txFeeValue)
         sendButton = view.findViewById(R.id.sendButton)
         maxButton = view.findViewById(R.id.maxButton)
         radioGroup = view.findViewById(R.id.radioGroup)
+        sendSourceGroup = view.findViewById(R.id.sendSourceGroup)
         lockTimePeriodValue = view.findViewById(R.id.lockTimePeriodValue)
 
         receiveAddressButton.setOnClickListener {
             viewModel.onReceiveClick()
+        }
+
+        receiveTypeGroup.setOnCheckedChangeListener { _, checkedId ->
+            viewModel.receiveAddressType = when (checkedId) {
+                R.id.radioReceiveMweb -> LitecoinReceiveAddressType.Mweb
+                else -> LitecoinReceiveAddressType.Public
+            }
         }
 
         sendButton.setOnClickListener {
@@ -117,6 +136,14 @@ class SendReceiveFragment : Fragment() {
                 else -> throw Exception("Undefined priority")
             }
             viewModel.feePriority = feePriority
+        }
+
+        sendSourceGroup.setOnCheckedChangeListener { _, checkedId ->
+            viewModel.sendSource = when (checkedId) {
+                R.id.radioSendPublic -> LitecoinSendSource.Public
+                R.id.radioSendMweb -> LitecoinSendSource.Mweb
+                else -> LitecoinSendSource.Auto
+            }
         }
 
 

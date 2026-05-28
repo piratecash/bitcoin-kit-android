@@ -25,7 +25,7 @@ import timber.log.Timber
 
 class PirateCashApi : IApiTransactionProvider, Api {
     private companion object {
-            const val HOST = "https://piratecash.info/"
+        const val HOST = "https://piratecash.info"
         const val GAP_LIMIT = 20
     }
 

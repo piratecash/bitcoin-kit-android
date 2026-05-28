@@ -11,6 +11,13 @@ import java.util.concurrent.TimeUnit
 
 class SendTransactionTask(val transaction: FullTransaction) : PeerTask() {
 
+    enum class CompletionReason {
+        REQUESTED_BY_PEER,
+        TIMEOUT,
+    }
+
+    var completionReason: CompletionReason? = null
+
     init {
         allowedIdleTime = TimeUnit.SECONDS.toMillis(30)
     }
@@ -19,6 +26,7 @@ class SendTransactionTask(val transaction: FullTransaction) : PeerTask() {
         get() = "transaction: ${transaction.header.hash.toReversedHex()}"
 
     override fun start() {
+        completionReason = null
         requester?.send(InvMessage(InventoryItem.MSG_TX, transaction.header.hash))
         resetTimer()
     }
@@ -29,6 +37,7 @@ class SendTransactionTask(val transaction: FullTransaction) : PeerTask() {
                 message.inventory.any { it.type == InventoryItem.MSG_TX && it.hash.contentEquals(transaction.header.hash) }
 
         if (transactionRequested) {
+            completionReason = CompletionReason.REQUESTED_BY_PEER
             requester?.send(TransactionMessage(transaction, 0))
             listener?.onTaskCompleted(this)
         }
@@ -37,6 +46,7 @@ class SendTransactionTask(val transaction: FullTransaction) : PeerTask() {
     }
 
     override fun handleTimeout() {
+        completionReason = CompletionReason.TIMEOUT
         listener?.onTaskCompleted(this)
     }
 

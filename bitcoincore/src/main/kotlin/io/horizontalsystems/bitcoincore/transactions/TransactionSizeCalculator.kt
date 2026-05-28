@@ -99,7 +99,7 @@ class TransactionSizeCalculator {
         for (output in outputs) {
             outputWeight += when (output.scriptType) {
                 ScriptType.NULL_DATA -> outputSize(lockingScriptSize = output.lockingScript.size) * 4
-                ScriptType.UNKNOWN -> throw IllegalStateException("Unknown output script type")
+                ScriptType.UNKNOWN -> outputSize(lockingScriptSize = output.lockingScript.size) * 4
                 else -> outputSize(output.scriptType) * 4
             }
         }

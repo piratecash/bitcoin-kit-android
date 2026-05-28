@@ -3,16 +3,19 @@ package io.horizontalsystems.bitcoincore.blocks
 import io.horizontalsystems.bitcoincore.core.IBlockSyncListener
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
 import io.horizontalsystems.bitcoincore.extensions.toHexString
+import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
+import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHashesTask
 import io.horizontalsystems.bitcoincore.network.peer.task.GetMerkleBlocksTask
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.logging.Logger
+import kotlin.math.max
 
 class BlockDownload(
     private var blockSyncer: BlockSyncer,
@@ -34,7 +37,7 @@ class BlockDownload(
     private val peersQueue = Executors.newSingleThreadExecutor()
     private val logger = Logger.getLogger("BlockDownload")
 
-    private class PeerSyncState(@Volatile var synced: Boolean = false)
+    private class PeerSyncState(@Volatile var synced: Boolean = false, @Volatile var blockHashesSynced: Boolean = false)
     private val peerSyncStates = ConcurrentHashMap<String, PeerSyncState>()
 
     private fun getPeerSyncState(peer: Peer): PeerSyncState {
@@ -54,7 +57,9 @@ class BlockDownload(
         val state = getPeerSyncState(peer)
         if (state.synced && inventoryItems.any { it.type == InventoryItem.MSG_BLOCK }) {
             state.synced = false
+            state.blockHashesSynced = false
             peer.synced = false
+            peer.blockHashesSynced = false
             syncedPeers.remove(peer)
             if (requestUnknownBlocks) {
                 blockSyncer.addBlockHashes(inventoryItems.filter { it.type == InventoryItem.MSG_BLOCK }
@@ -69,6 +74,15 @@ class BlockDownload(
         if (task.owner != null && task.owner !== this) return false
 
         return when (task) {
+            is GetBlockHashesTask -> {
+                if (task.blockHashes.isEmpty()) {
+                    markBlockHashesSynced(peer)
+                } else {
+                    blockSyncer.addBlockHashes(task.blockHashes)
+                }
+                true
+            }
+
             is GetMerkleBlocksTask -> {
                 blockSyncer.downloadIterationCompleted()
                 true
@@ -179,36 +193,17 @@ class BlockDownload(
             (blockSyncer.getOrphanParents()).let {
                 if (!it.isEmpty()) {
                     logger.info("$logTag: Requesting orphan parents (${it.size} [${it[0].headerHash.toHexString()}, ...]")
-                    val task = GetMerkleBlocksTask(
-                        hashes = it,
-                        merkleBlockHandler = this,
-                        merkleBlockExtractor = merkleBlockExtractor,
-                        minMerkleBlocks = minMerkleBlocks,
-                        minTransactions = minTransactions,
-                        minReceiveBytes = minReceiveBytes,
-                        logTag = logTag
-                    )
-                    task.owner = this
-                    peer.addTask(task)
+                    requestMerkleBlocks(peer, it)
                 }
             }
 
             val blockHashes = blockSyncer.getBlockHashes(limit = 50)
             if (blockHashes.isEmpty()) {
-                state.synced = true
-                peer.synced = true
+                state.synced = syncBlockHashesIfNeeded(peer, state)
+                peer.synced = state.synced
             } else {
-                val task = GetMerkleBlocksTask(
-                    hashes = blockHashes,
-                    merkleBlockHandler = this,
-                    merkleBlockExtractor = merkleBlockExtractor,
-                    minMerkleBlocks = minMerkleBlocks,
-                    minTransactions = minTransactions,
-                    minReceiveBytes = minReceiveBytes,
-                    logTag = logTag
-                )
-                task.owner = this
-                peer.addTask(task)
+                requestMerkleBlocks(peer, blockHashes)
+                syncBlockHashesIfNeeded(peer, state)
             }
 
             if (state.synced) {
@@ -225,6 +220,43 @@ class BlockDownload(
                 listener?.onBlockSyncFinished()
             }
         }
+    }
+
+    private fun syncBlockHashesIfNeeded(peer: Peer, state: PeerSyncState): Boolean {
+        if (!requestUnknownBlocks || state.blockHashesSynced) return true
+
+        val expectedHashesMinCount = max(peer.announcedLastBlockHeight - blockSyncer.localKnownBestBlockHeight, 0)
+        if (expectedHashesMinCount == 0) {
+            markBlockHashesSynced(peer)
+            return true
+        }
+
+        val task = GetBlockHashesTask(
+            blockSyncer.getBlockLocatorHashes(peer.announcedLastBlockHeight),
+            expectedHashesMinCount
+        )
+        task.owner = this
+        peer.addTask(task)
+        return false
+    }
+
+    private fun markBlockHashesSynced(peer: Peer) {
+        getPeerSyncState(peer).blockHashesSynced = true
+        peer.blockHashesSynced = true
+    }
+
+    private fun requestMerkleBlocks(peer: Peer, hashes: List<BlockHash>) {
+        val task = GetMerkleBlocksTask(
+            hashes = hashes,
+            merkleBlockHandler = this,
+            merkleBlockExtractor = merkleBlockExtractor,
+            minMerkleBlocks = minMerkleBlocks,
+            minTransactions = minTransactions,
+            minReceiveBytes = minReceiveBytes,
+            logTag = logTag
+        )
+        task.owner = this
+        peer.addTask(task)
     }
 
 }

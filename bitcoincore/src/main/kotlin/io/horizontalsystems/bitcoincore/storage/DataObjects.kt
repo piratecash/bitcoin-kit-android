@@ -32,7 +32,7 @@ open class FullTransaction(
     val header: Transaction,
     val inputs: List<TransactionInput>,
     val outputs: List<TransactionOutput>,
-    transactionSerializer: BaseTransactionSerializer,
+    transactionSerializer: BaseTransactionSerializer = BaseTransactionSerializer(),
     forceHashUpdate: Boolean = true
 ) {
 
@@ -42,10 +42,7 @@ open class FullTransaction(
         if (forceHashUpdate) {
             setHash(
                 HashUtils.doubleSha256(
-                    transactionSerializer.serialize(
-                        this,
-                        withWitness = false
-                    )
+                    transactionSerializer.serializeForTransactionHash(this)
                 )
             )
         }
@@ -164,7 +161,8 @@ class FullTransactionInfo(
         }
 
     val fullTransaction: FullTransaction
-        get() = FullTransaction(header, inputs.map { it.input }, outputs, transactionSerializer)
+        get() = FullTransaction(header, inputs.map { it.input }, outputs, transactionSerializer, false).apply {
+            metadata = this@FullTransactionInfo.metadata
+        }
 
 }
-

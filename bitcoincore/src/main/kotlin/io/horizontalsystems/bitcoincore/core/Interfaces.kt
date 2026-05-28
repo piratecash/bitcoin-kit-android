@@ -127,8 +127,10 @@ interface IStorage {
     fun isRelayedTransactionExists(hash: ByteArray): Boolean
     fun isTransactionExists(hash: ByteArray): Boolean
     fun getConflictingTransactions(transaction: FullTransaction): List<Transaction>
+    fun getRelayedPendingTransactions(status: Int): List<Transaction>
     fun getIncomingPendingTxHashes(): List<ByteArray>
     fun incomingPendingTransactionsExist(): Boolean
+    fun deleteRelayedPendingTransactions(transactions: List<Transaction>): List<Transaction>
 
     // InvalidTransaction
 

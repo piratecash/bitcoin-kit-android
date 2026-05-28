@@ -39,11 +39,16 @@ class AccountPublicKeyManager(
     }
 
     override fun getPublicKeyByPath(path: String): PublicKey {
-        val parts = path.split("/").map { it.toInt() }
+        val parts = path.parsePublicKeyPath { Error.InvalidPath }
 
-        if (parts.size != 2) throw Error.InvalidPath
-
-        return wallet.publicKey(parts[1], parts[0] == 0)
+        return when (parts.size) {
+            2 -> wallet.publicKey(parts[1], parts[0] == 0)
+            3 -> {
+                if (parts[0] != 0) throw Error.InvalidPath
+                wallet.publicKey(parts[2], parts[1] == 0)
+            }
+            else -> throw Error.InvalidPath
+        }
     }
 
     override fun fillGap() {

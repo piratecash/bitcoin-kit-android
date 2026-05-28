@@ -22,6 +22,10 @@ class UnspentOutputProvider(
     }
 
     private fun isSpendable(utxo: UnspentOutput): Boolean {
+        if (utxo.output.failedToSpend) {
+            return false
+        }
+
         // Check InstantSend first - instant transactions are immediately spendable
         if (instantChecker?.isTransactionInstant(utxo.transaction.hash) == true) {
             return true

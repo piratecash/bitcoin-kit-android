@@ -22,12 +22,15 @@ open class BaseTransactionSerializer {
         transaction.version = input.readInt()
         input.mark()
         val marker = 0xff and input.readUnsignedByte()
-        val inputCount = if (marker == 0) {  // segwit marker: 0x00
-            input.read()  // skip segwit flag: 0x01
-            transaction.segwit = true
+        val hasExtensionPayload: Boolean
+        val inputCount = if (marker == 0) { // segwit marker: 0x00
+            val flag = input.readUnsignedByte()
+            transaction.segwit = flag and SEGWIT_FLAG != 0
+            hasExtensionPayload = flag and EXTENSION_PAYLOAD_FLAG != 0
             input.readVarInt()
         } else {
             input.reset()
+            hasExtensionPayload = false
             input.readVarInt()
         }
 
@@ -49,19 +52,36 @@ open class BaseTransactionSerializer {
             }
         }
 
+        if (hasExtensionPayload) {
+            transaction.extraPayload = input.readBytes(input.available() - LOCK_TIME_SIZE)
+        }
+
         transaction.lockTime = input.readUnsignedInt()
 
         return FullTransaction(transaction, inputs, outputs, this)
     }
 
     open fun serialize(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {
+        return serialize(transaction, withWitness = withWitness, withExtraPayload = true)
+    }
+
+    open fun serializeForTransactionHash(transaction: FullTransaction): ByteArray {
+        return serialize(transaction, withWitness = false)
+    }
+
+    protected fun serialize(
+        transaction: FullTransaction,
+        withWitness: Boolean,
+        withExtraPayload: Boolean,
+    ): ByteArray {
         val header = transaction.header
         val buffer = BitcoinOutput()
         buffer.writeInt(header.version)
 
-        if (header.segwit && withWitness) {
+        val flag = transactionFlag(header, withWitness, withExtraPayload)
+        if (flag > 0) {
             buffer.writeByte(0) // marker 0x00
-            buffer.writeByte(1) // flag 0x01
+            buffer.writeByte(flag)
         }
 
         // inputs
@@ -77,8 +97,19 @@ open class BaseTransactionSerializer {
             transaction.inputs.forEach { buffer.write(InputSerializer.serializeWitness(it.witness)) }
         }
 
+        if (withExtraPayload && header.extraPayload.isNotEmpty()) {
+            buffer.write(header.extraPayload)
+        }
+
         buffer.writeUnsignedInt(header.lockTime)
         return buffer.toByteArray()
+    }
+
+    private fun transactionFlag(header: Transaction, withWitness: Boolean, withExtraPayload: Boolean): Int {
+        var flag = 0
+        if (header.segwit && withWitness) flag = flag or SEGWIT_FLAG
+        if (withExtraPayload && header.extraPayload.isNotEmpty()) flag = flag or EXTENSION_PAYLOAD_FLAG
+        return flag
     }
 
     open fun serializeForSignature(
@@ -196,5 +227,11 @@ open class BaseTransactionSerializer {
         buffer.writeInt(inputIndex)
 
         return buffer.toByteArray()
+    }
+
+    private companion object {
+        const val EXTENSION_PAYLOAD_FLAG = 8
+        const val LOCK_TIME_SIZE = 4
+        const val SEGWIT_FLAG = 1
     }
 }

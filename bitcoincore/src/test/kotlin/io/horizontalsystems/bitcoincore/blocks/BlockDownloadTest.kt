@@ -1,12 +1,15 @@
 package io.horizontalsystems.bitcoincore.blocks
 
+import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.doReturn
 import com.nhaarman.mockitokotlin2.mock
 import com.nhaarman.mockitokotlin2.never
 import com.nhaarman.mockitokotlin2.verify
 import com.nhaarman.mockitokotlin2.whenever
+import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
+import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHashesTask
 import io.horizontalsystems.bitcoincore.network.peer.task.GetMerkleBlocksTask
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
@@ -84,6 +87,30 @@ class BlockDownloadTest {
         assertFalse(result)
     }
 
+    @Test
+    fun `handleCompletedTask - GetBlockHashesTask with hashes - adds block hashes`() {
+        val blockHash = ByteArray(32) { 1 }
+        val task = GetBlockHashesTask(emptyList(), 1)
+        task.owner = blockDownload
+        task.blockHashes = listOf(blockHash)
+
+        val result = blockDownload.handleCompletedTask(peer, task)
+
+        assertTrue(result)
+        verify(blockSyncer).addBlockHashes(listOf(blockHash))
+    }
+
+    @Test
+    fun `handleCompletedTask - GetBlockHashesTask with empty hashes - marks block hashes synced`() {
+        val task = GetBlockHashesTask(emptyList(), 0)
+        task.owner = blockDownload
+
+        val result = blockDownload.handleCompletedTask(peer, task)
+
+        assertTrue(result)
+        verify(peer).blockHashesSynced = true
+    }
+
     // Peer state cleanup
 
     @Test
@@ -115,5 +142,113 @@ class BlockDownloadTest {
 
         verify(peer1).synced = false
         verify(peer2).synced = false
+    }
+
+    @Test
+    fun `handleInventoryItems - request unknown blocks - adds block hashes`() {
+        val blockHash1 = ByteArray(32) { 1 }
+        val transactionHash = ByteArray(32) { 2 }
+        val blockHash2 = ByteArray(32) { 3 }
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        givenSyncedPeer()
+
+        blockDownload.handleInventoryItems(
+            peer,
+            listOf(
+                InventoryItem(InventoryItem.MSG_BLOCK, blockHash1),
+                InventoryItem(InventoryItem.MSG_TX, transactionHash),
+                InventoryItem(InventoryItem.MSG_BLOCK, blockHash2),
+            )
+        )
+
+        verify(blockSyncer).addBlockHashes(listOf(blockHash1, blockHash2))
+    }
+
+    @Test
+    fun `handleInventoryItems - do not request unknown blocks - does not add block hashes`() {
+        val blockHash = ByteArray(32) { 1 }
+        givenSyncedPeer()
+
+        blockDownload.handleInventoryItems(
+            peer,
+            listOf(InventoryItem(InventoryItem.MSG_BLOCK, blockHash))
+        )
+
+        verify(blockSyncer, never()).addBlockHashes(any())
+    }
+
+    @Test
+    fun `handleInventoryItems - request unknown blocks from unsynced peer - does not add block hashes`() {
+        val blockHash = ByteArray(32) { 1 }
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+
+        blockDownload.handleInventoryItems(
+            peer,
+            listOf(InventoryItem(InventoryItem.MSG_BLOCK, blockHash))
+        )
+
+        verify(blockSyncer, never()).addBlockHashes(any())
+    }
+
+    @Test
+    fun `onPeerReady - request unknown blocks and peer ahead - requests block hashes before syncing`() {
+        val locatorHash = ByteArray(32) { 1 }
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        whenever(peer.ready).thenReturn(true)
+        whenever(peer.announcedLastBlockHeight).thenReturn(102)
+        whenever(blockSyncer.getOrphanParents()).thenReturn(emptyList())
+        whenever(blockSyncer.getBlockHashes(50)).thenReturn(emptyList())
+        whenever(blockSyncer.localKnownBestBlockHeight).thenReturn(100)
+        whenever(blockSyncer.getBlockLocatorHashes(102)).thenReturn(listOf(locatorHash))
+        blockDownload.syncPeer = peer
+
+        blockDownload.onPeerReady(peer)
+
+        verify(peer).addTask(any<GetBlockHashesTask>())
+        verify(peer, never()).sendMempoolMessage()
+        verify(blockSyncer, never()).downloadCompleted()
+    }
+
+    @Test
+    fun `onPeerReady - request unknown blocks and peer caught up - completes sync`() {
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        whenever(peer.ready).thenReturn(true)
+        whenever(peer.announcedLastBlockHeight).thenReturn(100)
+        whenever(peerManager.sorted()).thenReturn(emptyList())
+        whenever(blockSyncer.getOrphanParents()).thenReturn(emptyList())
+        whenever(blockSyncer.getBlockHashes(50)).thenReturn(emptyList())
+        whenever(blockSyncer.localKnownBestBlockHeight).thenReturn(100)
+        blockDownload.syncPeer = peer
+
+        blockDownload.onPeerReady(peer)
+
+        verify(peer).blockHashesSynced = true
+        verify(peer).synced = true
+        verify(blockSyncer).downloadCompleted()
+        verify(peer).sendMempoolMessage()
+    }
+
+    @Test
+    fun `onPeerReady - do not request unknown blocks and empty queue - completes sync`() {
+        whenever(peer.ready).thenReturn(true)
+        whenever(peerManager.sorted()).thenReturn(emptyList())
+        whenever(blockSyncer.getOrphanParents()).thenReturn(emptyList())
+        whenever(blockSyncer.getBlockHashes(50)).thenReturn(emptyList())
+        blockDownload.syncPeer = peer
+
+        blockDownload.onPeerReady(peer)
+
+        verify(peer).synced = true
+        verify(blockSyncer).downloadCompleted()
+        verify(peer).sendMempoolMessage()
+    }
+
+    private fun givenSyncedPeer() {
+        whenever(peer.ready).thenReturn(true)
+        whenever(peerManager.sorted()).thenReturn(emptyList())
+        whenever(blockSyncer.getOrphanParents()).thenReturn(emptyList())
+        whenever(blockSyncer.getBlockHashes(50)).thenReturn(emptyList())
+        blockDownload.syncPeer = peer
+        blockDownload.onPeerReady(peer)
     }
 }
