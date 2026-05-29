@@ -32,6 +32,14 @@ class MasternodeListDiffMessageParser : IMessageParser {
     override val command: String = "mnlistdiff"
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
+        // PirateCash daemon at PROTOCOL_VERSION >= MNLISTDIFF_VERSION_ORDER
+        // (70229) serialises CSimplifiedMNListDiff with nVersion (uint16)
+        // BEFORE baseBlockHash. Skipping this field shifts every subsequent
+        // read by 2 bytes; eventually a varint inside the coinbase tx's
+        // sigScript length comes out as ~432 MB and crashes the worker
+        // thread with OOM. Our wallet announces protocolVersion = 70229,
+        // so every mnlistdiff we ever see uses this layout.
+        val version = input.readUnsignedShort()
         val baseBlockHash = input.readBytes(32)
         val blockHash = input.readBytes(32)
 
@@ -47,7 +55,6 @@ class MasternodeListDiffMessageParser : IMessageParser {
 
         // Read coinbase transaction
         val cbTx = CoinbaseTransaction.deserialize(input)
-        val version = 0// (remove) input.readUnsignedShort()
 
         // Deleted MNs
         val deletedMNsCount = input.readVarInt()

@@ -47,7 +47,11 @@ class MasternodeListDiffMessageParser : IMessageParser {
 
         // Read coinbase transaction
         val cbTx = CoinbaseTransaction.deserialize(input)
-        val version = 0// (remove) input.readUnsignedShort()
+        // Cosanta daemon at PROTOCOL_VERSION (70228) places nVersion (uint16)
+        // AFTER cbTx in CSimplifiedMNListDiff. Skipping it shifts every
+        // subsequent read by 2 bytes; a varint inside the deletedMNs / quorum
+        // list comes out enormous and crashes the worker thread with OOM.
+        val version = input.readUnsignedShort()
 
         // Deleted MNs
         val deletedMNsCount = input.readVarInt()

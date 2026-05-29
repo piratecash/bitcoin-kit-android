@@ -38,8 +38,12 @@ class NetworkMessageParser(private val magic: Long) {
         val payloadLength = input.readInt()
         val expectedChecksum = ByteArray(4)
         input.readFully(expectedChecksum)
-        val payload = ByteArray(payloadLength)
-        input.readFully(payload)
+        // Route the payload allocation through BitcoinInput.readBytes so the
+        // MAX_READ_BYTES cap applies here as well. A peer that sends an
+        // oversized (or sign-flipped) payloadLength used to trigger an
+        // unrecoverable OutOfMemoryError on this worker thread; now we get
+        // a clean IOException and the peer-loop can disconnect.
+        val payload = input.readBytes(payloadLength)
 
         // check:
         val actualChecksum = getCheckSum(payload)

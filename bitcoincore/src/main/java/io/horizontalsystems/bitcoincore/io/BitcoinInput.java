@@ -12,6 +12,15 @@ import java.nio.charset.StandardCharsets;
  */
 public class BitcoinInput implements AutoCloseable {
 
+    /**
+     * Hard upper bound on a single readBytes allocation. All Bitcoin-family
+     * P2P messages we deal with are well under 4 MB; 32 MB leaves comfortable
+     * headroom while still preventing a misaligned varint (or a malicious /
+     * buggy peer) from triggering a multi-hundred-MB Java heap allocation
+     * that the worker thread cannot recover from.
+     */
+    public static final int MAX_READ_BYTES = 32 * 1024 * 1024;
+
     private static byte[] EMPTY_BYTES = new byte[0];
     protected final InputStream in;
     private byte[] bufferOf8bytes = new byte[8];
@@ -202,8 +211,15 @@ public class BitcoinInput implements AutoCloseable {
         if (len == 0) {
             return "";
         }
-        byte[] buffer = new byte[(int) len];
-        readFully(buffer);
+        // Validate against MAX_READ_BYTES BEFORE narrowing to int. A 64-bit
+        // varint like 0x1_0000_0001 would otherwise truncate to a small int
+        // (e.g. 1), slip past the cap inside readBytes, allocate the tiny
+        // buffer, and silently corrupt the stream offset for every subsequent
+        // parser. No OOM, but malformed payload is read incorrectly.
+        if (len < 0 || len > MAX_READ_BYTES) {
+            throw new IOException("readString length " + len + " exceeds limit " + MAX_READ_BYTES);
+        }
+        byte[] buffer = readBytes((int) len);
         return new String(buffer, StandardCharsets.UTF_8);
     }
 
@@ -217,6 +233,15 @@ public class BitcoinInput implements AutoCloseable {
     public byte[] readBytes(int len) throws IOException {
         if (len == 0) {
             return EMPTY_BYTES;
+        }
+        if (len < 0 || len > MAX_READ_BYTES) {
+            // Negative lengths usually mean a misaligned varint that overflowed
+            // int after narrowing; oversized lengths usually mean the same plus
+            // a sign-bit-clear catastrophe (e.g. 452 MB). Either way the worker
+            // thread cannot recover from a heap allocation of this scale —
+            // surface it as a recoverable IOException instead so the caller
+            // can disconnect the peer cleanly.
+            throw new IOException("readBytes length " + len + " exceeds limit " + MAX_READ_BYTES);
         }
         byte[] buffer = new byte[len];
         readFully(buffer);
