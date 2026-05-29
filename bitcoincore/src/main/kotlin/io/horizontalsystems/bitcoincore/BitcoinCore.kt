@@ -46,6 +46,7 @@ import io.horizontalsystems.bitcoincore.network.peer.InventoryItemsHandlerChain
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.PeerTaskHandlerChain
+import io.horizontalsystems.bitcoincore.network.peer.closePeerScopedResources
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransaction
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionInfo
@@ -200,9 +201,20 @@ class BitcoinCore(
         dataProvider.clear()
         syncManager.stop()
 
+        // Snapshot the kit's listeners BEFORE detaching them so we still know
+        // what to close after unregister clears the collection. Detach first
+        // and close second: this narrows the window where the shared
+        // PeerGroup can still dispatch a callback into a listener we are
+        // about to tear down. close() on each AutoCloseable listener is
+        // idempotent — for non-shared kits Listener.onStop() during
+        // syncManager.stop() already released the resources; for shared kits
+        // super.stop() may not have run (refcount > 0), so this is the only
+        // path that guarantees teardown for non-last kits.
+        val peerScopedListeners = registeredPeerGroupListeners.toList()
         if (isShared) {
             unregisterFromSharedGroup()
         }
+        closePeerScopedResources(peerScopedListeners)
     }
 
     fun dispose() {

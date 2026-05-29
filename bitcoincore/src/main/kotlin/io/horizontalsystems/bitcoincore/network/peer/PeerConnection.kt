@@ -12,6 +12,7 @@ import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
 import java.util.logging.Logger
 
 class PeerConnection(
@@ -95,15 +96,28 @@ class PeerConnection(
 
     @Synchronized
     fun sendMessage(message: IMessage) {
-        sendingExecutor.execute {
-            if (isRunning) {
-                try {
-                    logger.info("${network.logTag}: => $message")
-                    outputStream?.write(networkMessageSerializer.serialize(message))
-                } catch (e: Exception) {
-                    close(e)
+        try {
+            sendingExecutor.execute {
+                if (isRunning) {
+                    try {
+                        logger.info("${network.logTag}: => $message")
+                        outputStream?.write(networkMessageSerializer.serialize(message))
+                    } catch (e: Exception) {
+                        close(e)
+                    }
                 }
             }
+        } catch (_: RejectedExecutionException) {
+            // PeerGroup.stop() shut the sending executor down. By that point
+            // peerManager.disconnectAll() has already called close(null) on
+            // this connection, so we MUST NOT call close(e) here — that would
+            // overwrite the clean (null) disconnect cause with a synthetic
+            // error and make PeerGroup.onDisconnect mark the peer as failed.
+            // PeerAddressManager.markFailed deletes the host from storage,
+            // which on networks with only a few seed nodes
+            // (Cosanta / Pirate Cash currently have 3) would burn valid peer
+            // addresses on every kit restart. Late sends are safe to drop:
+            // the peer is on its way out cleanly.
         }
     }
 

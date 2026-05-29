@@ -593,7 +593,12 @@ class BitcoinCoreBuilder {
         blockHashScanner.listener = syncManager
 
         connectionManager.addListener(syncManager)
-        peerGroup.addPeerGroupListener(syncManager)
+        // syncManager is registered as a peer-group listener below, AFTER
+        // BitcoinCore is constructed, so it goes through bitcoinCore's tracked
+        // registration (registeredPeerGroupListeners). Registering it here
+        // directly on peerGroup would skip the tracking and leak the listener
+        // on shared-peer-group teardown — the stopped (non-last) kit would
+        // stay live in peerGroup.peerGroupListeners, still receiving callbacks.
 
         val unspentOutputSelector = UnspentOutputSelectorChain(unspentOutputProvider)
         val pendingTransactionSyncer =
@@ -785,6 +790,8 @@ class BitcoinCoreBuilder {
         bitcoinCore.addPeerTaskHandler(initialDownload)
         bitcoinCore.addInventoryItemsHandler(initialDownload)
         bitcoinCore.addPeerGroupListener(initialDownload)
+
+        bitcoinCore.addPeerGroupListener(syncManager)
 
 
         val mempoolTransactions = MempoolTransactions(pendingTransactionSyncer, transactionSender)

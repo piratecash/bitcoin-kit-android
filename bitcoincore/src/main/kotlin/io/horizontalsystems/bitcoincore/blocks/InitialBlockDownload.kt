@@ -7,12 +7,12 @@ import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
+import io.horizontalsystems.bitcoincore.network.peer.PeerScopedExecutor
 import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHashesTask
 import io.horizontalsystems.bitcoincore.network.peer.task.GetMerkleBlocksTask
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
 import java.util.logging.Logger
 import kotlin.math.max
 
@@ -21,7 +21,7 @@ class InitialBlockDownload(
     private val peerManager: PeerManager,
     private val merkleBlockExtractor: MerkleBlockExtractor,
     private val logTag: String
-) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler {
+) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler, AutoCloseable {
 
     override var listener: IBlockSyncListener? = null
     override val syncedPeers = CopyOnWriteArrayList<Peer>()
@@ -32,7 +32,7 @@ class InitialBlockDownload(
     override var syncPeer: Peer? = null
     @Volatile
     private var selectNewPeer = false
-    private val peersQueue = Executors.newSingleThreadExecutor()
+    private val peersQueue = PeerScopedExecutor()
     private val logger = Logger.getLogger("IBD")
 
     private class PeerSyncState(@Volatile var synced: Boolean = false, @Volatile var blockHashesSynced: Boolean = false)
@@ -93,10 +93,22 @@ class InitialBlockDownload(
     }
 
     override fun onStart() {
+        peersQueue.start()
         blockSyncer.prepareForDownload()
     }
 
-    override fun onStop() = Unit
+    override fun onStop() {
+        peersQueue.close()
+    }
+
+    /**
+     * Explicit teardown invoked from BitcoinCore.stop(). Idempotent with
+     * onStop(); required for the SharedPeerGroup case where onStop() may
+     * never fire (refcount > 0 — other shared kits are still running).
+     */
+    override fun close() {
+        peersQueue.close()
+    }
 
     override fun onPeerCreate(peer: Peer) {
         peer.localBestBlockHeight = blockSyncer.localDownloadedBestBlockHeight

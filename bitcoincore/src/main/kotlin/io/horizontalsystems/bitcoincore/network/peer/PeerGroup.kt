@@ -15,6 +15,7 @@ import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 open class PeerGroup(
@@ -64,8 +65,13 @@ open class PeerGroup(
         private set
 
     private val peerGroupListeners = CopyOnWriteArrayList<Listener>()
-    private val executorService = Executors.newCachedThreadPool()
-    private val peerThreadPool = Executors.newCachedThreadPool()
+    // Pools are recreated on every start() after a stop() — once shut down an
+    // ExecutorService cannot be reused. This makes the lifecycle:
+    //   create → start → stop (shutdown) → start (recreate) → stop → …
+    @Volatile
+    private var executorService: ExecutorService = Executors.newCachedThreadPool()
+    @Volatile
+    private var peerThreadPool: ExecutorService = Executors.newCachedThreadPool()
 
     private val acceptableBlockHeightDifference = 50_000
     private var peerCountToConnectMax = 100
@@ -76,9 +82,17 @@ open class PeerGroup(
     private var lastLogTime = 0L
     private val logIntervalMs = 60_000L
 
+    @Synchronized
     open fun start() {
         if (running) {
             return
+        }
+
+        if (executorService.isShutdown) {
+            executorService = Executors.newCachedThreadPool()
+        }
+        if (peerThreadPool.isShutdown) {
+            peerThreadPool = Executors.newCachedThreadPool()
         }
 
         running = true
@@ -87,10 +101,21 @@ open class PeerGroup(
         connectPeersIfRequired()
     }
 
+    @Synchronized
     open fun stop() {
         running = false
         peerManager.disconnectAll()
         peerGroupListeners.forEach { it.onStop() }
+        // Release the per-PeerGroup thread pools. Without this, a fresh PeerGroup
+        // is created on every restart while the previous one keeps its peer-worker
+        // threads alive (PeerConnection.run() busy-loops with Thread.sleep + the
+        // pools use newCachedThreadPool without an upper bound), so the OS thread
+        // count grows unboundedly across the session. On low-memory devices that
+        // pressure can manifest as SIGABRT in dependent native libraries.
+        // Soft shutdown is enough: disconnectAll() already signalled every
+        // PeerConnection.run() to exit, and no new tasks will be accepted.
+        peerThreadPool.shutdown()
+        executorService.shutdown()
     }
 
     fun refresh() {

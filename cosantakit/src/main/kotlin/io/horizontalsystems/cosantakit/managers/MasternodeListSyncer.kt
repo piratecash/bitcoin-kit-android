@@ -7,10 +7,10 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.network.peer.IPeerTaskHandler
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
+import io.horizontalsystems.bitcoincore.network.peer.PeerScopedExecutor
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.cosantakit.tasks.PeerTaskFactory
 import io.horizontalsystems.cosantakit.tasks.RequestMasternodeListDiffTask
-import java.util.concurrent.Executors
 
 class MasternodeListSyncer(
     private val bitcoinCore: BitcoinCore,
@@ -18,11 +18,28 @@ class MasternodeListSyncer(
     private val masternodeListManager: MasternodeListManager,
     private val initialBlockDownload: IInitialDownload,
     private val logTag: String
-) : IPeerTaskHandler, IPeerSyncListener, PeerGroup.Listener {
+) : IPeerTaskHandler, IPeerSyncListener, PeerGroup.Listener, AutoCloseable {
 
     @Volatile
     private var workingPeer: Peer? = null
-    private val peersQueue = Executors.newSingleThreadExecutor()
+    private val peersQueue = PeerScopedExecutor()
+
+    override fun onStart() {
+        peersQueue.start()
+    }
+
+    override fun onStop() {
+        peersQueue.close()
+    }
+
+    /**
+     * Explicit teardown invoked from BitcoinCore.stop(). Idempotent with
+     * onStop(); required for the SharedPeerGroup case where onStop() may
+     * never fire (refcount > 0 — other shared kits are still running).
+     */
+    override fun close() {
+        peersQueue.close()
+    }
 
     override fun onPeerSynced(peer: Peer) {
         assignNextSyncPeer()

@@ -10,13 +10,13 @@ import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.network.peer.IPeerTaskHandler
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
+import io.horizontalsystems.bitcoincore.network.peer.PeerScopedExecutor
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessage
 import io.horizontalsystems.dashkit.tasks.PeerTaskFactory
 import io.horizontalsystems.dashkit.tasks.RequestMasternodeListDiffTask
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 
 class MasternodeListSyncer(
     private val bitcoinCore: BitcoinCore,
@@ -25,7 +25,7 @@ class MasternodeListSyncer(
     private val initialBlockDownload: IInitialDownload,
     private val storage: IStorage,
     private val logTag: String
-) : IPeerTaskHandler, IPeerSyncListener, PeerGroup.Listener {
+) : IPeerTaskHandler, IPeerSyncListener, PeerGroup.Listener, AutoCloseable {
 
     // Track active requests per block hash with associated peers
     private data class ActiveRequest(
@@ -52,7 +52,24 @@ class MasternodeListSyncer(
     private val workingPeers = ConcurrentHashMap.newKeySet<Peer>()
     // Track active requests to avoid duplicates
     private val activeRequests = ConcurrentHashMap<String, ActiveRequest>()
-    private val peersQueue = Executors.newSingleThreadExecutor()
+    private val peersQueue = PeerScopedExecutor()
+
+    override fun onStart() {
+        peersQueue.start()
+    }
+
+    override fun onStop() {
+        peersQueue.close()
+    }
+
+    /**
+     * Explicit teardown invoked from BitcoinCore.stop(). Idempotent with
+     * onStop(); required for the SharedPeerGroup case where onStop() may
+     * never fire (refcount > 0 — other shared kits are still running).
+     */
+    override fun close() {
+        peersQueue.close()
+    }
 
     // Storage for pending MNLISTDIFF messages with associated peer information
     private val pendingMnlistDiffs = ConcurrentHashMap<String, PendingDiff>()
