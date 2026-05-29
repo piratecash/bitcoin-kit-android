@@ -66,6 +66,10 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.peerAddress.getLeastScoreFastest(ips)
     }
 
+    override fun hasFreshPeerAddressesExcludingIps(ips: List<String>): Boolean {
+        return store.peerAddress.hasFresh(ips)
+    }
+
     override fun deletePeerAddress(ip: String) {
         store.peerAddress.delete(PeerAddress(ip))
     }

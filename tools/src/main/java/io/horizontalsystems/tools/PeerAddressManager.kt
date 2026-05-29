@@ -18,11 +18,7 @@ class PeerAddressManager(private val network: Network) : IPeerAddressManager {
 
     override val hasFreshIps: Boolean
         get() {
-            getLeastScoreFastestPeer()?.let { peerAddress ->
-                return peerAddress.connectionTime == null
-            }
-
-            return false
+            return state.hasFreshPeerAddressesExcludingIps(state.getUsedPeers())
         }
 
     override fun getIp(): String? {
@@ -35,6 +31,10 @@ class PeerAddressManager(private val network: Network) : IPeerAddressManager {
         state.add(peerAddress.ip)
 
         return peerAddress.ip
+    }
+
+    override fun refreshPeerAddresses() {
+        peerDiscover.lookup(network.dnsSeeds)
     }
 
     override fun addIps(host: String?, ips: List<String>) {
@@ -85,7 +85,19 @@ class PeerAddressManager(private val network: Network) : IPeerAddressManager {
 
         @Synchronized
         fun getLeastScoreFastestPeerAddressExcludingIps(ips: List<String>): PeerAddress? {
-            return allPeers.filter { !ips.contains(it.ip) }.sortedBy { it.connectionTime }.minByOrNull { it.score }
+            return allPeers
+                .filter { !ips.contains(it.ip) }
+                .sortedWith(
+                    compareBy<PeerAddress> { it.connectionTime == null }
+                        .thenByDescending { it.score }
+                        .thenBy { it.connectionTime }
+                )
+                .firstOrNull()
+        }
+
+        @Synchronized
+        fun hasFreshPeerAddressesExcludingIps(ips: List<String>): Boolean {
+            return allPeers.any { it.connectionTime == null && !ips.contains(it.ip) }
         }
 
         @Synchronized

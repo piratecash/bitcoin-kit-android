@@ -1,11 +1,13 @@
 package io.horizontalsystems.bitcoincore.network.peer.task
 
+import io.horizontalsystems.bitcoincore.blocks.BlockMessageExtractor
 import io.horizontalsystems.bitcoincore.blocks.MerkleBlockExtractor
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
+import io.horizontalsystems.bitcoincore.network.messages.BlockMessage
 import io.horizontalsystems.bitcoincore.network.messages.GetDataMessage
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.MerkleBlockMessage
@@ -18,6 +20,7 @@ class GetMerkleBlocksTask(
     hashes: List<BlockHash>,
     private val merkleBlockHandler: MerkleBlockHandler,
     private val merkleBlockExtractor: MerkleBlockExtractor,
+    private val blockMessageExtractor: BlockMessageExtractor,
     private val minMerkleBlocks: Double,
     private val minTransactions: Double,
     private val minReceiveBytes: Double,
@@ -40,6 +43,7 @@ class GetMerkleBlocksTask(
     private var waitingStartTime: Long = 0
     private var maxWarningCount = 10
     private var firstResponseReceived = false
+    private var firstResponseCommandLogged = false
 
     override val state: String
         get() = "minMerkleBlocksCount: ${minMerkleBlocks.roundToInt()}; minTransactionsCount: ${minTransactions.roundToInt()}; minTransactionsSize: ${minTransactions.roundToInt()}"
@@ -101,9 +105,18 @@ class GetMerkleBlocksTask(
 
         val canHandleMessage = when (message) {
             is MerkleBlockMessage -> {
+                logFirstBlockResponse("merkleblock")
                 receivedMerkleBlocks += 1
                 receivedTransactions += message.txCount
                 handleMerkleBlock(merkleBlockExtractor.extract(message))
+            }
+
+            is BlockMessage -> {
+                logFirstBlockResponse("block")
+                receivedMerkleBlocks += 1
+                receivedTransactions += message.transactions.size
+                receivedBytes += message.size
+                handleMerkleBlock(blockMessageExtractor.extract(message))
             }
 
             is TransactionMessage -> {
@@ -117,6 +130,13 @@ class GetMerkleBlocksTask(
         resumeWaiting()
 
         return canHandleMessage
+    }
+
+    private fun logFirstBlockResponse(command: String) {
+        if (firstResponseCommandLogged || logTag != ECASH_LOG_TAG) return
+
+        firstResponseCommandLogged = true
+        Timber.tag(logTag).d("GetMerkleBlocksTask first block response command=$command")
     }
 
     private fun handleMerkleBlock(merkleBlock: MerkleBlock): Boolean {
@@ -187,4 +207,8 @@ class GetMerkleBlocksTask(
 
     class MerkleBlockNotReceived : Exception("Merkle blocks are not received")
     class PeerTooSlow(e: String) : Exception(e)
+
+    private companion object {
+        const val ECASH_LOG_TAG = "ECASH"
+    }
 }

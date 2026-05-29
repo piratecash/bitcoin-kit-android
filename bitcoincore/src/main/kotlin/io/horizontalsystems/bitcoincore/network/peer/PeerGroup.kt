@@ -14,6 +14,7 @@ import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -43,6 +44,8 @@ open class PeerGroup(
 
     private val inventoryItemsHandlers = CopyOnWriteArrayList<IInventoryItemsHandler>()
     private val peerTaskHandlers = CopyOnWriteArrayList<IPeerTaskHandler>()
+    private val getAddrRequestedHosts = ConcurrentHashMap.newKeySet<String>()
+    private val acceptedPeerHosts = ConcurrentHashMap.newKeySet<String>()
 
     fun addInventoryItemsHandler(handler: IInventoryItemsHandler) {
         inventoryItemsHandlers.add(handler)
@@ -81,6 +84,8 @@ open class PeerGroup(
 
     private var lastLogTime = 0L
     private val logIntervalMs = 60_000L
+    private var lastPeerAddressRefreshTime = 0L
+    private val peerAddressRefreshIntervalMs = 60_000L
 
     @Synchronized
     open fun start() {
@@ -105,6 +110,8 @@ open class PeerGroup(
     open fun stop() {
         running = false
         peerManager.disconnectAll()
+        getAddrRequestedHosts.clear()
+        acceptedPeerHosts.clear()
         peerGroupListeners.forEach { it.onStop() }
         // Release the per-PeerGroup thread pools. Without this, a fresh PeerGroup
         // is created on every restart while the previous one keeps its peer-worker
@@ -144,6 +151,7 @@ open class PeerGroup(
     // PeerListener implementations
     //
     override fun onConnect(peer: Peer) {
+        acceptedPeerHosts.add(peer.host)
         hostManager.markConnected(peer)
         peerGroupListeners.forEach { it.onPeerConnect(peer) }
 
@@ -156,6 +164,8 @@ open class PeerGroup(
 
     override fun onDisconnect(peer: Peer, e: Exception?) {
         peerManager.remove(peer)
+        getAddrRequestedHosts.remove(peer.host)
+        val acceptedPeer = acceptedPeerHosts.remove(peer.host)
 
         when (e) {
             null -> {
@@ -165,9 +175,11 @@ open class PeerGroup(
 
             is PeerTimer.Error.Timeout -> {
                 Timber.tag(network.logTag).w("Peer ${peer.host} disconnected. Warning: ${e.javaClass.simpleName}, ${e.message}.")
-                // since the peer can be normally interacted after awhile we should not remove it from list
-                // that is why we mark it as disconnected with no error
-                hostManager.markSuccess(peer.host)
+                if (acceptedPeer) {
+                    hostManager.markSuccess(peer.host)
+                } else {
+                    hostManager.markFailed(peer.host)
+                }
             }
 
             else -> {
@@ -199,7 +211,7 @@ open class PeerGroup(
                     .filter {
                         it !is Inet6Address
                     }
-                    .map {
+                    .mapNotNull {
                         it.hostAddress
                     }
 
@@ -277,12 +289,29 @@ open class PeerGroup(
             peer.start(peerThreadPool)
         }
 
-        // If there are not enough addresses to reach the required number of peers, request them from already connected peers
-        if (peerManager.peersCount > 0 && !hostManager.hasFreshIps && peerManager.peersCount < peerCountToHold) {
-            peerManager.connected().forEach { peer ->
-                peer.sendGetAddrMessage()
-            }
+        if (peerManager.peersCount > 0 && peerManager.peersCount < peerCountToHold) {
+            requestMorePeerAddressesIfNeeded()
         }
+        refreshPeerAddressesIfNeeded()
+    }
+
+    private fun requestMorePeerAddressesIfNeeded() {
+        val connectedPeers = peerManager.connected()
+        if (connectedPeers.isEmpty()) return
+
+        connectedPeers
+            .filter { getAddrRequestedHosts.add(it.host) }
+            .forEach { it.sendGetAddrMessage() }
+    }
+
+    private fun refreshPeerAddressesIfNeeded() {
+        if (peerManager.connected().size >= peerCountToHold) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastPeerAddressRefreshTime < peerAddressRefreshIntervalMs) return
+
+        lastPeerAddressRefreshTime = now
+        hostManager.refreshPeerAddresses()
     }
 
     //

@@ -21,6 +21,7 @@ class BlockDownload(
     private var blockSyncer: BlockSyncer,
     private val peerManager: PeerManager,
     private val merkleBlockExtractor: MerkleBlockExtractor,
+    private val blockMessageExtractor: BlockMessageExtractor,
     private val requestUnknownBlocks: Boolean,
     private val logTag: String
 ) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler, AutoCloseable {
@@ -262,6 +263,7 @@ class BlockDownload(
             hashes = hashes,
             merkleBlockHandler = this,
             merkleBlockExtractor = merkleBlockExtractor,
+            blockMessageExtractor = blockMessageExtractor,
             minMerkleBlocks = minMerkleBlocks,
             minTransactions = minTransactions,
             minReceiveBytes = minReceiveBytes,

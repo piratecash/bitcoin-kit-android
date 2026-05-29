@@ -22,6 +22,7 @@ class InitialBlockDownloadTest {
     private lateinit var blockSyncer: BlockSyncer
     private lateinit var peerManager: PeerManager
     private lateinit var merkleBlockExtractor: MerkleBlockExtractor
+    private lateinit var blockMessageExtractor: BlockMessageExtractor
     private lateinit var ibd: InitialBlockDownload
     private lateinit var peer: Peer
 
@@ -30,7 +31,8 @@ class InitialBlockDownloadTest {
         blockSyncer = mock()
         peerManager = mock()
         merkleBlockExtractor = mock()
-        ibd = InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor, "TEST")
+        blockMessageExtractor = mock()
+        ibd = InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, "TEST")
         peer = mock { on { host } doReturn "1.2.3.4" }
     }
 
@@ -66,7 +68,7 @@ class InitialBlockDownloadTest {
 
     @Test
     fun `handleCompletedTask - owner is different IBD instance - rejected`() {
-        val otherIbd = InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor, "OTHER")
+        val otherIbd = InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, "OTHER")
         val task = GetBlockHashesTask(emptyList(), 0)
         task.owner = otherIbd
 

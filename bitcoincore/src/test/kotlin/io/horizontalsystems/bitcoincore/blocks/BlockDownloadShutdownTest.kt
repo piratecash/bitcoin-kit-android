@@ -23,6 +23,7 @@ class BlockDownloadShutdownTest {
             mock<BlockSyncer>(),
             mock<PeerManager>(),
             mock<MerkleBlockExtractor>(),
+            mock<BlockMessageExtractor>(),
             false,
             "TEST"
         )

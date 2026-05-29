@@ -97,12 +97,10 @@ class Peer(
             chainIdentityRequestTime?.let {
                 if (now() - it > chainIdentityTimeout) {
                     // The peer never answered our chain-identity GetHeaders probe.
-                    // Close with an explicit error so PeerGroup.onDisconnect routes
-                    // the address through markFailed (the null / PeerTimer.Timeout
-                    // branches both go through markSuccess and the same dead
-                    // address gets re-elected on the next connectPeersIfRequired
-                    // tick — silent BCH nodes on the eCash port would otherwise
-                    // sit in a permanent reconnect loop).
+                    // Close with an explicit wrong-chain error instead of letting
+                    // the generic peer timer decide the disconnect reason. Silent
+                    // BCH nodes on the eCash port should be evicted deterministically
+                    // rather than sit in a permanent reconnect loop.
                     return close(Error.WrongChain("Chain identity probe timed out"))
                 }
             }

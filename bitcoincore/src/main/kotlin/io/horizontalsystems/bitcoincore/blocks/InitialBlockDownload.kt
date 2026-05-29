@@ -20,6 +20,7 @@ class InitialBlockDownload(
     private var blockSyncer: BlockSyncer,
     private val peerManager: PeerManager,
     private val merkleBlockExtractor: MerkleBlockExtractor,
+    private val blockMessageExtractor: BlockMessageExtractor,
     private val logTag: String
 ) : IInitialDownload, GetMerkleBlocksTask.MerkleBlockHandler, AutoCloseable {
 
@@ -189,7 +190,16 @@ class InitialBlockDownload(
                 state.synced = state.blockHashesSynced
                 peer.synced = state.synced
             } else {
-                val task = GetMerkleBlocksTask(blockHashes, this, merkleBlockExtractor, minMerkleBlocks, minTransactions, minReceiveBytes, logTag = logTag)
+                val task = GetMerkleBlocksTask(
+                    blockHashes,
+                    this,
+                    merkleBlockExtractor,
+                    blockMessageExtractor,
+                    minMerkleBlocks,
+                    minTransactions,
+                    minReceiveBytes,
+                    logTag = logTag
+                )
                 task.owner = this
                 peer.addTask(task)
             }

@@ -44,6 +44,7 @@ interface IStorage {
     //  PeerAddress
 
     fun getLeastScoreFastestPeerAddressExcludingIps(ips: List<String>): PeerAddress?
+    fun hasFreshPeerAddressesExcludingIps(ips: List<String>): Boolean
     fun deletePeerAddress(ip: String)
     fun setPeerAddresses(list: List<PeerAddress>)
     fun markConnected(ip: String, time: Long)
@@ -207,6 +208,7 @@ interface IPeerAddressManager {
     val listener: IPeerAddressManagerListener?
     val hasFreshIps: Boolean
     fun getIp(): String?
+    fun refreshPeerAddresses()
     fun addIps(host: String?, ips: List<String>)
     fun addUnreachedHosts(host: String)
     fun markFailed(ip: String)

@@ -20,26 +20,23 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
 
     override val hasFreshIps: Boolean
         get() {
-            getLeastScoreFastestPeer()?.let { peerAddress ->
-                return peerAddress.connectionTime == null
-            }
-
-            return false
+            return storage.hasFreshPeerAddressesExcludingIps(state.getUsedPeers())
         }
 
     override fun getIp(): String? {
         val peerAddress = getLeastScoreFastestPeer()
         if (peerAddress == null) {
-            val dnsListToCheck = network.dnsSeeds.filter { !checkedHosts.contains(it) }
-            if (dnsListToCheck.isNotEmpty()) {
-                peerDiscover.lookup(dnsListToCheck)
-            }
+            lookupDnsSeeds(force = false)
             return null
         }
 
         state.add(peerAddress.ip)
 
         return peerAddress.ip
+    }
+
+    override fun refreshPeerAddresses() {
+        lookupDnsSeeds(force = true)
     }
 
     @Synchronized
@@ -74,6 +71,13 @@ class PeerAddressManager(private val network: Network, private val storage: ISto
 
     private fun getLeastScoreFastestPeer(): PeerAddress? {
         return storage.getLeastScoreFastestPeerAddressExcludingIps(state.getUsedPeers())
+    }
+
+    private fun lookupDnsSeeds(force: Boolean) {
+        val dnsListToCheck = if (force) network.dnsSeeds else network.dnsSeeds.filter { !checkedHosts.contains(it) }
+        if (dnsListToCheck.isNotEmpty()) {
+            peerDiscover.lookup(dnsListToCheck)
+        }
     }
 
     private class State {

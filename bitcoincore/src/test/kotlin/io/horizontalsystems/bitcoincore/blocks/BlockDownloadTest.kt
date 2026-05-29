@@ -23,6 +23,7 @@ class BlockDownloadTest {
     private lateinit var blockSyncer: BlockSyncer
     private lateinit var peerManager: PeerManager
     private lateinit var merkleBlockExtractor: MerkleBlockExtractor
+    private lateinit var blockMessageExtractor: BlockMessageExtractor
     private lateinit var blockDownload: BlockDownload
     private lateinit var peer: Peer
 
@@ -31,7 +32,8 @@ class BlockDownloadTest {
         blockSyncer = mock()
         peerManager = mock()
         merkleBlockExtractor = mock()
-        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, false, "TEST")
+        blockMessageExtractor = mock()
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, false, "TEST")
         peer = mock { on { host } doReturn "1.2.3.4" }
     }
 
@@ -70,7 +72,14 @@ class BlockDownloadTest {
 
     @Test
     fun `handleCompletedTask - owner is different BlockDownload - rejected`() {
-        val otherBlockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, false, "OTHER")
+        val otherBlockDownload = BlockDownload(
+            blockSyncer,
+            peerManager,
+            merkleBlockExtractor,
+            blockMessageExtractor,
+            false,
+            "OTHER"
+        )
         val task = mock<GetMerkleBlocksTask>()
         whenever(task.owner).thenReturn(otherBlockDownload)
 
@@ -149,7 +158,7 @@ class BlockDownloadTest {
         val blockHash1 = ByteArray(32) { 1 }
         val transactionHash = ByteArray(32) { 2 }
         val blockHash2 = ByteArray(32) { 3 }
-        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, true, "TEST")
         givenSyncedPeer()
 
         blockDownload.handleInventoryItems(
@@ -180,7 +189,7 @@ class BlockDownloadTest {
     @Test
     fun `handleInventoryItems - request unknown blocks from unsynced peer - does not add block hashes`() {
         val blockHash = ByteArray(32) { 1 }
-        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, true, "TEST")
 
         blockDownload.handleInventoryItems(
             peer,
@@ -193,7 +202,7 @@ class BlockDownloadTest {
     @Test
     fun `onPeerReady - request unknown blocks and peer ahead - requests block hashes before syncing`() {
         val locatorHash = ByteArray(32) { 1 }
-        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, true, "TEST")
         whenever(peer.ready).thenReturn(true)
         whenever(peer.announcedLastBlockHeight).thenReturn(102)
         whenever(blockSyncer.getOrphanParents()).thenReturn(emptyList())
@@ -211,7 +220,7 @@ class BlockDownloadTest {
 
     @Test
     fun `onPeerReady - request unknown blocks and peer caught up - completes sync`() {
-        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, true, "TEST")
+        blockDownload = BlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, true, "TEST")
         whenever(peer.ready).thenReturn(true)
         whenever(peer.announcedLastBlockHeight).thenReturn(100)
         whenever(peerManager.sorted()).thenReturn(emptyList())

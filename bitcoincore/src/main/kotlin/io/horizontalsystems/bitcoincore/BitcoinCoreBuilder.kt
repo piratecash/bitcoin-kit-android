@@ -17,6 +17,7 @@ import io.horizontalsystems.bitcoincore.apisync.legacy.PublicKeyFetcher
 import io.horizontalsystems.bitcoincore.apisync.legacy.WatchAddressBlockHashScanHelper
 import io.horizontalsystems.bitcoincore.apisync.legacy.WatchPublicKeyFetcher
 import io.horizontalsystems.bitcoincore.blocks.BlockDownload
+import io.horizontalsystems.bitcoincore.blocks.BlockMessageExtractor
 import io.horizontalsystems.bitcoincore.blocks.BlockSyncer
 import io.horizontalsystems.bitcoincore.blocks.Blockchain
 import io.horizontalsystems.bitcoincore.blocks.BloomFilterLoader
@@ -526,6 +527,7 @@ class BitcoinCoreBuilder {
         val apiSyncer: IApiSyncer
         val initialDownload: IInitialDownload
         val merkleBlockExtractor = MerkleBlockExtractor(network.maxBlockSize)
+        val blockMessageExtractor = BlockMessageExtractor(network.maxBlockSize)
 
         when (syncMode) {
             is BitcoinCore.SyncMode.Blockchair -> {
@@ -548,6 +550,7 @@ class BitcoinCoreBuilder {
                     blockSyncer,
                     peerManager,
                     merkleBlockExtractor,
+                    blockMessageExtractor,
                     requestUnknownBlocks,
                     network.logTag
                 )
@@ -572,6 +575,7 @@ class BitcoinCoreBuilder {
                         blockSyncer = blockSyncer,
                         peerManager = peerManager,
                         merkleBlockExtractor = merkleBlockExtractor,
+                        blockMessageExtractor = blockMessageExtractor,
                         logTag = network.logTag
                     )
             }

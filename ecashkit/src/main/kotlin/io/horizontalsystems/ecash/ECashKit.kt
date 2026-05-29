@@ -19,12 +19,15 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyDifficultyAdjustmentValidator
 import io.horizontalsystems.bitcoincore.blocks.validators.ProofOfWorkValidator
+import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
 import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
+import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
@@ -33,6 +36,7 @@ import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.CashAddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
+import io.horizontalsystems.ecash.messages.ECashBlockMessageParser
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -175,6 +179,7 @@ class ECashKit : AbstractKit {
         val apiTransactionProvider = apiTransactionProvider(networkType)
         val paymentAddressParser = PaymentAddressParser("bitcoincash", removeScheme = false)
         val blockValidatorSet = blockValidatorSet(networkType, storage)
+        val transactionSerializer = BaseTransactionSerializer()
 
         val purpose = Purpose.BIP44
         val bitcoinCoreBuilder = BitcoinCoreBuilder()
@@ -191,6 +196,7 @@ class ECashKit : AbstractKit {
             .setSyncMode(syncMode)
             .setConfirmationThreshold(confirmationsThreshold)
             .setStorage(storage)
+            .setTransactionSerializer(transactionSerializer)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
             .setBlockValidator(blockValidatorSet)
@@ -205,6 +211,13 @@ class ECashKit : AbstractKit {
         //  extending bitcoinCore
 
         bitcoinCore.prependAddressConverter(CashAddressConverter(network.addressSegwitHrp))
+        bitcoinCore.addMessageParser(
+            ECashBlockMessageParser(
+                BlockHeaderParser(DoubleSha256Hasher()),
+                transactionSerializer,
+                network.maxBlockSize
+            )
+        )
         bitcoinCore.addRestoreKeyConverter(
             ECashRestoreKeyConverter(bitcoinCoreBuilder.addressConverter, purpose)
         )

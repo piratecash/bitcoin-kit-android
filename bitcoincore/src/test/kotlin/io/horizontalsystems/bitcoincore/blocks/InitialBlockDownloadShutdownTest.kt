@@ -23,6 +23,7 @@ class InitialBlockDownloadShutdownTest {
             mock<BlockSyncer>(),
             mock<PeerManager>(),
             mock<MerkleBlockExtractor>(),
+            mock<BlockMessageExtractor>(),
             "TEST"
         )
     }
