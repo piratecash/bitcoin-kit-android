@@ -104,7 +104,14 @@ class PeerChainIdentityTest {
     }
 
     @Test
-    fun onTimePeriodPassed_chainIdentityTimedOut_closesConnection() {
+    fun onTimePeriodPassed_chainIdentityTimedOut_closesWithWrongChainError() {
+        // A peer that never answers our chain-identity GetHeaders probe must
+        // be marked as failed (not as success) so PeerAddressManager.markFailed
+        // removes its address from storage. Closing with `null` puts the peer
+        // through the markSuccess branch in PeerGroup.onDisconnect, the same
+        // address gets re-elected on the next connectPeersIfRequired(), and
+        // we end up in a silent-peer reconnect loop — exactly what we
+        // observed for BCH nodes on the eCash port.
         var currentTime = 1_000_000L
         withPeer(now = { currentTime }) { peer, connection ->
             peer.onMessage(VerAckMessage())
@@ -112,7 +119,7 @@ class PeerChainIdentityTest {
             currentTime += 11_000
             peer.onTimePeriodPassed()
 
-            verify(connection).close(null)
+            verify(connection).close(argThat { this is Peer.Error.WrongChain })
         }
     }
 }

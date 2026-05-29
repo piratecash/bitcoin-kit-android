@@ -30,7 +30,14 @@ class PeerManager {
     }
 
     fun connected(): List<Peer> {
-        return peers.values.filter { it.connected }
+        // A peer still inside the chain-identity probe has completed the
+        // version/verack handshake (Peer.connected = true) but has not yet
+        // been confirmed to be on our chain. It must not appear in this list:
+        // callers iterate it to broadcast (e.g. BloomFilterLoader.onFilterUpdated),
+        // and on sister chains that share the P2P magic and port
+        // (eCash ↔ BCH) a wrong-chain peer would otherwise receive our bloom
+        // filter before the probe resolves. Same invariant as in readyPears().
+        return peers.values.filter { it.connected && !it.awaitingChainIdentity }
     }
 
     fun sorted(): List<Peer> {
