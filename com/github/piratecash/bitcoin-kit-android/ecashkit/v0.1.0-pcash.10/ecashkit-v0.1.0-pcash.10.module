@@ -1,0 +1,148 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "ecashkit",
+    "version": "v0.1.0-pcash.10",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.10"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincashkit",
+          "version": {
+            "requires": "v0.1.0-pcash.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "ecashkit-v0.1.0-pcash.10.aar",
+          "url": "ecashkit-v0.1.0-pcash.10.aar",
+          "size": 235938,
+          "sha512": "19fc5dc920892e2989ade58e6409737858980cf02f73a5a88e61f8e9a744c66a24bc0d4bc6ceb9b779d60359234c364c6a75c4089c3fa48ae6038345d88f361b",
+          "sha256": "02761abfb575f8310ec59832670cf400d6242429d898fd09e896ebabc9b6707b",
+          "sha1": "d10d7b2c25237a5d2ed2bb782a9aa638d9e4b8d5",
+          "md5": "6854ba885d36edfbd8291e11555c55fb"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "com.google.protobuf",
+          "module": "protobuf-javalite",
+          "version": {
+            "requires": "3.22.2"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.10"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincashkit",
+          "version": {
+            "requires": "v0.1.0-pcash.10"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "ecashkit-v0.1.0-pcash.10.aar",
+          "url": "ecashkit-v0.1.0-pcash.10.aar",
+          "size": 235938,
+          "sha512": "19fc5dc920892e2989ade58e6409737858980cf02f73a5a88e61f8e9a744c66a24bc0d4bc6ceb9b779d60359234c364c6a75c4089c3fa48ae6038345d88f361b",
+          "sha256": "02761abfb575f8310ec59832670cf400d6242429d898fd09e896ebabc9b6707b",
+          "sha1": "d10d7b2c25237a5d2ed2bb782a9aa638d9e4b8d5",
+          "md5": "6854ba885d36edfbd8291e11555c55fb"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "ecashkit-v0.1.0-pcash.10-sources.jar",
+          "url": "ecashkit-v0.1.0-pcash.10-sources.jar",
+          "size": 216229,
+          "sha512": "6b785230e3524c95b3f7b3dc0134d8a6874048c1d37ab9f99e9a1f8b4e2f123002af6b111bdd4be05145e259572bd24b51cb343b73912812979d6c9f34b2f1b6",
+          "sha256": "f26e7e2ee79a942c0831c10e4e1b98952c825527353b3196951542d806ff3f88",
+          "sha1": "05ae1871c138e251819734f1cc290155bbc6fcbf",
+          "md5": "bd86c9d8965897e50b9fe698d29eddd8"
+        }
+      ]
+    }
+  ]
+}
