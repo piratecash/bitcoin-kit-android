@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>dashkit</artifactId>
   <versioning>
-    <latest>v0.1.0-pcash.11</latest>
-    <release>v0.1.0-pcash.11</release>
+    <latest>8205084</latest>
+    <release>8205084</release>
     <versions>
-      <version>v0.1.0-pcash.11</version>
+      <version>8205084</version>
     </versions>
-    <lastUpdated>20260529030120</lastUpdated>
+    <lastUpdated>20260529055446</lastUpdated>
   </versioning>
 </metadata>
