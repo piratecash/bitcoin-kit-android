@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: publish-maven-gh-pages
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
