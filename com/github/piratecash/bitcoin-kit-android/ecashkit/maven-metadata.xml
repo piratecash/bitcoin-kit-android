@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>ecashkit</artifactId>
   <versioning>
-    <latest>v0.1.0-pcash.10</latest>
-    <release>v0.1.0-pcash.10</release>
+    <latest>2444c01</latest>
+    <release>2444c01</release>
     <versions>
-      <version>v0.1.0-pcash.10</version>
+      <version>2444c01</version>
     </versions>
-    <lastUpdated>20260529014515</lastUpdated>
+    <lastUpdated>20260529025459</lastUpdated>
   </versioning>
 </metadata>
