@@ -267,11 +267,7 @@ class BitcoinCore(
         changeToFirstInput: Boolean,
         filters: UtxoFilters
     ): BitcoinSendInfo {
-        val outputs = unspentOutputs?.mapNotNull {
-            unspentOutputSelector.getAllSpendable(filters).firstOrNull { unspentOutput ->
-                unspentOutput.transaction.hash.contentEquals(it.transactionHash) && unspentOutput.output.index == it.outputIndex
-            }
-        }
+        val outputs = unspentOutputs?.let { getOutputsFromInfos(it, filters) }
         return transactionFeeCalculator?.sendInfo(
             value = value,
             feeRate = feeRate,
@@ -298,12 +294,37 @@ class BitcoinCore(
         changeToFirstInput: Boolean,
         filters: UtxoFilters
     ): FullTransaction {
-        val outputs = unspentOutputs?.mapNotNull {
-            unspentOutputSelector.getAllSpendable(filters).firstOrNull { unspentOutput ->
-                unspentOutput.transaction.hash.contentEquals(it.transactionHash) && unspentOutput.output.index == it.outputIndex
-            }
-        }
+        val outputs = unspentOutputs?.let { getOutputsFromInfos(it, filters) }
         return transactionCreator?.create(
+            toAddress = address,
+            memo = memo,
+            value = value,
+            feeRate = feeRate,
+            senderPay = senderPay,
+            sortType = sortType,
+            unspentOutputs = outputs,
+            pluginData = pluginData,
+            rbfEnabled = rbfEnabled,
+            changeToFirstInput = changeToFirstInput,
+            filters = filters,
+        ) ?: throw CoreError.ReadOnlyCore
+    }
+
+    suspend fun createSignedTransaction(
+        address: String,
+        memo: String?,
+        value: Long,
+        senderPay: Boolean = true,
+        feeRate: Int,
+        sortType: TransactionDataSortType,
+        unspentOutputs: List<UnspentOutputInfo>?,
+        pluginData: Map<Byte, IPluginData>,
+        rbfEnabled: Boolean,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters
+    ): FullTransaction {
+        val outputs = unspentOutputs?.let { getOutputsFromInfos(it, filters) }
+        return transactionCreator?.createSigned(
             toAddress = address,
             memo = memo,
             value = value,
@@ -332,11 +353,7 @@ class BitcoinCore(
         filters: UtxoFilters
     ): FullTransaction {
         val address = addressConverter.convert(hash, scriptType)
-        val outputs = unspentOutputs?.mapNotNull {
-            unspentOutputSelector.getAllSpendable(filters).firstOrNull { unspentOutput ->
-                unspentOutput.transaction.hash.contentEquals(it.transactionHash) && unspentOutput.output.index == it.outputIndex
-            }
-        }
+        val outputs = unspentOutputs?.let { getOutputsFromInfos(it, filters) }
         return transactionCreator?.create(
             toAddress = address.stringValue,
             memo = memo,

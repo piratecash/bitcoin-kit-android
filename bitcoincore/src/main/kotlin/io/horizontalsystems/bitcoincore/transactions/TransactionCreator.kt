@@ -77,6 +77,36 @@ class TransactionCreator(
         return fullTransaction
     }
 
+    suspend fun createSigned(
+        toAddress: String,
+        memo: String?,
+        value: Long,
+        feeRate: Int,
+        senderPay: Boolean,
+        sortType: TransactionDataSortType,
+        unspentOutputs: List<UnspentOutput>?,
+        pluginData: Map<Byte, IPluginData>,
+        rbfEnabled: Boolean,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters
+    ): FullTransaction {
+        return signAndBuild(
+            builder.buildTransaction(
+                toAddress = toAddress,
+                memo = memo,
+                value = value,
+                feeRate = feeRate,
+                senderPay = senderPay,
+                sortType = sortType,
+                unspentOutputs = unspentOutputs,
+                pluginData = pluginData,
+                rbfEnabled = rbfEnabled,
+                changeToFirstInput = changeToFirstInput,
+                filters = filters,
+            )
+        )
+    }
+
     suspend fun signRawTransaction(
         rawTransaction: ByteArray,
         unspentOutputs: List<UnspentOutput>,

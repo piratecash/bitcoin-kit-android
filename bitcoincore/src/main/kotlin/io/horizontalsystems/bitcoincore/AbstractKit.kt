@@ -126,6 +126,34 @@ abstract class AbstractKit {
         )
     }
 
+    suspend fun createSignedTransaction(
+        address: String,
+        memo: String?,
+        value: Long,
+        senderPay: Boolean = true,
+        feeRate: Int,
+        sortType: TransactionDataSortType,
+        unspentOutputs: List<UnspentOutputInfo>? = null,
+        pluginData: Map<Byte, IPluginData> = mapOf(),
+        rbfEnabled: Boolean,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters,
+    ): FullTransaction {
+        return bitcoinCore.createSignedTransaction(
+            address,
+            memo,
+            value,
+            senderPay,
+            feeRate,
+            sortType,
+            unspentOutputs,
+            pluginData,
+            rbfEnabled,
+            changeToFirstInput,
+            filters,
+        )
+    }
+
     suspend fun send(
         address: String,
         memo: String?,
@@ -278,6 +306,10 @@ abstract class AbstractKit {
 
     fun getRawTransaction(transactionHash: String): String? {
         return bitcoinCore.getRawTransaction(transactionHash)
+    }
+
+    fun serializeTransaction(transaction: FullTransaction): ByteArray {
+        return bitcoinCore.serializeTransaction(transaction)
     }
 
     fun speedUpTransaction(
