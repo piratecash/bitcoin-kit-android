@@ -3,11 +3,11 @@
   <groupId>com.github.piratecash.bitcoin-kit-android</groupId>
   <artifactId>hodler</artifactId>
   <versioning>
-    <latest>c5012df</latest>
-    <release>c5012df</release>
+    <latest>v0.1.0-pcash.14</latest>
+    <release>v0.1.0-pcash.14</release>
     <versions>
-      <version>c5012df</version>
+      <version>v0.1.0-pcash.14</version>
     </versions>
-    <lastUpdated>20260617054053</lastUpdated>
+    <lastUpdated>20260617054444</lastUpdated>
   </versioning>
 </metadata>
