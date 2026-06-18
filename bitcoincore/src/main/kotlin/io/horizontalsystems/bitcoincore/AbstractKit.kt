@@ -4,6 +4,7 @@ import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.models.BitcoinPaymentData
 import io.horizontalsystems.bitcoincore.models.BitcoinSendInfo
 import io.horizontalsystems.bitcoincore.models.PublicKey
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastResult
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
@@ -312,7 +313,7 @@ abstract class AbstractKit {
         return bitcoinCore.serializeTransaction(transaction)
     }
 
-    suspend fun broadcastRawTransaction(rawTransactionHex: String): FullTransaction {
+    suspend fun broadcastRawTransaction(rawTransactionHex: String): RawTransactionBroadcastResult {
         return bitcoinCore.broadcastRawTransaction(rawTransactionHex)
     }
 

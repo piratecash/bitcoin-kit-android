@@ -30,6 +30,7 @@ import io.horizontalsystems.bitcoincore.models.BitcoinPaymentData
 import io.horizontalsystems.bitcoincore.models.BitcoinSendInfo
 import io.horizontalsystems.bitcoincore.models.BlockInfo
 import io.horizontalsystems.bitcoincore.models.PublicKey
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastResult
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
@@ -396,7 +397,7 @@ class BitcoinCore(
         return transactionCreator?.processRelayedLocally(transaction) ?: throw CoreError.ReadOnlyCore
     }
 
-    suspend fun broadcastRawTransaction(rawTransactionHex: String): FullTransaction {
+    suspend fun broadcastRawTransaction(rawTransactionHex: String): RawTransactionBroadcastResult {
         return transactionCreator?.broadcastRawTransaction(rawTransactionHex) ?: throw CoreError.ReadOnlyCore
     }
 

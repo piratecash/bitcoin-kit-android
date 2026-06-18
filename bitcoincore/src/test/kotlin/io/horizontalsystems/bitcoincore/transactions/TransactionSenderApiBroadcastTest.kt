@@ -9,6 +9,7 @@ import com.nhaarman.mockitokotlin2.whenever
 import io.horizontalsystems.bitcoincore.BitcoinCore.SendType
 import io.horizontalsystems.bitcoincore.Fixtures
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
+import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.blocks.InitialBlockDownload
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.models.SentTransaction
@@ -42,6 +43,7 @@ class TransactionSenderApiBroadcastTest {
         timer = mock()
         blockchairApi = mock()
 
+        whenever(storage.getExternalSentTransactions()).thenReturn(emptyList())
         transactionSender = TransactionSender(
             transactionSyncer,
             peerManager,
@@ -79,6 +81,24 @@ class TransactionSenderApiBroadcastTest {
     }
 
     @Test
+    fun sendPendingTransactions_externalRawTx_apiSuccess_broadcastsOriginalHexAndDeletesQueueItem() {
+        val transaction = Fixtures.transactionP2WPKH
+        val sentTransaction = SentTransaction(transaction.header.hash, RAW_HEX).apply {
+            lastSendTime = 0
+        }
+
+        whenever(transactionSyncer.getNewTransactions()).thenReturn(emptyList())
+        whenever(storage.getExternalSentTransactions()).thenReturn(listOf(sentTransaction))
+        whenever(storage.getSentTransaction(transaction.header.hash)).thenReturn(sentTransaction)
+
+        transactionSender.sendPendingTransactions()
+
+        verify(blockchairApi, timeout(1_000)).broadcastTransaction(RAW_HEX)
+        verify(storage, timeout(1_000)).deleteSentTransaction(sentTransaction)
+        verify(transactionSyncer, never()).handleRelayed(any())
+    }
+
+    @Test
     fun handleCompletedTask_p2pRetriesExhausted_invalidatesTransaction() {
         val transaction = Fixtures.transactionP2WPKH
         val sentTransaction = SentTransaction(transaction.header.hash).apply {
@@ -96,5 +116,9 @@ class TransactionSenderApiBroadcastTest {
 
         verify(transactionSyncer).handleInvalid(transaction)
         verify(storage).deleteSentTransaction(sentTransaction)
+    }
+
+    private companion object {
+        val RAW_HEX = BaseTransactionSerializer().serialize(Fixtures.transactionP2WPKH).toHexString()
     }
 }

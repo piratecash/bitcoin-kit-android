@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.transactions
 
 import com.nhaarman.mockitokotlin2.any
+import com.nhaarman.mockitokotlin2.argumentCaptor
 import com.nhaarman.mockitokotlin2.doReturn
 import com.nhaarman.mockitokotlin2.mock
 import com.nhaarman.mockitokotlin2.never
@@ -11,14 +12,17 @@ import io.horizontalsystems.bitcoincore.Fixtures
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.blocks.InitialBlockDownload
 import io.horizontalsystems.bitcoincore.core.IStorage
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastStatus
+import io.horizontalsystems.bitcoincore.models.SentTransaction
 import io.horizontalsystems.bitcoincore.network.peer.Peer
-import io.horizontalsystems.bitcoincore.network.peer.PeerGroup
+import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -49,35 +53,48 @@ class TransactionSenderBroadcastTest {
             on { ready } doReturn true
             on { host } doReturn "0.0.0.1"
         }
+        whenever(storage.getExternalSentTransactions()).thenReturn(emptyList())
     }
 
     @Test
-    fun broadcastRawTransaction_p2pWithPeers_relaysToPeerWithoutPersisting() = runBlocking {
+    fun broadcastRawTransaction_p2pWithPeers_relaysToPeerAndQueuesExternalRetry() = runBlocking {
         givenPeersAvailable()
+        val captor = argumentCaptor<SentTransaction>()
 
-        sender(SendType.P2P).broadcastRawTransaction(transaction, RAW_HEX)
+        val status = sender(SendType.P2P).broadcastRawTransaction(transaction, RAW_HEX)
 
         verify(readyPeer).addTask(any<SendTransactionTask>())
-        verify(storage, never()).addSentTransaction(any())
+        verify(storage).addSentTransaction(captor.capture())
+
+        assertEquals(RawTransactionBroadcastStatus.Submitted, status)
+        val sentTransaction = captor.firstValue
+        assertTrue(sentTransaction.external)
+        assertEquals(RAW_HEX, sentTransaction.rawTransactionHex)
     }
 
     @Test
-    fun broadcastRawTransaction_p2pNoPeers_throwsPeerGroupError() {
+    fun broadcastRawTransaction_p2pNoPeers_queuesRetryWithoutThrowing() = runBlocking {
         givenNoPeers()
+        val captor = argumentCaptor<SentTransaction>()
 
-        assertThrows(PeerGroup.Error::class.java) {
-            runBlocking { sender(SendType.P2P).broadcastRawTransaction(transaction, RAW_HEX) }
-        }
+        val status = sender(SendType.P2P).broadcastRawTransaction(transaction, RAW_HEX)
+
+        verify(storage).addSentTransaction(captor.capture())
+        verify(timer).startIfNotRunning()
+        assertEquals(RawTransactionBroadcastStatus.Queued, status)
+        assertTrue(captor.lastValue.external)
+        assertEquals(RAW_HEX, captor.lastValue.rawTransactionHex)
     }
 
     @Test
     fun broadcastRawTransaction_apiAccepts_pushesViaApiWithoutPeerRelay() = runBlocking {
         givenPeersAvailable()
 
-        sender(SendType.API(blockchairApi)).broadcastRawTransaction(transaction, RAW_HEX)
+        val status = sender(SendType.API(blockchairApi)).broadcastRawTransaction(transaction, RAW_HEX)
 
         verify(blockchairApi).broadcastTransaction(RAW_HEX)
         verify(readyPeer, never()).addTask(any<SendTransactionTask>())
+        assertEquals(RawTransactionBroadcastStatus.Submitted, status)
     }
 
     @Test
@@ -85,10 +102,11 @@ class TransactionSenderBroadcastTest {
         givenPeersAvailable()
         whenever(blockchairApi.broadcastTransaction(RAW_HEX)).thenThrow(RuntimeException("api down"))
 
-        sender(SendType.API(blockchairApi)).broadcastRawTransaction(transaction, RAW_HEX)
+        val status = sender(SendType.API(blockchairApi)).broadcastRawTransaction(transaction, RAW_HEX)
 
         verify(blockchairApi).broadcastTransaction(RAW_HEX)
         verify(readyPeer).addTask(any<SendTransactionTask>())
+        assertEquals(RawTransactionBroadcastStatus.Submitted, status)
     }
 
     @Test
@@ -104,8 +122,50 @@ class TransactionSenderBroadcastTest {
     }
 
     @Test
-    fun handleCompletedTask_foreignTxRequestedByPeer_recordsNoDiagnosticsOrRetries() {
-        // Foreign relayed transactions are never stored, so getSentTransaction returns null (default mock).
+    fun sendPendingTransactions_externalRawTx_retriesViaP2P() {
+        val sentTransaction = SentTransaction(transaction.header.hash, RAW_HEX).apply {
+            lastSendTime = 0
+        }
+        givenPeersAvailable()
+        whenever(transactionSyncer.getNewTransactions()).thenReturn(emptyList())
+        whenever(storage.getExternalSentTransactions()).thenReturn(listOf(sentTransaction))
+        whenever(storage.getSentTransaction(transaction.header.hash)).thenReturn(sentTransaction)
+
+        sender(SendType.P2P).sendPendingTransactions()
+
+        verify(readyPeer).addTask(any<SendTransactionTask>())
+        verify(storage).updateSentTransaction(sentTransaction)
+    }
+
+    @Test
+    fun sendPendingTransactions_externalRawTxWithMissingHex_dropsQueueItem() {
+        val sentTransaction = SentTransaction(transaction.header.hash).apply {
+            external = true
+            rawTransactionHex = null
+        }
+        whenever(transactionSyncer.getNewTransactions()).thenReturn(emptyList())
+        whenever(storage.getExternalSentTransactions()).thenReturn(listOf(sentTransaction))
+
+        sender(SendType.P2P).sendPendingTransactions()
+
+        verify(storage).deleteSentTransaction(sentTransaction)
+        verify(readyPeer, never()).addTask(any<SendTransactionTask>())
+    }
+
+    @Test
+    fun transactionsRelayed_externalTx_deletesSentTransaction() {
+        val sentTransaction = SentTransaction(transaction.header.hash, RAW_HEX)
+        whenever(storage.getSentTransaction(transaction.header.hash)).thenReturn(sentTransaction)
+
+        val sender = sender(SendType.P2P)
+
+        sender.transactionsRelayed(listOf(transaction))
+
+        verify(storage).deleteSentTransaction(sentTransaction)
+    }
+
+    @Test
+    fun handleCompletedTask_untrackedForeignTxRequestedByPeer_recordsNoDiagnosticsOrRetries() {
         val sender = sender(SendType.P2P)
         val task = SendTransactionTask(transaction).apply {
             completionReason = SendTransactionTask.CompletionReason.REQUESTED_BY_PEER
@@ -122,6 +182,26 @@ class TransactionSenderBroadcastTest {
             "Foreign transaction must not leave in-memory diagnostics entries",
             broadcastDiagnosticsOf(sender).isEmpty()
         )
+    }
+
+    @Test
+    fun handleCompletedTask_externalTxRetriesExhausted_deletesWithoutInvalidatingTransaction() {
+        val sentTransaction = SentTransaction(transaction.header.hash, RAW_HEX).apply {
+            retriesCount = 9
+            sendSuccess = false
+        }
+        val sender = sender(SendType.P2P)
+        val task = SendTransactionTask(transaction).apply {
+            completionReason = SendTransactionTask.CompletionReason.TIMEOUT
+            owner = sender
+        }
+
+        whenever(storage.getSentTransaction(transaction.header.hash)).thenReturn(sentTransaction)
+
+        sender.handleCompletedTask(readyPeer, task)
+
+        verify(transactionSyncer, never()).handleInvalid(transaction)
+        verify(storage).deleteSentTransaction(sentTransaction)
     }
 
     private fun sender(sendType: SendType) = TransactionSender(
@@ -155,6 +235,6 @@ class TransactionSenderBroadcastTest {
     }
 
     private companion object {
-        const val RAW_HEX = "01020304"
+        val RAW_HEX = BaseTransactionSerializer().serialize(Fixtures.transactionP2WPKH).toHexString()
     }
 }

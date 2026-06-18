@@ -10,6 +10,8 @@ import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.core.PluginManager
 import io.horizontalsystems.bitcoincore.managers.RestoreKeyConverterChain
 import io.horizontalsystems.bitcoincore.managers.SyncManager
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastResult
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastStatus
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -28,7 +30,10 @@ class BitcoinCoreBroadcastTest {
     @Test
     fun broadcastRawTransaction_delegatesToTransactionCreator() {
         val transactionCreator = mock<TransactionCreator>()
-        val expected = fullTransaction()
+        val expected = RawTransactionBroadcastResult(
+            transaction = fullTransaction(),
+            status = RawTransactionBroadcastStatus.Submitted,
+        )
         val bitcoinCore = bitcoinCore(transactionCreator)
 
         runBlocking {

@@ -5,10 +5,12 @@ import com.nhaarman.mockitokotlin2.eq
 import com.nhaarman.mockitokotlin2.mock
 import com.nhaarman.mockitokotlin2.never
 import com.nhaarman.mockitokotlin2.verify
+import com.nhaarman.mockitokotlin2.whenever
 import io.horizontalsystems.bitcoincore.Fixtures
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastStatus
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
@@ -38,20 +40,25 @@ class TransactionCreatorBroadcastTest {
     )
 
     @Test
-    fun broadcastRawTransaction_validHex_delegatesToSenderWithDeserializedTransaction() = runBlocking {
+    fun broadcastRawTransaction_validHex_delegatesToSenderWithDeserializedTransaction() {
+        runBlocking {
         val serializer = RecordingTransactionSerializer().apply { deserializedTransaction = foreignTransaction }
         val creator = creatorWith(serializer)
+        givenBroadcastStatus(RawTransactionBroadcastStatus.Queued)
 
         val result = creator.broadcastRawTransaction(RAW_HEX)
 
-        assertSame(foreignTransaction, result)
+        assertSame(foreignTransaction, result.transaction)
+        assertSame(RawTransactionBroadcastStatus.Queued, result.status)
         verify(transactionSender).broadcastRawTransaction(foreignTransaction, RAW_HEX)
+    }
     }
 
     @Test
     fun broadcastRawTransaction_validHex_doesNotStoreTransaction() = runBlocking {
         val serializer = RecordingTransactionSerializer().apply { deserializedTransaction = foreignTransaction }
         val creator = creatorWith(serializer)
+        givenBroadcastStatus()
 
         creator.broadcastRawTransaction(RAW_HEX)
 
@@ -60,17 +67,20 @@ class TransactionCreatorBroadcastTest {
     }
 
     @Test
-    fun broadcastRawTransaction_realHex_deserializesAndDelegatesOriginalHex() = runBlocking {
+    fun broadcastRawTransaction_realHex_deserializesAndDelegatesOriginalHex() {
+        runBlocking {
         val serializer = BaseTransactionSerializer()
         val rawHex = serializer.serialize(Fixtures.transactionP2WPKH).toHexString()
         val creator = creatorWith(serializer)
+        givenBroadcastStatus()
 
         val result = creator.broadcastRawTransaction(rawHex)
 
         // Proves the real hex -> bytes -> deserialize path runs: the parsed transaction has the
         // same txid as the source, and the sender receives the untouched original hex.
-        assertArrayEquals(Fixtures.transactionP2WPKH.header.hash, result.header.hash)
+        assertArrayEquals(Fixtures.transactionP2WPKH.header.hash, result.transaction.header.hash)
         verify(transactionSender).broadcastRawTransaction(any(), eq(rawHex))
+    }
     }
 
     @Test
@@ -106,6 +116,14 @@ class TransactionCreatorBroadcastTest {
         bloomFilterManager = bloomFilterManager,
         transactionSerializer = serializer,
     )
+
+    private fun givenBroadcastStatus(
+        status: RawTransactionBroadcastStatus = RawTransactionBroadcastStatus.Submitted,
+    ) {
+        runBlocking {
+            whenever(transactionSender.broadcastRawTransaction(any(), any())).thenReturn(status)
+        }
+    }
 
     private class RecordingTransactionSerializer : BaseTransactionSerializer() {
         var deserializedTransaction: FullTransaction? = null

@@ -187,6 +187,7 @@ interface IStorage {
 
     fun getSentTransaction(hash: ByteArray): SentTransaction?
     fun getSentTransactionHashes(): List<ByteArray>
+    fun getExternalSentTransactions(): List<SentTransaction>
     fun addSentTransaction(transaction: SentTransaction)
     fun updateSentTransaction(transaction: SentTransaction)
     fun deleteSentTransaction(transaction: SentTransaction)

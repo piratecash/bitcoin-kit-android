@@ -17,6 +17,12 @@ interface SentTransactionDao {
     @Query("select * from SentTransaction")
     fun getAll(): List<SentTransaction>
 
+    @Query("select * from SentTransaction where external = 0")
+    fun getOwn(): List<SentTransaction>
+
+    @Query("select * from SentTransaction where external = 1")
+    fun getExternal(): List<SentTransaction>
+
     @Delete
     fun delete(transaction: SentTransaction)
 }

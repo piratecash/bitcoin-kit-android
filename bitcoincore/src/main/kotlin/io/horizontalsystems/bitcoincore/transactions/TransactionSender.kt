@@ -4,8 +4,11 @@ import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
 import io.horizontalsystems.bitcoincore.core.IStorage
+import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
+import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastStatus
 import io.horizontalsystems.bitcoincore.models.SentTransaction
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.network.messages.RejectMessage
@@ -46,12 +49,18 @@ class TransactionSender(
         val lastRejectDescription: String? = null,
     )
 
+    private data class BroadcastTransaction(
+        val transaction: FullTransaction,
+        val rawTransactionHex: String? = null,
+        val external: Boolean = false,
+    )
+
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val broadcastDiagnostics = ConcurrentHashMap<String, BroadcastDiagnostics>()
 
     fun sendPendingTransactions() {
         try {
-            val transactions = transactionSyncer.getNewTransactions()
+            val transactions = pendingBroadcastTransactions()
             if (transactions.isEmpty()) {
                 timer.stop()
                 return
@@ -78,30 +87,37 @@ class TransactionSender(
         }
     }
 
-    // Broadcasts an externally signed transaction that does NOT belong to this wallet
-    // (delivered for relay only). It is deliberately not stored, tracked for retries, or
-    // registered in the pending store, so the wallet balance and history stay untouched.
-    // Runs on the IO dispatcher because the API path performs a blocking network call and
-    // callers may invoke it from the main thread.
     suspend fun broadcastRawTransaction(
         transaction: FullTransaction,
         rawTransactionHex: String
-    ) = withContext(Dispatchers.IO) {
+    ): RawTransactionBroadcastStatus = withContext(Dispatchers.IO) {
+        val broadcastTransaction = BroadcastTransaction(
+            transaction = transaction,
+            rawTransactionHex = rawTransactionHex,
+            external = true,
+        )
+
         when (sendType) {
             BitcoinCore.SendType.P2P -> {
-                broadcastOnceViaP2P(transaction)
+                if (!sendViaP2P(listOf(broadcastTransaction))) {
+                    queueBroadcastRetry(broadcastTransaction)
+                    RawTransactionBroadcastStatus.Queued
+                } else {
+                    RawTransactionBroadcastStatus.Submitted
+                }
             }
 
             is BitcoinCore.SendType.API -> {
                 try {
-                    sendType.blockchairApi.broadcastTransaction(rawTransactionHex)
-                    Timber.tag(logTag).i("Foreign transaction broadcast accepted by API.")
+                    queueExternalBroadcast(broadcastTransaction)
+                    return@withContext broadcastViaAPI(broadcastTransaction, sendType.blockchairApi) {
+                        sendViaP2P(listOf(broadcastTransaction))
+                    }
                 } catch (cancellation: CancellationException) {
-                    // The caller cancelled the broadcast; do not fall back to peer relay.
+                    storage.getSentTransaction(transaction.header.hash)?.let { queuedTransaction ->
+                        storage.deleteSentTransaction(queuedTransaction)
+                    }
                     throw cancellation
-                } catch (apiError: Throwable) {
-                    Timber.tag(logTag).w(apiError, "API broadcast failed for foreign transaction. Falling back to peer-to-peer.")
-                    broadcastOnceViaP2P(transaction)
                 }
             }
         }
@@ -117,9 +133,9 @@ class TransactionSender(
         }
     }
 
-    private fun getTransactionsToSend(transactions: List<FullTransaction>): List<FullTransaction> {
-        return transactions.filter { transaction ->
-            storage.getSentTransaction(transaction.header.hash)?.let { sentTransaction ->
+    private fun getTransactionsToSend(transactions: List<BroadcastTransaction>): List<BroadcastTransaction> {
+        return transactions.filter { broadcastTransaction ->
+            storage.getSentTransaction(broadcastTransaction.transaction.header.hash)?.let { sentTransaction ->
                 sentTransaction.retriesCount < maxRetriesCount && sentTransaction.lastSendTime < (System.currentTimeMillis() - retriesPeriod * 1000)
             } ?: true
         }
@@ -149,40 +165,52 @@ class TransactionSender(
         return readyPeers.take(readyPeers.size / 2)
     }
 
-    private fun send(transactions: List<FullTransaction>) {
+    private fun send(transactions: List<BroadcastTransaction>) {
         when (sendType) {
             BitcoinCore.SendType.P2P -> {
                 sendViaP2P(transactions)
             }
 
             is BitcoinCore.SendType.API -> {
-                sendViaAPI(transactions, sendType.blockchairApi) {
-                    sendViaP2P(transactions)
-                }
+                sendViaAPI(transactions, sendType.blockchairApi)
             }
         }
     }
 
-    private fun sendViaAPI(transactions: List<FullTransaction>, blockchairApi: BlockchairApi, fallback: () -> Boolean) = coroutineScope.launch {
+    private fun sendViaAPI(transactions: List<BroadcastTransaction>, blockchairApi: BlockchairApi) = coroutineScope.launch {
         transactions.forEach { transaction ->
-            val txHash = transaction.header.hash.toReversedHex()
-            try {
-                val hex = transactionSerializer.serialize(transaction).toHexString()
-                blockchairApi.broadcastTransaction(hex)
-
-                Timber.tag(logTag).i("Transaction $txHash accepted by API broadcast.")
-                transactionSyncer.handleRelayed(listOf(transaction))
-            } catch (error: Throwable) {
-                Timber.tag(logTag).w(error, "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast.")
-                val sent = fallback()
-                if (!sent) {
-                    queueBroadcastRetry(transaction)
-                }
+            broadcastViaAPI(transaction, blockchairApi) {
+                sendViaP2P(listOf(transaction))
             }
         }
     }
 
-    private fun sendViaP2P(transactions: List<FullTransaction>): Boolean {
+    private suspend fun broadcastViaAPI(
+        transaction: BroadcastTransaction,
+        blockchairApi: BlockchairApi,
+        fallback: () -> Boolean
+    ): RawTransactionBroadcastStatus {
+        val txHash = transaction.transaction.header.hash.toReversedHex()
+        try {
+            blockchairApi.broadcastTransaction(rawHex(transaction))
+
+            Timber.tag(logTag).i("Transaction $txHash accepted by API broadcast.")
+            markBroadcastAccepted(transaction)
+            return RawTransactionBroadcastStatus.Submitted
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Throwable) {
+            Timber.tag(logTag).w(error, "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast.")
+            val sent = fallback()
+            if (!sent) {
+                queueBroadcastRetry(transaction)
+                return RawTransactionBroadcastStatus.Queued
+            }
+            return RawTransactionBroadcastStatus.Submitted
+        }
+    }
+
+    private fun sendViaP2P(transactions: List<BroadcastTransaction>): Boolean {
         val peers = getPeersToSend()
         if (peers.isEmpty()) {
             Timber.tag(logTag).d(
@@ -198,7 +226,7 @@ class TransactionSender(
             transactionSendStart(transaction, peers)
 
             peers.forEach { peer ->
-                val task = SendTransactionTask(transaction)
+                val task = SendTransactionTask(transaction.transaction)
                 task.owner = this@TransactionSender
                 peer.addTask(task)
             }
@@ -206,45 +234,59 @@ class TransactionSender(
         return true
     }
 
-    // One-shot peer relay for a foreign transaction. Unlike sendViaP2P it does not arm the retry
-    // timer or record a SentTransaction, because the wallet does not own this transaction and must
-    // not track it for retries or balance/history.
-    private fun broadcastOnceViaP2P(transaction: FullTransaction) {
-        val peers = getPeersToSend()
-        if (peers.isEmpty()) {
-            throw PeerGroup.Error("No connected peers available to broadcast transaction")
+    private fun pendingBroadcastTransactions(): List<BroadcastTransaction> {
+        val ownTransactions = transactionSyncer.getNewTransactions().map { transaction ->
+            BroadcastTransaction(transaction = transaction)
         }
-        peers.forEach { peer ->
-            val task = SendTransactionTask(transaction)
-            task.owner = this@TransactionSender
-            peer.addTask(task)
+
+        val externalTransactions = storage.getExternalSentTransactions().mapNotNull { sentTransaction ->
+            val rawTransactionHex = sentTransaction.rawTransactionHex
+            if (rawTransactionHex == null) {
+                storage.deleteSentTransaction(sentTransaction)
+                return@mapNotNull null
+            }
+
+            try {
+                BroadcastTransaction(
+                    transaction = transactionSerializer.deserialize(BitcoinInputMarkable(rawTransactionHex.hexToByteArray())),
+                    rawTransactionHex = rawTransactionHex,
+                    external = true,
+                )
+            } catch (error: Throwable) {
+                Timber.tag(logTag).w(error, "Dropping invalid external transaction from broadcast queue.")
+                storage.deleteSentTransaction(sentTransaction)
+                null
+            }
         }
+
+        return ownTransactions + externalTransactions
     }
 
-    private fun transactionSendStart(transaction: FullTransaction, peers: List<Peer>) {
-        val txHash = transaction.header.hash.toReversedHex()
+    private fun transactionSendStart(transaction: BroadcastTransaction, peers: List<Peer>) {
+        val txHash = transaction.transaction.header.hash.toReversedHex()
         val sentTransaction = recordBroadcastAttempt(transaction)
-        ensureDiagnostics(transaction.header.hash)
+        ensureDiagnostics(transaction.transaction.header.hash)
 
         Timber.tag(logTag).d(
             "Broadcast attempt for tx=$txHash sendType=P2P retry=${sentTransaction.retriesCount + 1} peers=${peers.joinToString { it.host }}"
         )
     }
 
-    private fun queueBroadcastRetry(transaction: FullTransaction) {
-        val txHash = transaction.header.hash.toReversedHex()
+    private fun queueBroadcastRetry(transaction: BroadcastTransaction) {
+        val txHash = transaction.transaction.header.hash.toReversedHex()
         // No peer attempted the transaction, so this must not consume the P2P retry budget.
         recordBroadcastAttempt(transaction)
-        ensureDiagnostics(transaction.header.hash)
+        ensureDiagnostics(transaction.transaction.header.hash)
         timer.startIfNotRunning()
         Timber.tag(logTag).w("API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry.")
     }
 
-    private fun recordBroadcastAttempt(transaction: FullTransaction): SentTransaction {
-        val storedTransaction = storage.getSentTransaction(transaction.header.hash)
-        val sentTransaction = storedTransaction ?: SentTransaction(transaction.header.hash)
+    private fun recordBroadcastAttempt(transaction: BroadcastTransaction): SentTransaction {
+        val storedTransaction = storage.getSentTransaction(transaction.transaction.header.hash)
+        val sentTransaction = storedTransaction ?: sentTransaction(transaction)
         sentTransaction.lastSendTime = System.currentTimeMillis()
         sentTransaction.sendSuccess = false
+        updateExternalState(sentTransaction, transaction)
 
         if (storedTransaction == null) {
             storage.addSentTransaction(sentTransaction)
@@ -255,14 +297,60 @@ class TransactionSender(
         return sentTransaction
     }
 
+    private fun queueExternalBroadcast(transaction: BroadcastTransaction) {
+        val storedTransaction = storage.getSentTransaction(transaction.transaction.header.hash)
+        val sentTransaction = storedTransaction ?: sentTransaction(transaction)
+        updateExternalState(sentTransaction, transaction)
+
+        if (storedTransaction == null) {
+            storage.addSentTransaction(sentTransaction)
+        } else {
+            storage.updateSentTransaction(sentTransaction)
+        }
+    }
+
+    private fun sentTransaction(transaction: BroadcastTransaction): SentTransaction {
+        return if (transaction.external) {
+            SentTransaction(
+                hash = transaction.transaction.header.hash,
+                rawTransactionHex = requireNotNull(transaction.rawTransactionHex) { "External transaction raw hex is required" },
+            )
+        } else {
+            SentTransaction(transaction.transaction.header.hash)
+        }
+    }
+
+    private fun updateExternalState(sentTransaction: SentTransaction, transaction: BroadcastTransaction) {
+        if (!transaction.external) {
+            return
+        }
+
+        sentTransaction.external = true
+        sentTransaction.rawTransactionHex = requireNotNull(transaction.rawTransactionHex) { "External transaction raw hex is required" }
+    }
+
+    private fun rawHex(transaction: BroadcastTransaction): String {
+        return transaction.rawTransactionHex ?: transactionSerializer.serialize(transaction.transaction).toHexString()
+    }
+
+    private fun markBroadcastAccepted(transaction: BroadcastTransaction) {
+        if (transaction.external) {
+            clearDiagnostics(transaction.transaction.header.hash)
+            storage.getSentTransaction(transaction.transaction.header.hash)?.let { sentTransaction ->
+                storage.deleteSentTransaction(sentTransaction)
+            }
+        } else {
+            transactionSyncer.handleRelayed(listOf(transaction.transaction))
+        }
+    }
+
     @Synchronized
     private fun transactionSendAttemptCompleted(peer: Peer, task: SendTransactionTask) {
         val transaction = task.transaction
         val txHash = transaction.header.hash.toReversedHex()
 
-        // Resolve tracking state before recording any diagnostics. Foreign relayed transactions
-        // (and already-confirmed ones) are not tracked, so they must not leave diagnostics entries
-        // or consume the retry budget.
+        // Resolve tracking state before recording diagnostics: untracked or already-accepted
+        // transactions must not leave diagnostics entries or consume the retry budget.
         val sentTransaction = storage.getSentTransaction(transaction.header.hash)
         if (sentTransaction == null || sentTransaction.sendSuccess) {
             return
@@ -289,7 +377,9 @@ class TransactionSender(
                     "requestedByPeer=${state?.requestedByPeer == true} rejectedByPeer=${state?.rejectedByPeer == true} " +
                     "lastReject=${state?.lastRejectDescription ?: "<none>"}"
             )
-            transactionSyncer.handleInvalid(transaction)
+            if (!sentTransaction.external) {
+                transactionSyncer.handleInvalid(transaction)
+            }
             storage.deleteSentTransaction(sentTransaction)
         } else {
             storage.updateSentTransaction(sentTransaction)

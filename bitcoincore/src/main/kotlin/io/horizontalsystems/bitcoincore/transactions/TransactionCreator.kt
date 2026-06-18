@@ -3,6 +3,7 @@ package io.horizontalsystems.bitcoincore.transactions
 import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastResult
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
@@ -138,11 +139,10 @@ class TransactionCreator(
         return transactionSerializer.serialize(transaction, withWitness)
     }
 
-    // Relays an already signed, externally produced transaction to the network. It is intentionally
-    // not persisted via processCreated/processAndSend: the wallet does not own this transaction, so
-    // storing it would corrupt balance and history. The regex validates the hex format, then
-    // deserialize validates the transaction structure.
-    suspend fun broadcastRawTransaction(rawTransactionHex: String): FullTransaction {
+    // Relays an already signed, externally produced transaction to the network. It is not persisted
+    // as a wallet transaction via processCreated/processAndSend: the wallet does not own this
+    // transaction, so storing it there would corrupt balance and history.
+    suspend fun broadcastRawTransaction(rawTransactionHex: String): RawTransactionBroadcastResult {
         // Reject malformed input early. hexToByteArray() silently drops a trailing nibble on
         // odd-length strings, so an explicit even-length, hex-only check guards the public API.
         if (!HEX_REGEX.matches(rawTransactionHex)) {
@@ -151,8 +151,8 @@ class TransactionCreator(
         val transaction = transactionSerializer.deserialize(
             BitcoinInputMarkable(rawTransactionHex.hexToByteArray())
         )
-        transactionSender.broadcastRawTransaction(transaction, rawTransactionHex)
-        return transaction
+        val status = transactionSender.broadcastRawTransaction(transaction, rawTransactionHex)
+        return RawTransactionBroadcastResult(transaction, status)
     }
 
     fun processCreated(transaction: FullTransaction): FullTransaction {

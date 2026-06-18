@@ -648,7 +648,11 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun getSentTransactionHashes(): List<ByteArray> {
-        return store.sentTransaction.getAll().map { it.hash }
+        return store.sentTransaction.getOwn().map { it.hash }
+    }
+
+    override fun getExternalSentTransactions(): List<SentTransaction> {
+        return store.sentTransaction.getExternal()
     }
 
     override fun addSentTransaction(transaction: SentTransaction) {
