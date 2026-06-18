@@ -17,9 +17,11 @@ import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
@@ -73,6 +75,35 @@ class TransactionSender(
             throw PeerGroup.Error(
                 "Peers not synced: connected=$connectedPeers, synced=$syncedPeers, ready=$readyPeers, minRequired=$minConnectedPeerSize"
             )
+        }
+    }
+
+    // Broadcasts an externally signed transaction that does NOT belong to this wallet
+    // (delivered for relay only). It is deliberately not stored, tracked for retries, or
+    // registered in the pending store, so the wallet balance and history stay untouched.
+    // Runs on the IO dispatcher because the API path performs a blocking network call and
+    // callers may invoke it from the main thread.
+    suspend fun broadcastRawTransaction(
+        transaction: FullTransaction,
+        rawTransactionHex: String
+    ) = withContext(Dispatchers.IO) {
+        when (sendType) {
+            BitcoinCore.SendType.P2P -> {
+                broadcastOnceViaP2P(transaction)
+            }
+
+            is BitcoinCore.SendType.API -> {
+                try {
+                    sendType.blockchairApi.broadcastTransaction(rawTransactionHex)
+                    Timber.tag(logTag).i("Foreign transaction broadcast accepted by API.")
+                } catch (cancellation: CancellationException) {
+                    // The caller cancelled the broadcast; do not fall back to peer relay.
+                    throw cancellation
+                } catch (apiError: Throwable) {
+                    Timber.tag(logTag).w(apiError, "API broadcast failed for foreign transaction. Falling back to peer-to-peer.")
+                    broadcastOnceViaP2P(transaction)
+                }
+            }
         }
     }
 
@@ -175,6 +206,21 @@ class TransactionSender(
         return true
     }
 
+    // One-shot peer relay for a foreign transaction. Unlike sendViaP2P it does not arm the retry
+    // timer or record a SentTransaction, because the wallet does not own this transaction and must
+    // not track it for retries or balance/history.
+    private fun broadcastOnceViaP2P(transaction: FullTransaction) {
+        val peers = getPeersToSend()
+        if (peers.isEmpty()) {
+            throw PeerGroup.Error("No connected peers available to broadcast transaction")
+        }
+        peers.forEach { peer ->
+            val task = SendTransactionTask(transaction)
+            task.owner = this@TransactionSender
+            peer.addTask(task)
+        }
+    }
+
     private fun transactionSendStart(transaction: FullTransaction, peers: List<Peer>) {
         val txHash = transaction.header.hash.toReversedHex()
         val sentTransaction = recordBroadcastAttempt(transaction)
@@ -211,23 +257,26 @@ class TransactionSender(
 
     @Synchronized
     private fun transactionSendAttemptCompleted(peer: Peer, task: SendTransactionTask) {
-        val txHash = task.transaction.header.hash.toReversedHex()
+        val transaction = task.transaction
+        val txHash = transaction.header.hash.toReversedHex()
+
+        // Resolve tracking state before recording any diagnostics. Foreign relayed transactions
+        // (and already-confirmed ones) are not tracked, so they must not leave diagnostics entries
+        // or consume the retry budget.
+        val sentTransaction = storage.getSentTransaction(transaction.header.hash)
+        if (sentTransaction == null || sentTransaction.sendSuccess) {
+            return
+        }
+
         when (task.completionReason) {
             SendTransactionTask.CompletionReason.REQUESTED_BY_PEER -> {
-                markRequestedByPeer(task.transaction.header.hash)
+                markRequestedByPeer(transaction.header.hash)
                 Timber.tag(logTag).i("Peer ${peer.host} requested tx=$txHash.")
             }
 
             SendTransactionTask.CompletionReason.TIMEOUT, null -> {
                 Timber.tag(logTag).d("Peer ${peer.host} did not request tx=$txHash before timeout.")
             }
-        }
-
-        val transaction = task.transaction
-        val sentTransaction = storage.getSentTransaction(transaction.header.hash)
-
-        if (sentTransaction == null || sentTransaction.sendSuccess) {
-            return
         }
 
         sentTransaction.retriesCount++

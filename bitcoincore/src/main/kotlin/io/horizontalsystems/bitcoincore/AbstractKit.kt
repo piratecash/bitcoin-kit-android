@@ -312,6 +312,10 @@ abstract class AbstractKit {
         return bitcoinCore.serializeTransaction(transaction)
     }
 
+    suspend fun broadcastRawTransaction(rawTransactionHex: String): FullTransaction {
+        return bitcoinCore.broadcastRawTransaction(rawTransactionHex)
+    }
+
     fun speedUpTransaction(
         transactionHash: String,
         minFee: Long
