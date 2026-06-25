@@ -1,8 +1,11 @@
 package io.horizontalsystems.piratecashkit.messages
 
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
+import io.horizontalsystems.bitcoincore.io.BitcoinOutput
+import io.horizontalsystems.bitcoincore.utils.HashUtils
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
@@ -69,10 +72,66 @@ class MasternodeListDiffMessageParserTest {
         )
     }
 
+    @Test
+    fun parsesMessage_withVersionedRegularMasternodeEntry() {
+        val masternodeEntry = buildVersionedMasternodeEntry(type = REGULAR_MASTERNODE_TYPE)
+        val payload = buildMinimalPirateCashMnlistdiff(masternodeEntries = listOf(masternodeEntry.bytes))
+
+        val message = MasternodeListDiffMessageParser()
+            .parseMessage(BitcoinInputMarkable(payload)) as MasternodeListDiffMessage
+        val masternode = message.mnList.single()
+
+        assertEquals(BASIC_BLS_VERSION, masternode.nVersion)
+        assertArrayEquals(masternodeEntry.proRegTxHash, masternode.proRegTxHash)
+        assertEquals(REGULAR_MASTERNODE_TYPE, masternode.type)
+        assertNull(masternode.platformHTTPPort)
+        assertNull(masternode.platformNodeID)
+        assertArrayEquals(masternodeEntry.expectedHash, masternode.hash)
+    }
+
+    @Test
+    fun parsesMessage_withVersionedEvoMasternodeEntry() {
+        val platformNodeID = ByteArray(20) { 0x7A.toByte() }
+        val masternodeEntry = buildVersionedMasternodeEntry(
+            type = EVO_MASTERNODE_TYPE,
+            platformHTTPPort = 443,
+            platformNodeID = platformNodeID,
+        )
+        val payload = buildMinimalPirateCashMnlistdiff(masternodeEntries = listOf(masternodeEntry.bytes))
+
+        val message = MasternodeListDiffMessageParser()
+            .parseMessage(BitcoinInputMarkable(payload)) as MasternodeListDiffMessage
+        val masternode = message.mnList.single()
+
+        assertEquals(BASIC_BLS_VERSION, masternode.nVersion)
+        assertEquals(EVO_MASTERNODE_TYPE, masternode.type)
+        assertEquals(443, masternode.platformHTTPPort)
+        assertArrayEquals(platformNodeID, masternode.platformNodeID)
+        assertArrayEquals(masternodeEntry.expectedHash, masternode.hash)
+    }
+
+    @Test
+    fun parsesMessage_withVersionedMasternodeBeforeQuorum_doesNotDrift() {
+        val masternodeEntry = buildVersionedMasternodeEntry(type = REGULAR_MASTERNODE_TYPE)
+        val quorum = buildMinimalQuorum()
+        val payload = buildMinimalPirateCashMnlistdiff(
+            masternodeEntries = listOf(masternodeEntry.bytes),
+            quorums = listOf(quorum),
+        )
+
+        val message = MasternodeListDiffMessageParser()
+            .parseMessage(BitcoinInputMarkable(payload)) as MasternodeListDiffMessage
+
+        assertEquals(1, message.mnList.size)
+        assertEquals(1, message.quorumList.size)
+    }
+
     private fun buildMinimalPirateCashMnlistdiff(
         nVersion: Int = 1,
         baseBlockHash: ByteArray = ByteArray(32) { 0xAA.toByte() },
         blockHash: ByteArray = ByteArray(32) { 0xBB.toByte() },
+        masternodeEntries: List<ByteArray> = emptyList(),
+        quorums: List<ByteArray> = emptyList(),
     ): ByteArray {
         val out = ByteArrayOutputStream()
         // nVersion (uint16 LE) — new in MNLISTDIFF_VERSION_ORDER (70229)
@@ -95,9 +154,93 @@ class MasternodeListDiffMessageParserTest {
         out.write(ByteArray(4))                                              // lockTime = 0
         // Empty lists
         out.write(0) // deletedMNsCount
-        out.write(0) // mnListCount
+        out.write(masternodeEntries.size) // mnListCount
+        masternodeEntries.forEach(out::write)
         out.write(0) // deletedQuorumsCount
-        out.write(0) // newQuorumsCount
+        out.write(quorums.size) // newQuorumsCount
+        quorums.forEach(out::write)
         return out.toByteArray()
+    }
+
+    private fun buildVersionedMasternodeEntry(
+        type: Int,
+        platformHTTPPort: Int? = null,
+        platformNodeID: ByteArray? = null,
+    ): MasternodeEntryFixture {
+        val proRegTxHash = ByteArray(32) { 0x11 }
+        val confirmedHash = ByteArray(32) { 0x22 }
+        val ipAddress = ByteArray(16) { 0x33 }
+        val port = 63636
+        val pubKeyOperator = ByteArray(48) { 0x44 }
+        val keyIDVoting = ByteArray(20) { 0x55 }
+        val isValid = true
+
+        val out = ByteArrayOutputStream()
+        out.writeUnsignedShort(BASIC_BLS_VERSION)
+        out.write(proRegTxHash)
+        out.write(confirmedHash)
+        out.write(ipAddress)
+        out.writeUnsignedShort(port)
+        out.write(pubKeyOperator)
+        out.write(keyIDVoting)
+        out.write(if (isValid) 1 else 0)
+        out.writeUnsignedShort(type)
+        if (type == EVO_MASTERNODE_TYPE) {
+            out.writeUnsignedShort(checkNotNull(platformHTTPPort))
+            out.write(checkNotNull(platformNodeID))
+        }
+
+        val hashPayload = BitcoinOutput()
+            .write(proRegTxHash)
+            .write(confirmedHash)
+            .write(ipAddress)
+            .writeUnsignedShort(port)
+            .write(pubKeyOperator)
+            .write(keyIDVoting)
+            .writeByte(if (isValid) 1 else 0)
+            .writeUnsignedShort(type)
+
+        if (type == EVO_MASTERNODE_TYPE) {
+            hashPayload
+                .writeUnsignedShort(checkNotNull(platformHTTPPort))
+                .write(checkNotNull(platformNodeID))
+        }
+
+        return MasternodeEntryFixture(
+            bytes = out.toByteArray(),
+            proRegTxHash = proRegTxHash,
+            expectedHash = HashUtils.doubleSha256(hashPayload.toByteArray()),
+        )
+    }
+
+    private fun buildMinimalQuorum(): ByteArray {
+        val out = ByteArrayOutputStream()
+        out.writeUnsignedShort(1) // nVersion = LEGACY_BLS_NON_INDEXED_QUORUM_VERSION
+        out.write(1) // llmqType
+        out.write(ByteArray(32) { 0x66 })
+        out.write(0) // signers size
+        out.write(0) // validMembers size
+        out.write(ByteArray(48) { 0x77 })
+        out.write(ByteArray(32) { 0x08 })
+        out.write(ByteArray(96) { 0x09 })
+        out.write(ByteArray(96) { 0x0A })
+        return out.toByteArray()
+    }
+
+    private fun ByteArrayOutputStream.writeUnsignedShort(value: Int) {
+        write(value and 0xFF)
+        write((value shr 8) and 0xFF)
+    }
+
+    private data class MasternodeEntryFixture(
+        val bytes: ByteArray,
+        val proRegTxHash: ByteArray,
+        val expectedHash: ByteArray,
+    )
+
+    private companion object {
+        const val BASIC_BLS_VERSION = 2
+        const val REGULAR_MASTERNODE_TYPE = 0
+        const val EVO_MASTERNODE_TYPE = 1
     }
 }
