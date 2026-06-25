@@ -165,6 +165,47 @@ data class MwebSendInfo(
     val changeAddress: String?,
 )
 
+/**
+ * Signed MWEB-aware raw transaction created without broadcasting or mutating
+ * local pending/history state.
+ */
+data class MwebSignedRawTransaction(
+    /** Public canonical hash for peg-in, full raw payload hash for MWEB-funded sends. */
+    val transactionHash: String,
+
+    /** Canonical public Litecoin transaction hash when known immediately. */
+    val canonicalTransactionHash: String?,
+
+    /** Final signed raw transaction bytes. */
+    val rawTransaction: ByteArray,
+
+    /** MWEB output identifiers created by mwebd. */
+    val outputIds: List<String>,
+
+    /** Total transaction fee in litoshi. */
+    val fee: Long,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is MwebSignedRawTransaction) return false
+
+        return transactionHash == other.transactionHash &&
+            canonicalTransactionHash == other.canonicalTransactionHash &&
+            rawTransaction.contentEquals(other.rawTransaction) &&
+            outputIds == other.outputIds &&
+            fee == other.fee
+    }
+
+    override fun hashCode(): Int {
+        var result = transactionHash.hashCode()
+        result = 31 * result + (canonicalTransactionHash?.hashCode() ?: 0)
+        result = 31 * result + rawTransaction.contentHashCode()
+        result = 31 * result + outputIds.hashCode()
+        result = 31 * result + fee.hashCode()
+        return result
+    }
+}
+
 /** Locally persisted MWEB send awaiting confirmation/spent reconciliation. */
 data class MwebPendingTransaction(
     /** Raw transaction bytes; do not expose through UI logs. */

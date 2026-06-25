@@ -102,6 +102,27 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun signedRawTransaction_byteArrayEquality_usesContent() {
+        val first = MwebSignedRawTransaction(
+            transactionHash = DAEMON_BROADCAST_HASH,
+            canonicalTransactionHash = DAEMON_BROADCAST_HASH,
+            rawTransaction = byteArrayOf(1, 2, 3),
+            outputIds = listOf("output"),
+            fee = 4,
+        )
+        val second = MwebSignedRawTransaction(
+            transactionHash = DAEMON_BROADCAST_HASH,
+            canonicalTransactionHash = DAEMON_BROADCAST_HASH,
+            rawTransaction = byteArrayOf(1, 2, 3),
+            outputIds = listOf("output"),
+            fee = 4,
+        )
+
+        assertEquals(first, second)
+        assertEquals(first.hashCode(), second.hashCode())
+    }
+
+    @Test
     fun start_restorePointWithCheckpoint_passesCheckpointToDaemonConfig() {
         var capturedConfig: MwebDaemonConfig? = null
         val engine = engineWith(
@@ -1298,6 +1319,98 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun createSignedTransaction_publicToMweb_returnsRawWithoutBroadcastOrStorage() = runBlocking {
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+        val daemonClient = FakeDaemonClient(createRawTransaction = ::mwebCreateResponseForPublicPegIn)
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        val result = engine.createSignedTransaction(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertEquals(1, bridge.signCalls.size)
+        assertEquals(0, bridge.processCreatedCount)
+        assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
+        assertTrue(engine.pendingTransactions().isEmpty())
+        assertTrue(engine.transactions().isEmpty())
+        assertEquals(listOf(true, false), daemonClient.createRequests.map { it.dryRun })
+        assertEquals("created-output", result.outputIds.single())
+        assertEquals(MwebRawTransactionHash.canonicalPublicHash(result.rawTransaction), result.transactionHash)
+        assertEquals(result.transactionHash, result.canonicalTransactionHash)
+        assertTrue(result.fee > 0)
+    }
+
+    @Test
+    fun createSignedTransaction_mwebToPublic_returnsRawWithoutBroadcastOrStorage() = runBlocking {
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, "address", 1, 100_000, 95, 1_000, spent = false)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        val result = engine.createSignedTransaction(
+            request = MwebSendRequest.MwebToPublic(PUBLIC_DESTINATION, 50, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = FakePublicTransactionBridge(),
+        )
+
+        assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
+        assertTrue(engine.pendingTransactions().isEmpty())
+        assertFalse(engine.transactions().any { it.type == MwebTransactionType.Outgoing })
+        assertFalse(engine.mwebUtxos().single { it.outputId == SELECTED_OUTPUT_ID }.spent)
+        assertEquals(MwebBalance(confirmed = 100_000, unconfirmed = 0), engine.balance)
+        assertEquals(MwebRawTransactionHash.fullRawHash(result.rawTransaction), result.transactionHash)
+        assertNull(result.canonicalTransactionHash)
+        assertTrue(result.fee > 0)
+    }
+
+    @Test
+    fun createSignedTransaction_mwebToMweb_returnsRawWithoutBroadcastOrStorage() = runBlocking {
+        val destination = mwebDestination()
+        val daemonClient = FakeDaemonClient(
+            status = MwebDaemonStatus(MwebSyncState(100, 100, 100), nativeVersion = "test"),
+            streamUtxos = listOf(MwebUtxo(SELECTED_OUTPUT_ID, destination, 1, 100_000, 95, 1_000, spent = false)),
+            dryRunRawTransaction = rawTransactionWithoutPublicOutputs(),
+        )
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        val result = engine.createSignedTransaction(
+            request = MwebSendRequest.MwebToMweb(destination, 50, 1),
+            publicOptions = publicOptions(),
+        )
+
+        assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
+        assertTrue(engine.pendingTransactions().isEmpty())
+        assertFalse(engine.transactions().any { it.type == MwebTransactionType.Outgoing })
+        assertFalse(engine.mwebUtxos().single { it.outputId == SELECTED_OUTPUT_ID }.spent)
+        assertEquals(MwebBalance(confirmed = 100_000, unconfirmed = 0), engine.balance)
+        assertEquals(MwebRawTransactionHash.fullRawHash(result.rawTransaction), result.transactionHash)
+        assertNull(result.canonicalTransactionHash)
+        assertEquals("created-output", result.outputIds.single())
+    }
+
+    @Test
+    fun broadcastRawTransaction_usesDaemonBroadcastWithoutSavingLocalState() = runBlocking {
+        val rawTransaction = rawTransactionWithoutPublicOutputs()
+        val daemonClient = FakeDaemonClient(broadcastHash = DAEMON_BROADCAST_HASH)
+        val engine = engineWith(daemonClient)
+        engine.start()
+
+        val result = engine.broadcastRawTransaction(rawTransaction)
+
+        assertEquals(DAEMON_BROADCAST_HASH, result)
+        assertArrayEquals(rawTransaction, daemonClient.broadcastRawTransactions.single())
+        assertTrue(engine.pendingTransactions().isEmpty())
+        assertTrue(engine.transactions().isEmpty())
+    }
+
+    @Test
     fun send_publicToMwebDefaultSigner_processesSingleCanonicalPublicTransaction() = runBlocking {
         val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
         val daemonClient = FakeDaemonClient(
@@ -1436,6 +1549,41 @@ class LitecoinMwebEngineLifecycleTest {
         assertArrayEquals(signedRaw, daemonClient.broadcastRawTransactions.single())
         assertEquals(listOf(signedTransaction), bridge.processCreatedTransactions)
         assertProcessedPublicTransactionHash(bridge, DAEMON_BROADCAST_HASH)
+    }
+
+    @Test
+    fun publicPegInSender_createSignedWithoutEngine_doesNotBroadcastOrProcessCreated() = runBlocking {
+        val daemonClient = FakeDaemonClient(createRawTransaction = ::mwebCreateResponseForPublicPegIn)
+        val sender = publicPegInSender(daemonClient)
+        val bridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000)))
+
+        val result = sender.createSignedTransaction(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = bridge,
+        )
+
+        assertEquals(1, bridge.signCalls.size)
+        assertEquals(0, bridge.processCreatedCount)
+        assertEquals(1, daemonClient.startCount)
+        assertTrue(daemonClient.broadcastRawTransactions.isEmpty())
+        assertEquals(listOf(true, false), daemonClient.createRequests.map { it.dryRun })
+        assertEquals(MwebRawTransactionHash.canonicalPublicHash(result.rawTransaction), result.transactionHash)
+        assertEquals(result.transactionHash, result.canonicalTransactionHash)
+        assertEquals("created-output", result.outputIds.single())
+    }
+
+    @Test
+    fun publicPegInSender_broadcastRawTransaction_usesDaemonBroadcast() = runBlocking {
+        val rawTransaction = rawTransactionWithoutPublicOutputs()
+        val daemonClient = FakeDaemonClient(broadcastHash = DAEMON_BROADCAST_HASH)
+        val sender = publicPegInSender(daemonClient)
+
+        val result = sender.broadcastRawTransaction(rawTransaction)
+
+        assertEquals(DAEMON_BROADCAST_HASH, result)
+        assertEquals(1, daemonClient.startCount)
+        assertArrayEquals(rawTransaction, daemonClient.broadcastRawTransactions.single())
     }
 
     @Test

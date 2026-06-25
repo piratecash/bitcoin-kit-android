@@ -275,28 +275,17 @@ internal class LitecoinMwebEngine(
         publicTransactionBridge: MwebPublicTransactionBridge? = null,
     ): MwebSendResult = withContext(dispatcherProvider.io) {
         val (result, publicTransaction) = stateMutex.withLock {
-            val client = requireStartedClient()
-            val prepared = prepareTransaction(
+            val signedTransaction = createSignedMwebTransaction(
                 request = request,
                 publicOptions = publicOptions,
-                client = client,
-                publicTransactionBridge = publicTransactionBridge,
-            )
-            val createResult = MwebDaemonErrorMapper.mapSuspend {
-                client.create(prepared.rawTemplate, request.feeRate, dryRun = false)
-            }
-            val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
-            val signedPublicTransaction = signPublicInputs(
-                rawTransaction = rawTransaction,
-                selectedPublicUtxos = prepared.selectedPublicUtxos,
                 publicTransactionBridge = publicTransactionBridge,
             )
             val broadcastHash = MwebDaemonErrorMapper.mapSuspend {
-                client.broadcast(signedPublicTransaction.rawTransaction)
+                requireStartedClient().broadcast(signedTransaction.rawTransaction)
             }
             val canonicalTransactionHash = when (request) {
                 is MwebSendRequest.PublicToMweb -> {
-                    signedPublicTransaction.setPublicTransactionHash(broadcastHash)
+                    signedTransaction.setPublicTransactionHash(broadcastHash)
                     broadcastHash
                 }
                 is MwebSendRequest.MwebToPublic,
@@ -304,11 +293,11 @@ internal class LitecoinMwebEngine(
             }
             val result = MwebSendResult(
                 canonicalTransactionHash = canonicalTransactionHash,
-                rawTransaction = signedPublicTransaction.rawTransaction,
-                outputIds = createResult.outputIds,
+                rawTransaction = signedTransaction.rawTransaction,
+                outputIds = signedTransaction.outputIds,
             )
             val timestamp = currentTimeMillisProvider()
-            val selectedMwebOutputIds = prepared.selectedMwebUtxos.map { it.outputId }
+            val selectedMwebOutputIds = signedTransaction.selectedMwebOutputIds
             storage.saveBroadcastResult(
                 pendingTransaction = MwebPendingTransaction(
                     rawTransaction = result.rawTransaction,
@@ -316,16 +305,38 @@ internal class LitecoinMwebEngine(
                     canonicalTransactionHash = result.canonicalTransactionHash,
                     timestamp = timestamp,
                 ),
-                localTransaction = localTransaction(request, prepared, result, timestamp / 1_000),
+                localTransaction = localTransaction(request, signedTransaction.prepared, result, timestamp / 1_000),
                 spentOutputIds = selectedMwebOutputIds,
-                createdUtxos = localCreatedUtxos(request, prepared, result),
+                createdUtxos = localCreatedUtxos(request, signedTransaction.prepared, result),
             )
             applyUtxoSnapshot(utxoSynchronizer.loadStoredSnapshot())
-            result to signedPublicTransaction.publicTransaction
+            result to signedTransaction.publicTransaction
         }
 
         processCreatedPublicTransaction(publicTransactionBridge, publicTransaction)
         result
+    }
+
+    suspend fun createSignedTransaction(
+        request: MwebSendRequest,
+        publicOptions: MwebPublicSendOptions,
+        publicTransactionBridge: MwebPublicTransactionBridge? = null,
+    ): MwebSignedRawTransaction = withContext(dispatcherProvider.io) {
+        stateMutex.withLock {
+            createSignedMwebTransaction(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = publicTransactionBridge,
+            ).toSignedRawTransaction(request)
+        }
+    }
+
+    suspend fun broadcastRawTransaction(rawTransaction: ByteArray): String = withContext(dispatcherProvider.io) {
+        stateMutex.withLock {
+            MwebDaemonErrorMapper.mapSuspend {
+                requireStartedClient().broadcast(rawTransaction)
+            }
+        }
     }
 
     /**
@@ -447,6 +458,34 @@ internal class LitecoinMwebEngine(
                 client.create(rawTemplate, feeRate, dryRun = true).rawTransaction
             }
         }
+    }
+
+    private suspend fun createSignedMwebTransaction(
+        request: MwebSendRequest,
+        publicOptions: MwebPublicSendOptions,
+        publicTransactionBridge: MwebPublicTransactionBridge?,
+    ): CreatedMwebTransaction {
+        val client = requireStartedClient()
+        val prepared = prepareTransaction(
+            request = request,
+            publicOptions = publicOptions,
+            client = client,
+            publicTransactionBridge = publicTransactionBridge,
+        )
+        val createResult = MwebDaemonErrorMapper.mapSuspend {
+            client.create(prepared.rawTemplate, request.feeRate, dryRun = false)
+        }
+        val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
+        val signedPublicTransaction = signPublicInputs(
+            rawTransaction = rawTransaction,
+            selectedPublicUtxos = prepared.selectedPublicUtxos,
+            publicTransactionBridge = publicTransactionBridge,
+        )
+        return CreatedMwebTransaction(
+            prepared = prepared,
+            createResult = createResult,
+            signedPublicTransaction = signedPublicTransaction,
+        )
     }
 
     private fun transactions(

@@ -72,6 +72,7 @@ import io.horizontalsystems.litecoinkit.mweb.MwebPublicTransactionBridge
 import io.horizontalsystems.litecoinkit.mweb.MwebSendRequest
 import io.horizontalsystems.litecoinkit.mweb.MwebSendInfo
 import io.horizontalsystems.litecoinkit.mweb.MwebSendResult
+import io.horizontalsystems.litecoinkit.mweb.MwebSignedRawTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebSyncState
 import io.horizontalsystems.litecoinkit.mweb.MwebUtxo
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
@@ -441,6 +442,32 @@ class LitecoinKit : AbstractKit {
         }
     }
 
+    suspend fun createSignedMwebTransaction(
+        address: String,
+        value: Long,
+        source: LitecoinSendSource,
+        feeRate: Int,
+        rbfEnabled: Boolean,
+        changeToFirstInput: Boolean,
+        filters: UtxoFilters,
+        unspentOutputs: List<UnspentOutputInfo>? = null,
+    ): MwebSignedRawTransaction {
+        val request = mwebRequest(source, address, value, feeRate)
+            ?: throw IllegalArgumentException("Address and source do not describe an MWEB transaction")
+        val publicOptions = MwebPublicSendOptions(
+            unspentOutputs = unspentOutputs,
+            changeToFirstInput = changeToFirstInput,
+            rbfEnabled = rbfEnabled,
+            filters = filters,
+        )
+        return mwebCreateSignedTransaction(request, publicOptions)
+    }
+
+    suspend fun broadcastMwebRawTransaction(rawTransaction: ByteArray): String {
+        return mwebEngine?.broadcastRawTransaction(rawTransaction)
+            ?: mwebPublicPegInSender.broadcastRawTransaction(rawTransaction)
+    }
+
     private fun mwebSendInfo(
         request: MwebSendRequest,
         publicOptions: MwebPublicSendOptions,
@@ -480,6 +507,29 @@ class LitecoinKit : AbstractKit {
             )
             is MwebSendRequest.MwebToPublic,
             is MwebSendRequest.MwebToMweb -> requireMwebEngine().send(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            )
+        }
+    }
+
+    private suspend fun mwebCreateSignedTransaction(
+        request: MwebSendRequest,
+        publicOptions: MwebPublicSendOptions,
+    ): MwebSignedRawTransaction {
+        return when (request) {
+            is MwebSendRequest.PublicToMweb -> mwebEngine?.createSignedTransaction(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            ) ?: mwebPublicPegInSender.createSignedTransaction(
+                request = request,
+                publicOptions = publicOptions,
+                publicTransactionBridge = mwebPublicTransactionBridge,
+            )
+            is MwebSendRequest.MwebToPublic,
+            is MwebSendRequest.MwebToMweb -> requireMwebEngine().createSignedTransaction(
                 request = request,
                 publicOptions = publicOptions,
                 publicTransactionBridge = mwebPublicTransactionBridge,

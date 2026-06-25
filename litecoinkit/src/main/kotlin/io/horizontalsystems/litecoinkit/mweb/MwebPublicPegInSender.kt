@@ -68,51 +68,50 @@ internal class MwebPublicPegInSender(
     ): MwebSendResult = withContext(config.dispatcherProvider.io) {
         operationMutex.withLock {
             resetClientOnDaemonCrashSuspend {
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in send started: feeRate=${request.feeRate}")
-                val clientProvider = lazyClientProvider()
-                val prepared = prepareTransaction(
+                val (client, signedTransaction) = createSignedPublicPegInTransaction(
                     request = request,
                     publicOptions = publicOptions,
                     publicTransactionBridge = publicTransactionBridge,
-                    clientProvider = clientProvider,
-                )
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
-                    "Public peg-in prepared: selectedPublicUtxos=${prepared.selectedPublicUtxos.size}, " +
-                        "normalFee=${prepared.normalFee}, mwebFee=${prepared.mwebFee}, rawTemplateBytes=${prepared.rawTemplate.size}"
-                )
-                val activeClient = clientProvider()
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon create started")
-                val createResult = MwebDaemonErrorMapper.mapSuspend {
-                    activeClient.create(prepared.rawTemplate, request.feeRate, dryRun = false)
-                }
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
-                    "Public peg-in daemon create finished: rawBytes=${createResult.rawTransaction.size}, " +
-                        "outputIds=${createResult.outputIds.size}"
-                )
-                val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
-                val signedPublicTransaction = publicTransactionBridge.signPublicInputs(
-                    rawTransaction = rawTransaction,
-                    selectedPublicUtxos = prepared.selectedPublicUtxos,
-                )
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
-                    "Public peg-in signed: tx=${signedPublicTransaction.publicTransaction?.header?.hash?.toReversedHex()}, " +
-                        "inputs=${signedPublicTransaction.publicTransaction?.inputs?.size}, " +
-                        "outputs=${signedPublicTransaction.publicTransaction?.outputs?.size}, " +
-                        "rawBytes=${signedPublicTransaction.rawTransaction.size}"
                 )
                 Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon broadcast started")
                 val broadcastHash = MwebDaemonErrorMapper.mapSuspend {
-                    activeClient.broadcast(signedPublicTransaction.rawTransaction)
+                    client.broadcast(signedTransaction.rawTransaction)
                 }
-                signedPublicTransaction.setPublicTransactionHash(broadcastHash)
+                signedTransaction.setPublicTransactionHash(broadcastHash)
                 Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG)
                     .d("Public peg-in daemon broadcast finished: tx=$broadcastHash")
-                signedPublicTransaction.publicTransaction?.let(publicTransactionBridge::processCreated)
+                signedTransaction.publicTransaction?.let(publicTransactionBridge::processCreated)
                 MwebSendResult(
                     canonicalTransactionHash = broadcastHash,
-                    rawTransaction = signedPublicTransaction.rawTransaction,
-                    outputIds = createResult.outputIds,
+                    rawTransaction = signedTransaction.rawTransaction,
+                    outputIds = signedTransaction.outputIds,
                 )
+            }
+        }
+    }
+
+    suspend fun createSignedTransaction(
+        request: MwebSendRequest.PublicToMweb,
+        publicOptions: MwebPublicSendOptions,
+        publicTransactionBridge: MwebPublicTransactionBridge,
+    ): MwebSignedRawTransaction = withContext(config.dispatcherProvider.io) {
+        operationMutex.withLock {
+            resetClientOnDaemonCrashSuspend {
+                createSignedPublicPegInTransaction(
+                    request = request,
+                    publicOptions = publicOptions,
+                    publicTransactionBridge = publicTransactionBridge,
+                ).second.toSignedRawTransaction(request)
+            }
+        }
+    }
+
+    suspend fun broadcastRawTransaction(rawTransaction: ByteArray): String = withContext(config.dispatcherProvider.io) {
+        operationMutex.withLock {
+            resetClientOnDaemonCrashSuspend {
+                MwebDaemonErrorMapper.mapSuspend {
+                    startedClient().broadcast(rawTransaction)
+                }
             }
         }
     }
@@ -158,6 +157,50 @@ internal class MwebPublicPegInSender(
                 clientProvider().create(rawTemplate, feeRate, dryRun = true).rawTransaction
             }
         }
+    }
+
+    private suspend fun createSignedPublicPegInTransaction(
+        request: MwebSendRequest.PublicToMweb,
+        publicOptions: MwebPublicSendOptions,
+        publicTransactionBridge: MwebPublicTransactionBridge,
+    ): Pair<MwebDaemonClient, CreatedMwebTransaction> {
+        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in create/sign started: feeRate=${request.feeRate}")
+        val clientProvider = lazyClientProvider()
+        val prepared = prepareTransaction(
+            request = request,
+            publicOptions = publicOptions,
+            publicTransactionBridge = publicTransactionBridge,
+            clientProvider = clientProvider,
+        )
+        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+            "Public peg-in prepared: selectedPublicUtxos=${prepared.selectedPublicUtxos.size}, " +
+                "normalFee=${prepared.normalFee}, mwebFee=${prepared.mwebFee}, rawTemplateBytes=${prepared.rawTemplate.size}"
+        )
+        val activeClient = clientProvider()
+        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon create started")
+        val createResult = MwebDaemonErrorMapper.mapSuspend {
+            activeClient.create(prepared.rawTemplate, request.feeRate, dryRun = false)
+        }
+        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+            "Public peg-in daemon create finished: rawBytes=${createResult.rawTransaction.size}, " +
+                "outputIds=${createResult.outputIds.size}"
+        )
+        val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
+        val signedPublicTransaction = publicTransactionBridge.signPublicInputs(
+            rawTransaction = rawTransaction,
+            selectedPublicUtxos = prepared.selectedPublicUtxos,
+        )
+        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+            "Public peg-in signed: tx=${signedPublicTransaction.publicTransaction?.header?.hash?.toReversedHex()}, " +
+                "inputs=${signedPublicTransaction.publicTransaction?.inputs?.size}, " +
+                "outputs=${signedPublicTransaction.publicTransaction?.outputs?.size}, " +
+                "rawBytes=${signedPublicTransaction.rawTransaction.size}"
+        )
+        return activeClient to CreatedMwebTransaction(
+            prepared = prepared,
+            createResult = createResult,
+            signedPublicTransaction = signedPublicTransaction,
+        )
     }
 
     private fun startedClient(): MwebDaemonClient {
