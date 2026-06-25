@@ -6,6 +6,7 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 import io.horizontalsystems.bitcoincore.utils.HashUtils
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,6 +46,21 @@ class LitecoinTransactionSerializerTest {
         assertEquals(PUBLIC_P2WPKH_TX_ID, HashUtils.doubleSha256(hashBytes).toReversedHex())
         assertEquals(PUBLIC_P2WPKH_RAW, serializer.serialize(transaction).toHexString())
         assertTrue(transaction.header.extraPayload.isEmpty())
+    }
+
+    @Test
+    fun isMwebRawTransaction_mwebPegInRaw_returnsTrue() {
+        assertTrue(LitecoinRawTransactionClassifier.isMweb(MWEB_PEG_IN_RAW.hexToByteArray()))
+    }
+
+    @Test
+    fun isMwebRawTransaction_publicRaw_returnsFalse() {
+        assertFalse(LitecoinRawTransactionClassifier.isMweb(PUBLIC_P2WPKH_RAW.hexToByteArray()))
+    }
+
+    @Test
+    fun isMwebRawTransaction_malformedRaw_returnsFalse() {
+        assertFalse(LitecoinRawTransactionClassifier.isMweb(byteArrayOf(1, 2, 3)))
     }
 
     private companion object {

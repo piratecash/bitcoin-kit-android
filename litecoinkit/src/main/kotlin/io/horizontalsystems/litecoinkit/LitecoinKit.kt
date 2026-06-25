@@ -468,6 +468,9 @@ class LitecoinKit : AbstractKit {
             ?: mwebPublicPegInSender.broadcastRawTransaction(rawTransaction)
     }
 
+    fun isMwebRawTransaction(rawTransaction: ByteArray): Boolean =
+        LitecoinRawTransactionClassifier.isMweb(rawTransaction)
+
     private fun mwebSendInfo(
         request: MwebSendRequest,
         publicOptions: MwebPublicSendOptions,
