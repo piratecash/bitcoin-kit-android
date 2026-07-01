@@ -1,22 +1,30 @@
 package io.horizontalsystems.bitcoincore.transactions
 
+import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
+import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
-import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastResult
-import io.horizontalsystems.bitcoincore.models.Transaction
-import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastResult
+import io.horizontalsystems.bitcoincore.models.RawTransactionBroadcastStatus
+import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
+import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.InputToSign
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.builder.MutableTransaction
-import io.horizontalsystems.bitcoincore.transactions.builder.TransactionBuilder
 import io.horizontalsystems.bitcoincore.transactions.builder.SignedTransactionData
+import io.horizontalsystems.bitcoincore.transactions.builder.TransactionBuilder
 import io.horizontalsystems.bitcoincore.transactions.builder.TransactionSigner
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withTimeoutOrNull
 
 class TransactionCreator(
     private val builder: TransactionBuilder,
@@ -25,6 +33,11 @@ class TransactionCreator(
     private val transactionSigner: TransactionSigner,
     private val bloomFilterManager: BloomFilterManager,
     private val transactionSerializer: BaseTransactionSerializer,
+    // Live existence-check provider for the raw-broadcast path, e.g. Blockchair, used to detect a
+    // transaction the network already knows about. Null on chains with no reliable provider.
+    private val existenceCheckApi: Api? = null,
+    // Overridable for tests only; production callers rely on the default.
+    private val existenceCheckTimeoutMillis: Long = EXISTENCE_CHECK_TIMEOUT_MS,
 ) {
 
     @Throws
@@ -67,7 +80,8 @@ class TransactionCreator(
         sortType: TransactionDataSortType,
         rbfEnabled: Boolean
     ): FullTransaction {
-        val mutableTransaction = builder.buildTransaction(unspentOutput, toAddress, memo, feeRate, sortType, rbfEnabled)
+        val mutableTransaction =
+            builder.buildTransaction(unspentOutput, toAddress, memo, feeRate, sortType, rbfEnabled)
 
         return create(mutableTransaction)
     }
@@ -112,7 +126,8 @@ class TransactionCreator(
         rawTransaction: ByteArray,
         unspentOutputs: List<UnspentOutput>,
     ): FullTransaction {
-        val fullTransaction = transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
+        val fullTransaction =
+            transactionSerializer.deserialize(BitcoinInputMarkable(rawTransaction))
         val mutableTransaction = MutableTransaction()
         mutableTransaction.transaction.apply {
             version = fullTransaction.header.version
@@ -128,9 +143,15 @@ class TransactionCreator(
         fullTransaction.inputs.forEach { input ->
             val unspentOutput = unspentOutputs.firstOrNull {
                 it.transaction.hash.contentEquals(input.previousOutputTxHash) &&
-                    it.output.index.toLong() == input.previousOutputIndex
+                        it.output.index.toLong() == input.previousOutputIndex
             } ?: throw TransactionCreationException("No previous output for raw transaction input")
-            mutableTransaction.addInput(InputToSign(input, unspentOutput.output, unspentOutput.publicKey))
+            mutableTransaction.addInput(
+                InputToSign(
+                    input,
+                    unspentOutput.output,
+                    unspentOutput.publicKey
+                )
+            )
         }
         return signAndBuild(mutableTransaction, fullTransaction.inputs)
     }
@@ -151,8 +172,39 @@ class TransactionCreator(
         val transaction = transactionSerializer.deserialize(
             BitcoinInputMarkable(rawTransactionHex.hexToByteArray())
         )
+        if (isAlreadyInNetwork(transaction.header.hash.toReversedHex())) {
+            return RawTransactionBroadcastResult(
+                transaction,
+                RawTransactionBroadcastStatus.AlreadyKnown
+            )
+        }
         val status = transactionSender.broadcastRawTransaction(transaction, rawTransactionHex)
         return RawTransactionBroadcastResult(transaction, status)
+    }
+
+    // Best-effort live lookup to avoid re-broadcasting a transaction the network already has,
+    // whether it sits in mempool or is already confirmed. Any failure (no provider for this
+    // chain, network error, timeout) must not block the real broadcast, so this fails open.
+    //
+    // The HTTP call goes through ApiManager, which has a 60s read timeout and no coroutine
+    // suspension point of its own - a plain withTimeoutOrNull wrapped around a blocking call
+    // would not interrupt it. So the lookup runs on GlobalScope, decoupled from this function's
+    // coroutine, and only the `await()` is bounded: the broadcast is guaranteed to proceed after
+    // EXISTENCE_CHECK_TIMEOUT_MS regardless of how long the underlying HTTP call actually takes.
+    // The lookup coroutine itself may keep running in the background after the timeout; its
+    // result is simply discarded.
+    private suspend fun isAlreadyInNetwork(txid: String): Boolean {
+        val api = existenceCheckApi ?: return false
+        val lookup = GlobalScope.async(Dispatchers.IO) {
+            try {
+                api.getTransactions(listOf(txid)).isNotEmpty()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                false
+            }
+        }
+        return withTimeoutOrNull(existenceCheckTimeoutMillis) { lookup.await() } ?: false
     }
 
     fun processCreated(transaction: FullTransaction): FullTransaction {
@@ -247,6 +299,11 @@ class TransactionCreator(
     private companion object {
         // Non-empty, even length, hex characters only.
         val HEX_REGEX = Regex("^([0-9a-fA-F]{2})+$")
+
+        // Upper bound on how long the raw-broadcast existence pre-check may delay the real
+        // broadcast. Kept well under ApiManager's 60s read timeout so a slow/unresponsive API
+        // fails open promptly instead of stalling the user-visible broadcast call.
+        const val EXISTENCE_CHECK_TIMEOUT_MS = 2500L
     }
 
 }

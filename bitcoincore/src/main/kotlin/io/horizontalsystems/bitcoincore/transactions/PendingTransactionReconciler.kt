@@ -110,12 +110,16 @@ class BlockchairPendingTransactionStatusProvider(
         )
 
         fun create(api: Api, chainId: String): PendingTransactionStatusProvider? {
-            return if (chainId in supportedChainIds) {
+            return if (isChainSupported(chainId)) {
                 BlockchairPendingTransactionStatusProvider(api)
             } else {
                 null
             }
         }
+
+        // Blockchair's proxy is known to be unreliable for tx-by-hash lookups on chains outside
+        // this list (e.g. eCash), so callers relying on getTransactions() must check this first.
+        fun isChainSupported(chainId: String): Boolean = chainId in supportedChainIds
     }
 }
 

@@ -8,5 +8,5 @@ data class RawTransactionBroadcastResult(
 )
 
 enum class RawTransactionBroadcastStatus {
-    Submitted, Queued
+    Submitted, Queued, AlreadyKnown
 }

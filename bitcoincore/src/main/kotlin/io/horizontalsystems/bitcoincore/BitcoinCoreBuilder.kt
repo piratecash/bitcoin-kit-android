@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore
 
 import android.content.Context
+import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairLastBlockProvider
@@ -445,6 +446,16 @@ class BitcoinCoreBuilder {
                 BlockchairApi(network.blockchairChainId)
             }
 
+        // Best provider for a live "does this tx already exist?" lookup on raw broadcast:
+        // - chains with their own Api-backed transaction provider (e.g. Cosanta, PirateCash) use it directly
+        // - chains synced through Blockchair use blockchairApi, but only where getTransactions() is reliable
+        // - everyone else (e.g. eCash) gets no live check and simply falls back to a normal broadcast
+        val existenceCheckApi: Api? = when {
+            apiTransactionProvider is Api -> apiTransactionProvider
+            BlockchairPendingTransactionStatusProvider.isChainSupported(network.blockchairChainId) -> blockchairApi
+            else -> null
+        }
+
         val addressExtractor = AddressExtractor(blockchairApi, storage, dataProvider, network.logTag)
         val transactionExtractor =
             TransactionExtractor(addressConverter, storage, pluginManager, metadataExtractor, addressExtractor)
@@ -682,7 +693,8 @@ class BitcoinCoreBuilder {
                 transactionSender = transactionSenderInstance,
                 transactionSigner = signer,
                 bloomFilterManager = bloomFilterManager,
-                transactionSerializer = transactionSerializer
+                transactionSerializer = transactionSerializer,
+                existenceCheckApi = existenceCheckApi,
             )
             replacementTransactionBuilder = ReplacementTransactionBuilder(
                 storage = storage,
