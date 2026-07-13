@@ -127,10 +127,11 @@ class PendingTransactionReconciler(
     private val storage: IStorage,
     private val statusProvider: PendingTransactionStatusProvider?,
     private val dataListener: IBlockchainDataListener,
-    private val invalidateOutgoing: (Transaction) -> Unit,
+    private val outgoingInvalidator: OutgoingTransactionInvalidator,
     private val logTag: String,
     private val coroutineDispatcher: CoroutineDispatcher,
-    private val minimumPendingAgeSeconds: Long = DEFAULT_MINIMUM_PENDING_AGE_SECONDS
+    private val minimumPendingAgeSeconds: Long = DEFAULT_MINIMUM_PENDING_AGE_SECONDS,
+    private val minimumNewPendingAgeSeconds: Long = DEFAULT_MINIMUM_NEW_PENDING_AGE_SECONDS,
 ) {
     private var coroutineScope = createCoroutineScope()
     private val running = AtomicBoolean(false)
@@ -163,7 +164,8 @@ class PendingTransactionReconciler(
 
     suspend fun reconcile(nowSeconds: Long = System.currentTimeMillis() / 1000) {
         val statusProvider = statusProvider ?: return
-        val pendingTransactions = storage.getRelayedPendingTransactions(Transaction.Status.RELAYED)
+        val pendingTransactions = storage.getRelayedPendingTransactions(Transaction.Status.RELAYED) +
+            storage.getRelayedPendingTransactions(Transaction.Status.NEW)
 
         if (pendingTransactions.isEmpty()) {
             return
@@ -197,8 +199,10 @@ class PendingTransactionReconciler(
         }
     }
 
+    // Restricted to RELAYED: a malformed NEW transaction (never broadcast) instead ages out through
+    // the normal NEW-expiry path below, which is short enough (minimumNewPendingAgeSeconds) on its own.
     private fun isMalformedOutgoingTransaction(transaction: Transaction): Boolean {
-        if (!transaction.isOutgoing) {
+        if (!transaction.isOutgoing || transaction.status != Transaction.Status.RELAYED) {
             return false
         }
 
@@ -218,7 +222,12 @@ class PendingTransactionReconciler(
     }
 
     private fun Transaction.isStale(nowSeconds: Long): Boolean {
-        return nowSeconds - timestamp >= minimumPendingAgeSeconds
+        val ageThreshold = if (status == Transaction.Status.NEW) {
+            minimumNewPendingAgeSeconds
+        } else {
+            minimumPendingAgeSeconds
+        }
+        return nowSeconds - timestamp >= ageThreshold
     }
 
     private fun handleDroppedTransactions(transactions: List<Transaction>) {
@@ -227,8 +236,13 @@ class PendingTransactionReconciler(
         }
 
         val (outgoing, incoming) = transactions.partition { it.isOutgoing }
-        outgoing.forEach(invalidateOutgoing)
-        deleteIncomingTransactions(incoming)
+        val (newOutgoing, relayedOutgoing) = outgoing.partition { it.status == Transaction.Status.NEW }
+
+        // NEW outgoing transactions never reached the network, so their inputs are freed by
+        // deleting them outright instead of invalidating (which would mark inputs failedToSpend).
+        deletePendingTransactions(newOutgoing)
+        relayedOutgoing.forEach(outgoingInvalidator::invalidate)
+        deletePendingTransactions(incoming)
     }
 
     private fun deleteMalformedTransactions(transactions: List<Transaction>) {
@@ -240,17 +254,26 @@ class PendingTransactionReconciler(
             "Deleting malformed relayed outgoing transactions without inputs: " +
                 transactions.joinToString { it.hash.toReversedHex() }
         )
-        val deletedTransactions = storage.deleteRelayedPendingTransactions(transactions)
-        notifyDeletedTransactions(deletedTransactions)
+        deletePendingTransactions(transactions)
     }
 
-    private fun deleteIncomingTransactions(transactions: List<Transaction>) {
+    private fun deletePendingTransactions(transactions: List<Transaction>) {
         if (transactions.isEmpty()) {
             return
         }
 
-        val deletedTransactions = storage.deleteRelayedPendingTransactions(transactions)
-        notifyDeletedTransactions(deletedTransactions)
+        transactions.groupBy { it.status }.forEach { (status, group) ->
+            val deletedTransactions = if (status == Transaction.Status.NEW) {
+                // A transaction currently having its bytes handed to the network (API broadcast or
+                // P2P getdata serve) already has a SentTransaction record (see
+                // TransactionSender.recordBroadcastAttempt), so storage skips deleting it even
+                // though it is still NEW - deleting it out from under a real send would clobber it.
+                storage.deleteNewExpiredTransactions(group)
+            } else {
+                storage.deleteRelayedPendingTransactions(group, status)
+            }
+            notifyDeletedTransactions(deletedTransactions)
+        }
     }
 
     private fun notifyDeletedTransactions(deletedTransactions: List<Transaction>) {
@@ -282,5 +305,6 @@ class PendingTransactionReconciler(
 
     companion object {
         const val DEFAULT_MINIMUM_PENDING_AGE_SECONDS = 24 * 60 * 60L
+        const val DEFAULT_MINIMUM_NEW_PENDING_AGE_SECONDS = 60 * 60L
     }
 }

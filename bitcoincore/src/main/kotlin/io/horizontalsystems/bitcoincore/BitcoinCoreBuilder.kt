@@ -485,9 +485,9 @@ class BitcoinCoreBuilder {
             storage = storage,
             statusProvider = BlockchairPendingTransactionStatusProvider.create(blockchairApi, network.blockchairChainId),
             dataListener = dataProvider,
-            invalidateOutgoing = invalidator::invalidate,
+            outgoingInvalidator = invalidator,
             logTag = network.logTag,
-            coroutineDispatcher = coroutineDispatcher
+            coroutineDispatcher = coroutineDispatcher,
         )
 
         val isShared = sharedPeerGroupHolder != null
