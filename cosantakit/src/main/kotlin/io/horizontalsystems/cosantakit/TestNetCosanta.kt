@@ -5,7 +5,7 @@ import io.horizontalsystems.bitcoincore.network.Network
 class TestNetCosanta : Network() {
 
     // Mirror MainNetCosanta.protocolVersion — see the explanation there.
-    override val protocolVersion = 70229
+    override val protocolVersion = 70231
     override val noBloomVersion = 70201
 
     override var port: Int = 60696

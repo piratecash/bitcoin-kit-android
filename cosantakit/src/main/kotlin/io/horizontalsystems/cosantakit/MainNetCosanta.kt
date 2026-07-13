@@ -10,7 +10,7 @@ class MainNetCosanta : Network() {
     // (m1/m2.cosanta.net, dns.cosanta.io, dns.cosa.is, …) are scheduled to be
     // upgraded to >= 70229 after this rollout. Until they are, Peer.validatePeerVersion
     // will reject every currently-published node. This is by design, not a bug.
-    override val protocolVersion = 70229
+    override val protocolVersion = 70231
     override val noBloomVersion = 70201
 
     override var port: Int = 60606

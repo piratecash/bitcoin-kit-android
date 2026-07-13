@@ -4,7 +4,7 @@ import io.horizontalsystems.bitcoincore.network.Network
 
 class MainNetPirateCash : Network() {
 
-    override val protocolVersion = 70229
+    override val protocolVersion = 70231
     override val noBloomVersion = 70201
 
     override var port: Int = 63636
