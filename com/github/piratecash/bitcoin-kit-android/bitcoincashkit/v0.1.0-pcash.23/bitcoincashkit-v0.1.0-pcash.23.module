@@ -1,0 +1,127 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "bitcoincashkit",
+    "version": "v0.1.0-pcash.23",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.23"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincashkit-v0.1.0-pcash.23.aar",
+          "url": "bitcoincashkit-v0.1.0-pcash.23.aar",
+          "size": 79814,
+          "sha512": "bfd7c9d8956b9e49122f83a607d06eff1b57c336143c4813ddb9fc91f0059f17323fc64ff71613c79f2ef38a486814c24c36b2704e6c4b2f0233fe03f1908a20",
+          "sha256": "e4905e5d574246fa5284a31efd0861b6d100b109b8139cb0ea9a4cffcf91e8c6",
+          "sha1": "01fca0b0e741f13ed31b49aa2121704d62a3a8a8",
+          "md5": "35bb53501e8009bc6eb98dbf9d0d867a"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.23"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "bitcoincashkit-v0.1.0-pcash.23.aar",
+          "url": "bitcoincashkit-v0.1.0-pcash.23.aar",
+          "size": 79814,
+          "sha512": "bfd7c9d8956b9e49122f83a607d06eff1b57c336143c4813ddb9fc91f0059f17323fc64ff71613c79f2ef38a486814c24c36b2704e6c4b2f0233fe03f1908a20",
+          "sha256": "e4905e5d574246fa5284a31efd0861b6d100b109b8139cb0ea9a4cffcf91e8c6",
+          "sha1": "01fca0b0e741f13ed31b49aa2121704d62a3a8a8",
+          "md5": "35bb53501e8009bc6eb98dbf9d0d867a"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "bitcoincashkit-v0.1.0-pcash.23-sources.jar",
+          "url": "bitcoincashkit-v0.1.0-pcash.23-sources.jar",
+          "size": 57630,
+          "sha512": "471c408f68d5ad52fb48131884ed711ffedaa756c21057df575b556469c9c03723ff7ff7a4a7ef6d39ea7b5d3c76e9fa9750f18ef38a9a65c474fe7013d5b5ca",
+          "sha256": "dd041307b0b59ec0f1050ff9811bd4e075a8915b932c69058a2da62fbfa60a9f",
+          "sha1": "0704a7218d4fbf5ebb7bcff4f95f51ee5ba56fc1",
+          "md5": "54093fa6422cb9c4623106107edbacd8"
+        }
+      ]
+    }
+  ]
+}
