@@ -9,6 +9,7 @@ import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiManager
 import io.horizontalsystems.bitcoincore.managers.ApiManagerException
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -19,8 +20,9 @@ import java.util.TimeZone
 
 class BlockchairApi(
     private val chainId: String,
+    private val networkErrorListener: NetworkErrorListenerHolder? = null
 ): Api {
-    private val apiManager = ApiManager("https://api.blocksdecoded.com/v1/blockchair")
+    private val apiManager = ApiManager("https://api.blocksdecoded.com/v1/blockchair", networkErrorListener)
     private val limit = 10000
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
@@ -91,7 +93,7 @@ class BlockchairApi(
     }
 
     override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
-        val apiManager = ApiManager("https://api.blockchair.com")
+        val apiManager = ApiManager("https://api.blockchair.com", networkErrorListener)
         val url = "$chainId/push/transaction"
 
         val body = JsonObject().apply {

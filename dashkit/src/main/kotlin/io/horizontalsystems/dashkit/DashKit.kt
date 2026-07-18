@@ -330,6 +330,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             .setBlockHeaderHasher(X11Hasher())
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setTransactionInfoConverter(dashTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
@@ -477,10 +478,10 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         apiSyncStateManager: ApiSyncStateManager
     ) = when (networkType) {
         NetworkType.MainNet -> {
-            val insightApiProvider = InsightApi("https://insight.dash.org/insight-api")
+            val insightApiProvider = InsightApi("https://insight.dash.org/insight-api", networkErrorHolder)
 
             if (syncMode is SyncMode.Blockchair) {
-                val blockchairApi = BlockchairApi(network.blockchairChainId)
+                val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
                 val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(blockchairApi)
                 val blockchairProvider =
                     BlockchairTransactionProvider(blockchairApi, blockchairBlockHashFetcher)
@@ -496,7 +497,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         }
 
         NetworkType.TestNet -> {
-            InsightApi("https://testnet-insight.dash.org/insight-api")
+            InsightApi("https://testnet-insight.dash.org/insight-api", networkErrorHolder)
         }
     }
 

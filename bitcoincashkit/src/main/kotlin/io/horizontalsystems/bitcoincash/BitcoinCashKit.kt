@@ -206,6 +206,7 @@ class BitcoinCashKit : AbstractKit {
             .setStorage(storage)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
             .apply {
@@ -271,21 +272,22 @@ class BitcoinCashKit : AbstractKit {
         networkType: NetworkType,
         syncMode: SyncMode
     ): IApiTransactionProvider {
-        val blockchairApi = BlockchairApi(network.blockchairChainId)
+        val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
         val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(blockchairApi)
         return when (networkType) {
             is NetworkType.MainNet -> {
                 if (syncMode is SyncMode.Blockchair) {
                     BlockchairTransactionProvider(blockchairApi, blockchairBlockHashFetcher)
                 } else {
-                    BlockchainComApi("https://api.haskoin.com/bch/blockchain", blockchairBlockHashFetcher)
+                    BlockchainComApi("https://api.haskoin.com/bch/blockchain", blockchairBlockHashFetcher, networkErrorHolder)
                 }
             }
 
             NetworkType.TestNet -> {
                 BlockchainComApi(
                     transactionApiUrl = "https://api.haskoin.com/bchtest/blockchain",
-                    blockHashFetcher = HsBlockHashFetcher("https://api.blocksdecoded.com/v1/blockchains/bitcoin-cash")
+                    blockHashFetcher = HsBlockHashFetcher("https://api.blocksdecoded.com/v1/blockchains/bitcoin-cash", networkErrorHolder),
+                    networkErrorListener = networkErrorHolder
                 )
             }
         }

@@ -263,6 +263,7 @@ class BitcoinKit : AbstractKit {
             .setStorage(storage)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setHandleAddrMessage(false)
             .setAllowBroadcastFromUnsyncedPeers(true)
@@ -352,20 +353,20 @@ class BitcoinKit : AbstractKit {
         checkpoint: Checkpoint
     ) = when (networkType) {
         NetworkType.MainNet -> {
-            val hsBlockHashFetcher = HsBlockHashFetcher("https://api.blocksdecoded.com/v1/blockchains/bitcoin")
+            val hsBlockHashFetcher = HsBlockHashFetcher("https://api.blocksdecoded.com/v1/blockchains/bitcoin", networkErrorHolder)
             if (syncMode is SyncMode.Blockchair) {
-                val blockchairApi = BlockchairApi(network.blockchairChainId)
+                val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
                 val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(blockchairApi)
                 val blockHashFetcher = BlockHashFetcher(hsBlockHashFetcher, blockchairBlockHashFetcher, checkpoint.block.height)
                 val blockchairProvider = BlockchairTransactionProvider(blockchairApi, blockHashFetcher)
                 blockchairProvider
             } else {
-                BlockchainComApi("https://blockchain.info", hsBlockHashFetcher)
+                BlockchainComApi("https://blockchain.info", hsBlockHashFetcher, networkErrorHolder)
             }
         }
 
         NetworkType.TestNet -> {
-            BCoinApi("https://btc-testnet.blocksdecoded.com/api")
+            BCoinApi("https://btc-testnet.blocksdecoded.com/api", networkErrorHolder)
         }
 
         NetworkType.RegTest -> {

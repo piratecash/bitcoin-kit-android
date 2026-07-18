@@ -6,15 +6,17 @@ import io.horizontalsystems.bitcoincore.apisync.model.AddressItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 
 class BlockchainComApi(
     transactionApiUrl: String,
-    private val blockHashFetcher: IBlockHashFetcher
+    private val blockHashFetcher: IBlockHashFetcher,
+    networkErrorListener: NetworkErrorListenerHolder? = null
 ) : IApiTransactionProvider {
 
-    private val transactionsApiManager = ApiManager(transactionApiUrl)
+    private val transactionsApiManager = ApiManager(transactionApiUrl, networkErrorListener)
 
     private fun getTransactions(addresses: List<String>, offset: Int = 0): List<TransactionResponse> {
         val joinedAddresses = addresses.joinToString("|")

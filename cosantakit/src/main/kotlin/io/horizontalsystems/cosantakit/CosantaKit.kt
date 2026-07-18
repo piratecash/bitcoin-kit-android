@@ -255,9 +255,10 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             .setBlockHeaderHasher(X11HasherExt())
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setTransactionInfoConverter(cosantaTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
-            .setCustomLastBlockProvider(CosantaLastBlockProvider(CosantaApi()))
+            .setCustomLastBlockProvider(CosantaLastBlockProvider(CosantaApi(networkErrorHolder)))
             .setRequestUnknownBlocks(true)
             .apply {
                 if(iInputSigner != null && iSchnorrInputSigner != null) {
@@ -368,7 +369,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         apiSyncStateManager: ApiSyncStateManager
     ) = when (networkType) {
         NetworkType.MainNet -> {
-            val cosantaApi = CosantaApi()
+            val cosantaApi = CosantaApi(networkErrorHolder)
 
             if (syncMode is SyncMode.Blockchair) {
                 val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(cosantaApi)
@@ -386,7 +387,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         }
 
         NetworkType.TestNet -> {
-            InsightApi("https://testnet-insight.dash.org/insight-api")
+            InsightApi("https://testnet-insight.dash.org/insight-api", networkErrorHolder)
         }
     }
 

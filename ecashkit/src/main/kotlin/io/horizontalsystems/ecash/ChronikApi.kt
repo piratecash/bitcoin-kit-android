@@ -4,11 +4,14 @@ import chronik.Chronik
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.managers.ApiManager
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.apisync.model.AddressItem
 
-class ChronikApi : IApiTransactionProvider {
-    private val apiManager = ApiManager("https://chronik.fabien.cash")
+class ChronikApi(
+    networkErrorListener: NetworkErrorListenerHolder? = null
+) : IApiTransactionProvider {
+    private val apiManager = ApiManager("https://chronik.fabien.cash", networkErrorListener)
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
         val transactionItems = mutableListOf<TransactionItem>()

@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.managers
 
 import com.eclipsesource.json.Json
 import com.eclipsesource.json.JsonValue
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.BufferedOutputStream
@@ -14,7 +15,10 @@ import java.net.URL
 import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
 
-class ApiManager(private val host: String) {
+class ApiManager(
+    private val host: String,
+    private val networkErrorListener: NetworkErrorListenerHolder? = null
+) {
     private val logger = Logger.getLogger("ApiManager")
 
     companion object {
@@ -57,6 +61,7 @@ class ApiManager(private val host: String) {
                     setRequestProperty("content-type", "application/json")
                 }.getInputStream()
         } catch (exception: IOException) {
+            networkErrorListener?.emit(source = host, method = "GET", url = url, throwable = exception)
             throw ApiManagerException.Other("${exception.javaClass.simpleName}: $host")
         }
     }
@@ -83,6 +88,7 @@ class ApiManager(private val host: String) {
                 Json.parse(it.bufferedReader())
             }
         } catch (exception: IOException) {
+            networkErrorListener?.emit(source = host, method = "POST", url = "$host/$resource", throwable = exception)
             throw ApiManagerException.Other("${exception.javaClass.simpleName}: $host")
         }
     }
@@ -121,6 +127,9 @@ class ApiManager(private val host: String) {
             } catch (e: ApiManagerException) {
                 throw e
             } catch (e: Exception) {
+                if (e is IOException) {
+                    networkErrorListener?.emit(source = host, method = "GET", url = url, throwable = e)
+                }
                 throw ApiManagerException.Other("${e.javaClass.simpleName}: $host, ${e.localizedMessage}")
             }
         }
@@ -162,6 +171,9 @@ class ApiManager(private val host: String) {
             } catch (e: ApiManagerException) {
                 throw e
             } catch (e: Exception) {
+                if (e is IOException) {
+                    networkErrorListener?.emit(source = host, method = "GET", url = url, throwable = e)
+                }
                 throw ApiManagerException.Other("${e.javaClass.simpleName}: $host, ${e.localizedMessage}")
             }
         }

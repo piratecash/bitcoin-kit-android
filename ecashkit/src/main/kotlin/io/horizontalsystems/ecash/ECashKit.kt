@@ -199,6 +199,7 @@ class ECashKit : AbstractKit {
             .setTransactionSerializer(transactionSerializer)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
             .apply {
@@ -268,7 +269,7 @@ class ECashKit : AbstractKit {
 
     private fun apiTransactionProvider(networkType: NetworkType) = when (networkType) {
         NetworkType.MainNet -> {
-            val blockchairApi = BlockchairApi(network.blockchairChainId)
+            val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
             val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(blockchairApi)
 
             BlockchairTransactionProvider(blockchairApi, blockchairBlockHashFetcher)

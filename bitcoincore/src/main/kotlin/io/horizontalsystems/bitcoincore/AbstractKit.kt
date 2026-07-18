@@ -9,7 +9,9 @@ import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.UsedAddress
+import io.horizontalsystems.bitcoincore.network.BitcoinNetworkErrorListener
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransaction
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionInfo
 import io.horizontalsystems.bitcoincore.rbf.ReplacementType
@@ -24,6 +26,19 @@ abstract class AbstractKit {
 
     protected abstract var bitcoinCore: BitcoinCore
     protected abstract var network: Network
+
+    /**
+     * Shared holder for the passive network-error observer. Threaded into every API
+     * provider at construction time; the app installs the actual listener AFTER the
+     * kit is built via [networkErrorListener] (same pattern as the existing listener).
+     */
+    val networkErrorHolder = NetworkErrorListenerHolder()
+
+    var networkErrorListener: BitcoinNetworkErrorListener?
+        get() = networkErrorHolder.listener
+        set(value) {
+            networkErrorHolder.listener = value
+        }
 
     fun getUnspentOutputs(filters: UtxoFilters): List<UnspentOutputInfo> {
         return bitcoinCore.getUnspentOutputs(filters)

@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairLastBlockProvider
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairTransactionProvider
 import io.horizontalsystems.bitcoincore.apisync.blockchair.LastBlockProvider
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.bitcoincore.apisync.legacy.ApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.legacy.BlockHashDiscoveryBatch
 import io.horizontalsystems.bitcoincore.apisync.legacy.BlockHashScanHelper
@@ -154,6 +155,7 @@ class BitcoinCoreBuilder {
     private var blockValidator: IBlockValidator? = null
     private var checkpoint: Checkpoint? = null
     private var apiSyncStateManager: ApiSyncStateManager? = null
+    private var networkErrorHolder: NetworkErrorListenerHolder? = null
 
     // parameters with default values
     private var confirmationsThreshold = 6
@@ -300,6 +302,11 @@ class BitcoinCoreBuilder {
         return this
     }
 
+    fun setNetworkErrorHolder(networkErrorHolder: NetworkErrorListenerHolder): BitcoinCoreBuilder {
+        this.networkErrorHolder = networkErrorHolder
+        return this
+    }
+
     fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer): BitcoinCoreBuilder {
         this.transactionSerializer = transactionSerializer
         return this
@@ -443,7 +450,7 @@ class BitcoinCoreBuilder {
             if (apiTransactionProvider is BlockchairTransactionProvider) {
                 apiTransactionProvider.blockchairApi
             } else {
-                BlockchairApi(network.blockchairChainId)
+                BlockchairApi(network.blockchairChainId, networkErrorHolder)
             }
 
         // Best provider for a live "does this tx already exist?" lookup on raw broadcast:

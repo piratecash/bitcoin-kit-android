@@ -7,6 +7,7 @@ import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.piratecashkit.data.network.dto.AddressTxDto
 import io.horizontalsystems.piratecashkit.data.network.dto.BlockDto
 import io.horizontalsystems.piratecashkit.data.network.dto.PirateTransactionResponse
@@ -23,7 +24,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 
-class PirateCashApi : IApiTransactionProvider, Api {
+class PirateCashApi(
+    networkErrorListener: NetworkErrorListenerHolder? = null
+) : IApiTransactionProvider, Api {
     private companion object {
         const val HOST = "https://piratecash.info"
         const val GAP_LIMIT = 20
@@ -31,7 +34,7 @@ class PirateCashApi : IApiTransactionProvider, Api {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val apiManager = ApiManager(HOST)
+    private val apiManager = ApiManager(HOST, networkErrorListener)
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {

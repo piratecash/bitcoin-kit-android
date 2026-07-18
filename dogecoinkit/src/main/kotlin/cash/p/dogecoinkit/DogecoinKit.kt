@@ -190,7 +190,7 @@ class DogecoinKit : AbstractKit {
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
         val apiSyncStateManager =
             ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
-        val blockchairApi = BlockchairApi(network.blockchairChainId)
+        val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
         val apiTransactionProvider = apiTransactionProvider(networkType, blockchairApi)
         val paymentAddressParser = PaymentAddressParser("dogecoin", removeScheme = true)
         val blockValidatorSet = blockValidatorSet(storage, networkType)
@@ -214,6 +214,7 @@ class DogecoinKit : AbstractKit {
             .setStorage(storage)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
             .apply {
@@ -306,7 +307,7 @@ class DogecoinKit : AbstractKit {
         }
 
         NetworkType.TestNet -> {
-            BCoinApi("")
+            BCoinApi("", networkErrorHolder)
         }
     }
 

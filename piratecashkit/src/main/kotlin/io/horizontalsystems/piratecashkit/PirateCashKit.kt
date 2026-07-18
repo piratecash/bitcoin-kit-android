@@ -257,9 +257,10 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
 //            .setBlockHeaderHasher(Scry())
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setTransactionInfoConverter(pirateCashTransactionInfoConverter)
             .setBlockValidator(blockValidatorSet)
-            .setCustomLastBlockProvider(PirateCashLastBlockProvider(PirateCashApi()))
+            .setCustomLastBlockProvider(PirateCashLastBlockProvider(PirateCashApi(networkErrorHolder)))
             .setRequestUnknownBlocks(true)
             .setTransactionSerializer(transactionSerializer)
             .apply {
@@ -370,7 +371,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         apiSyncStateManager: ApiSyncStateManager
     ) = when (networkType) {
         NetworkType.MainNet -> {
-            val pirateCashApi = PirateCashApi()
+            val pirateCashApi = PirateCashApi(networkErrorHolder)
 
             if (syncMode is SyncMode.Blockchair) {
                 val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(pirateCashApi)
@@ -388,7 +389,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         }
 
         NetworkType.TestNet -> {
-            InsightApi("https://testnet-insight.dash.org/insight-api")
+            InsightApi("https://testnet-insight.dash.org/insight-api", networkErrorHolder)
         }
     }
 

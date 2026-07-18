@@ -732,7 +732,7 @@ class LitecoinKit : AbstractKit {
         val storage = Storage(database)
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
         val apiSyncStateManager = ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
-        val blockchairApi = BlockchairApi(network.blockchairChainId)
+        val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
         val apiTransactionProvider = apiTransactionProvider(networkType, blockchairApi)
         val paymentAddressParser = PaymentAddressParser("litecoin", removeScheme = true)
         val blockValidatorSet = blockValidatorSet(storage, networkType)
@@ -756,6 +756,7 @@ class LitecoinKit : AbstractKit {
             .setTransactionSerializer(transactionSerializer)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
             .setRequestUnknownBlocks(syncMode is SyncMode.Blockchair)
@@ -848,7 +849,7 @@ class LitecoinKit : AbstractKit {
         }
 
         NetworkType.TestNet -> {
-            BCoinApi("")
+            BCoinApi("", networkErrorHolder)
         }
     }
 
