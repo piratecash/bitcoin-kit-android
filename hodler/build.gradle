@@ -61,5 +61,7 @@ dependencies {
     testImplementation "com.nhaarman.mockitokotlin2:mockito-kotlin:2.2.0"
     testImplementation "org.powermock:powermock-api-mockito2:2.0.7"
     testImplementation "org.powermock:powermock-module-junit4:2.0.7"
-    testImplementation 'org.mockito:mockito-inline:3.3.3'
+    // 4.4.0 matches :bitcoincore; 3.3.3 could not mock final classes like FullTransaction on
+    // current JDKs, which failed every test in this module regardless of source changes.
+    testImplementation 'org.mockito:mockito-inline:4.4.0'
 }

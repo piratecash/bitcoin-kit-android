@@ -28,4 +28,6 @@ class TestNet : Network() {
     )
 
     override val logTag = "BTC"
+
+    override val supportsV2Transport = true
 }

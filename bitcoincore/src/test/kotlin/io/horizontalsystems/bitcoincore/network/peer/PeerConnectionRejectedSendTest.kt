@@ -3,6 +3,8 @@ package io.horizontalsystems.bitcoincore.network.peer
 import com.nhaarman.mockitokotlin2.any
 import com.nhaarman.mockitokotlin2.doThrow
 import com.nhaarman.mockitokotlin2.mock
+import com.nhaarman.mockitokotlin2.never
+import com.nhaarman.mockitokotlin2.verify
 import com.nhaarman.mockitokotlin2.whenever
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
@@ -44,11 +46,26 @@ class PeerConnectionRejectedSendTest {
         // executor was shut down by the same stop() — pool is already gone.
         peerConnection.sendMessage(mock<IMessage>())
 
-        val disconnectError = peerConnection
+        // A closed connection now drops the message before it ever reaches the executor, which is
+        // strictly stronger than surviving the rejection. Asserted explicitly, because otherwise
+        // this test would pass without the rejection path running at all — the rejection path
+        // itself is covered by PeerConnectionSendOrderTest against an open connection.
+        verify(sendingExecutor, never()).execute(any())
+
+        // The cause now lives in a terminal CloseState rather than a nullable field, so that a
+        // clean close(null) stays distinguishable from "still open" and cannot be overwritten.
+        val closeState = peerConnection
             .javaClass
-            .getDeclaredField("disconnectError")
+            .getDeclaredField("closeState")
             .apply { isAccessible = true }
             .get(peerConnection)
+            .let { (it as java.util.concurrent.atomic.AtomicReference<*>).get() }
+
+        val disconnectError = closeState
+            ?.javaClass
+            ?.methods
+            ?.firstOrNull { it.name == "getError" }
+            ?.invoke(closeState)
 
         assertNull(
             "Rejection from a shut-down sending executor must not turn a clean disconnect " +

@@ -11,6 +11,7 @@ import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerializer
 import io.horizontalsystems.bitcoincore.network.messages.RejectMessage
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
+import io.horizontalsystems.bitcoincore.network.transport.TransportException
 import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -18,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 open class PeerGroup(
     private val hostManager: IPeerAddressManager,
@@ -46,6 +48,15 @@ open class PeerGroup(
     private val peerTaskHandlers = CopyOnWriteArrayList<IPeerTaskHandler>()
     private val getAddrRequestedHosts = ConcurrentHashMap.newKeySet<String>()
     private val acceptedPeerHosts = ConcurrentHashMap.newKeySet<String>()
+
+    // Hosts whose BIP324 handshake failed, so the next attempt goes straight to v1 without paying
+    // an extra round trip. In memory only, by design: a peer upgrading its node should be retried
+    // over v2 after a restart rather than being remembered as v1-only forever.
+    private val v1OnlyHosts = ConcurrentHashMap.newKeySet<String>()
+
+    // Bumped by stop(). A handshake still unwinding from a previous lifecycle must not repopulate
+    // v1OnlyHosts after it was cleared, nor be mistaken for a live peer failure.
+    private val generation = AtomicInteger(0)
 
     fun addInventoryItemsHandler(handler: IInventoryItemsHandler) {
         inventoryItemsHandlers.add(handler)
@@ -109,9 +120,11 @@ open class PeerGroup(
     @Synchronized
     open fun stop() {
         running = false
+        generation.incrementAndGet()
         peerManager.disconnectAll()
         getAddrRequestedHosts.clear()
         acceptedPeerHosts.clear()
+        v1OnlyHosts.clear()
         peerGroupListeners.forEach { it.onStop() }
         // Release the per-PeerGroup thread pools. Without this, a fresh PeerGroup
         // is created on every restart while the previous one keeps its peer-worker
@@ -166,6 +179,29 @@ open class PeerGroup(
         peerManager.remove(peer)
         getAddrRequestedHosts.remove(peer.host)
         val acceptedPeer = acceptedPeerHosts.remove(peer.host)
+
+        // A peer from a previous lifecycle only gets the non-destructive call that releases its
+        // in-memory used-IP entry. Anything else risks markFailed deleting a still-good address
+        // because of an exception caused by our own shutdown.
+        if (peer.generation != generation.get()) {
+            Timber.tag(network.logTag).i("Peer ${peer.host} from a stale generation disconnected.")
+            hostManager.markSuccess(peer.host)
+            peerGroupListeners.forEach { it.onPeerDisconnect(peer, e) }
+            connectPeersIfRequired()
+            return
+        }
+
+        if (e is TransportException.HandshakeFailed) {
+            // Deliberately NOT markFailed: the address is fine, only v2 is unavailable there. Most
+            // nodes on these networks still predate BIP324, and deleting them would burn the few
+            // DNS seeds PirateCash and Cosanta have.
+            Timber.tag(network.logTag).i("Peer ${peer.host} does not speak v2, falling back to v1.")
+            v1OnlyHosts.add(peer.host)
+            hostManager.markSuccess(peer.host)
+            peerGroupListeners.forEach { it.onPeerDisconnect(peer, e) }
+            connectPeersIfRequired()
+            return
+        }
 
         when (e) {
             null -> {
@@ -282,7 +318,11 @@ open class PeerGroup(
 
         for (i in peerManager.peersCount until peerCountToHold) {
             val ip = hostManager.getIp() ?: break
-            val peer = Peer(ip, network, this, networkMessageParser, networkMessageSerializer, executorService)
+            val useV2 = network.supportsV2Transport && !v1OnlyHosts.contains(ip)
+            val peer = Peer(
+                ip, network, this, networkMessageParser, networkMessageSerializer, executorService,
+                useV2 = useV2, generation = generation.get(), now = System::currentTimeMillis,
+            )
             peerCountConnected += 1
             peerGroupListeners.forEach { it.onPeerCreate(peer) }
             peerManager.add(peer)

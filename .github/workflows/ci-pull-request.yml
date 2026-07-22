@@ -25,4 +25,15 @@ jobs:
           echo "words=\"\"" > local.properties
 
       - name: Run Unit tests
-        run: ./gradlew :bitcoincore:testDebugUnitTest :litecoinkit:testDebugUnitTest
+        # Pure-JVM modules only. The Dash family (:dashkit, :piratecashkit, :cosantakit) and :app
+        # pull in :dashlib's native BLS build, which needs the Android NDK that this runner does not
+        # provision — their tests run locally instead.
+        run: >-
+          ./gradlew
+          :bitcoincore:testDebugUnitTest
+          :litecoinkit:testDebugUnitTest
+          :bitcoinkit:testDebugUnitTest
+          :dogecoinkit:testDebugUnitTest
+          :bitcoincashkit:testDebugUnitTest
+          :ecashkit:testDebugUnitTest
+          :hodler:testDebugUnitTest
