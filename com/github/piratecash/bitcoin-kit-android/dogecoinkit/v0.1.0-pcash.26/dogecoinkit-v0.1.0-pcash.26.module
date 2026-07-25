@@ -1,0 +1,148 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "dogecoinkit",
+    "version": "v0.1.0-pcash.26",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.26"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "v0.1.0-pcash.26"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "dogecoinkit-v0.1.0-pcash.26.aar",
+          "url": "dogecoinkit-v0.1.0-pcash.26.aar",
+          "size": 41108,
+          "sha512": "5a196b760110a57c238e7a3e064eab783aa7b1d78e2554340af45ae9253f4747acb16ec759e9df3d37abb2a10dbbaa5069690334be957cc3b1c3e71c65b90d7e",
+          "sha256": "7b787d014f58e4168a1b932251158dfb9dad17e707bb014040bceb55dd723941",
+          "sha1": "dfdeed4c219261deda4e7589a17e40143d0a8cae",
+          "md5": "7dee8187ae01d1a119b359597f338c01"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk7",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-ktx",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.7.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.26"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "hodler",
+          "version": {
+            "requires": "v0.1.0-pcash.26"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "dogecoinkit-v0.1.0-pcash.26.aar",
+          "url": "dogecoinkit-v0.1.0-pcash.26.aar",
+          "size": 41108,
+          "sha512": "5a196b760110a57c238e7a3e064eab783aa7b1d78e2554340af45ae9253f4747acb16ec759e9df3d37abb2a10dbbaa5069690334be957cc3b1c3e71c65b90d7e",
+          "sha256": "7b787d014f58e4168a1b932251158dfb9dad17e707bb014040bceb55dd723941",
+          "sha1": "dfdeed4c219261deda4e7589a17e40143d0a8cae",
+          "md5": "7dee8187ae01d1a119b359597f338c01"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "dogecoinkit-v0.1.0-pcash.26-sources.jar",
+          "url": "dogecoinkit-v0.1.0-pcash.26-sources.jar",
+          "size": 57112,
+          "sha512": "6e159a76e4bdab9300cd2fda85bab248f558dd758d78715bb770e6b8f7b91a1ee47da1a511f1829e2a490cc239294fe81c37b7e30335a61443790e5c48c82e5a",
+          "sha256": "11108c92a3290f6f5201e811bc7f254ef440f394a5eaff3f257367ecd12c269b",
+          "sha1": "8f1776c727cc0ad940a53046f42b3feb2a41ac83",
+          "md5": "70a9b515ef5f2fbd3505258724f95c58"
+        }
+      ]
+    }
+  ]
+}
