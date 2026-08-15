@@ -274,15 +274,40 @@ class LitecoinKit : AbstractKit {
     }
 
     /**
+     * Stops public sync and the MWEB daemon without releasing the engine — [start] revives both.
+     *
+     * This method blocks the caller while MWEB native shutdown runs; do not call it from
+     * Android main thread when MWEB is enabled.
+     */
+    override fun pauseNetwork() {
+        try {
+            stopMweb()
+        } finally {
+            super.pauseNetwork()
+        }
+    }
+
+    /**
      * Stops public sync and the optional MWEB daemon.
      *
      * This method blocks the caller while MWEB native shutdown runs; do not call it from
      * Android main thread when MWEB is enabled.
      */
     override fun stop() {
-        mwebPublicPegInSender.stop()
-        mwebEngineHandle?.stop()
-        super.stop()
+        try {
+            stopMweb()
+        } finally {
+            super.stop()
+        }
+    }
+
+    /** Native shutdown can throw, and every stop still has to run. */
+    private fun stopMweb() {
+        try {
+            mwebPublicPegInSender.stop()
+        } finally {
+            mwebEngineHandle?.stop()
+        }
     }
 
     /**

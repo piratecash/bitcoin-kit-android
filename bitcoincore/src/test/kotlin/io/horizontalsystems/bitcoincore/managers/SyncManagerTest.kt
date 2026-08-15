@@ -185,6 +185,32 @@ class SyncManagerTest {
         verify(peerGroup, times(2)).start()
     }
 
+    // --- api syncer callbacks arriving after stop() must not resurrect the sync ---
+    // (The syncer's network calls block uninterruptibly, so a callback can land after
+    //  pauseNetwork(); any state but NotStarted makes the resuming start() an early return.)
+
+    @Test
+    fun onTransactionsFound_afterStop_keepsNotStartedState() {
+        syncManager.start()
+        syncManager.stop()
+
+        syncManager.onTransactionsFound(5)
+
+        val state = syncManager.syncState
+        assertTrue(state is BitcoinCore.KitState.NotSynced)
+        assertTrue((state as BitcoinCore.KitState.NotSynced).exception is BitcoinCore.StateError.NotStarted)
+    }
+
+    @Test
+    fun onSyncSuccess_afterStop_doesNotRestartPeerGroup() {
+        syncManager.start()
+        syncManager.stop()
+
+        syncManager.onSyncSuccess()
+
+        verify(peerGroup, times(1)).start()
+    }
+
     // --- ownership acquisition when SharedPeerGroup is already running by a sibling ---
     // (BIP44 kit hits apiSyncer.onSyncSuccess() while BIP84 already runs the shared
     //  peer group. Without explicit acquire, BIP44 logically uses the group without

@@ -24,6 +24,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -60,7 +61,31 @@ class TransactionSender(
     private val coroutineScope = CoroutineScope(coroutineDispatcher)
     private val broadcastDiagnostics = ConcurrentHashMap<String, BroadcastDiagnostics>()
 
+    @Volatile
+    private var networkPaused = false
+
+    /**
+     * Stops the automatic retry loop. An explicit [broadcastRawTransaction] stays allowed:
+     * only the kit's own background broadcasts are suspended.
+     */
+    fun pauseNetwork() {
+        networkPaused = true
+        timer.stop()
+        coroutineScope.coroutineContext.cancelChildren()
+    }
+
+    fun resumeNetwork() {
+        if (!networkPaused) return
+
+        networkPaused = false
+        // pauseNetwork() stopped the retry timer, and the peers-synced callback that would
+        // normally restart it may never come. The first tick stops itself if nothing is queued.
+        timer.startIfNotRunning()
+    }
+
     fun sendPendingTransactions() {
+        if (networkPaused) return
+
         try {
             val transactions = pendingBroadcastTransactions()
             if (transactions.isEmpty()) {
@@ -170,6 +195,10 @@ class TransactionSender(
     }
 
     private fun send(transactions: List<BroadcastTransaction>) {
+        // The retry callback gets here after storage reads, so pauseNetwork() can land in between;
+        // sendViaP2P() would restart the timer the pause had just stopped.
+        if (networkPaused) return
+
         when (sendType) {
             BitcoinCore.SendType.P2P -> {
                 sendViaP2P(transactions)
@@ -183,8 +212,12 @@ class TransactionSender(
 
     private fun sendViaAPI(transactions: List<BroadcastTransaction>, blockchairApi: BlockchairApi) = coroutineScope.launch {
         transactions.forEach { transaction ->
+            // The API call blocks uninterruptibly, so cancellation can only land between steps:
+            // recheck before starting another broadcast and before falling back to peers.
+            if (networkPaused) return@launch
+
             broadcastViaAPI(transaction, blockchairApi) {
-                sendViaP2P(listOf(transaction))
+                !networkPaused && sendViaP2P(listOf(transaction))
             }
         }
     }
@@ -303,7 +336,10 @@ class TransactionSender(
     private fun queueBroadcastRetry(transaction: BroadcastTransaction) {
         val txHash = transaction.transaction.header.hash.toReversedHex()
         ensureDiagnostics(transaction.transaction.header.hash)
-        timer.startIfNotRunning()
+        // While paused the timer would tick without sending anything; resumeNetwork() restarts it.
+        if (!networkPaused) {
+            timer.startIfNotRunning()
+        }
         Timber.tag(logTag).w("API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry.")
     }
 

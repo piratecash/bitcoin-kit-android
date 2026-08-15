@@ -62,6 +62,13 @@ abstract class AbstractKit {
         bitcoinCore.start()
     }
 
+    open fun pauseNetwork() {
+        bitcoinCore.pauseNetwork()
+    }
+
+    open val isNetworkPaused: Boolean
+        get() = bitcoinCore.isNetworkPaused
+
     open fun stop() {
         bitcoinCore.stop()
     }

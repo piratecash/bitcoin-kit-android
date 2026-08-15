@@ -823,6 +823,7 @@ class BitcoinCoreBuilder {
         bitcoinCore.addPeerGroupListener(mempoolTransactions)
 
         transactionSender?.let {
+            bitcoinCore.transactionSender = it
             bitcoinCore.addPeerSyncListener(SendTransactionsOnPeersSynced(transactionSender))
             bitcoinCore.addPeerTaskHandler(transactionSender)
             bitcoinCore.addPeerGroupListener(transactionSender)

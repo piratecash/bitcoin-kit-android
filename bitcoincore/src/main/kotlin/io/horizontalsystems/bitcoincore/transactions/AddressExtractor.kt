@@ -22,7 +22,15 @@ class AddressExtractor(
     private val dataListener: IBlockchainDataListener,
     private val logTag: String
 ) {
+    // Volatile, and every entry point reads `stopped` only after publishing the scope: either we
+    // observe the stop, or stop() observes the new scope and cancels it.
+    @Volatile
     private var coroutineScope = createCoroutineScope()
+
+    // Cancelling the scope alone does not hold: every entry point raises a new one, so a
+    // transaction extracted from a late peer callback would reach the API right after stop().
+    @Volatile
+    private var stopped = false
 
     private fun createCoroutineScope(): CoroutineScope {
         return CoroutineScope(
@@ -38,6 +46,7 @@ class AddressExtractor(
 
     fun requestInputsByHash(hashes: List<ByteArray>) {
         ensureScope()
+        if (stopped) return
 
         coroutineScope.launch(Dispatchers.IO) {
             val transactions = hashes.mapNotNull { hash ->
@@ -50,6 +59,7 @@ class AddressExtractor(
 
     fun requestInputs(fullTransactions: List<FullTransaction>) {
         ensureScope()
+        if (stopped) return
 
         coroutineScope.launch(Dispatchers.IO) {
             requestInputsInternal(fullTransactions)
@@ -120,7 +130,12 @@ class AddressExtractor(
         }
     }
 
+    fun start() {
+        stopped = false
+    }
+
     fun stop() {
+        stopped = true
         coroutineScope.cancel()
     }
 }
