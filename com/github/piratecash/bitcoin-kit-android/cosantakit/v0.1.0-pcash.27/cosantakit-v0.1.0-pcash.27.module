@@ -1,0 +1,176 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.github.piratecash.bitcoin-kit-android",
+    "module": "cosantakit",
+    "version": "v0.1.0-pcash.27",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.13"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.27"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "cosantakit-v0.1.0-pcash.27.aar",
+          "url": "cosantakit-v0.1.0-pcash.27.aar",
+          "size": 283269,
+          "sha512": "4f000c5e6941fe0b1c082e09e7ab00e55d0d9a4d856beabe26ae0ac1ca9a385ebde2912fdaad80f4e5aab63ca5aafbb93e34a80b73adbf99ea292403476a6b98",
+          "sha256": "eb5eb16f06f46c0564a9657949d2f0ee4232ec152ffc9658c38af94ba7580d73",
+          "sha1": "142708530994bb377c32c90d551b1265255d3daa",
+          "md5": "20df81f5d2fb00c46d3b16d646ec057b"
+        }
+      ]
+    },
+    {
+      "name": "releaseRuntimeElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib-jdk8",
+          "version": {
+            "requires": "2.0.21"
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "com.eclipsesource.minimal-json",
+          "module": "minimal-json",
+          "version": {
+            "requires": "0.9.5"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-runtime",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "androidx.room",
+          "module": "room-rxjava2",
+          "version": {
+            "requires": "2.6.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "dashlib",
+          "version": {
+            "requires": "v0.1.0-pcash.27"
+          }
+        },
+        {
+          "group": "de.sfuhrm",
+          "module": "saphir-hash-jca",
+          "version": {
+            "requires": "3.0.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-serialization-json",
+          "version": {
+            "requires": "1.8.0"
+          }
+        },
+        {
+          "group": "org.bouncycastle",
+          "module": "bcprov-jdk15to18",
+          "version": {
+            "requires": "1.80"
+          }
+        },
+        {
+          "group": "com.github.all3fox",
+          "module": "lyra2",
+          "version": {
+            "requires": "1.3"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "com.github.piratecash.bitcoin-kit-android",
+          "module": "bitcoincore",
+          "version": {
+            "requires": "v0.1.0-pcash.27"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "cosantakit-v0.1.0-pcash.27.aar",
+          "url": "cosantakit-v0.1.0-pcash.27.aar",
+          "size": 283269,
+          "sha512": "4f000c5e6941fe0b1c082e09e7ab00e55d0d9a4d856beabe26ae0ac1ca9a385ebde2912fdaad80f4e5aab63ca5aafbb93e34a80b73adbf99ea292403476a6b98",
+          "sha256": "eb5eb16f06f46c0564a9657949d2f0ee4232ec152ffc9658c38af94ba7580d73",
+          "sha1": "142708530994bb377c32c90d551b1265255d3daa",
+          "md5": "20df81f5d2fb00c46d3b16d646ec057b"
+        }
+      ]
+    },
+    {
+      "name": "releaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.jvm.environment": "android",
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "files": [
+        {
+          "name": "cosantakit-v0.1.0-pcash.27-sources.jar",
+          "url": "cosantakit-v0.1.0-pcash.27-sources.jar",
+          "size": 288657,
+          "sha512": "612ee657507a7d93189372696745fc141eb14f032932c0e0b2a232b7eefedd806fa45712569709fe31aafc05a58cd5638dc18ac5ea79dee423eec769f4ec7368",
+          "sha256": "ecb09d7be76de1fc175d974d2164b0f9049324d8737897f75e49fda288d35153",
+          "sha1": "43bfb806241351bc0d811a48c9de7b0723a35a4e",
+          "md5": "13588a6876b40acf2454d1b393ca5f35"
+        }
+      ]
+    }
+  ]
+}
