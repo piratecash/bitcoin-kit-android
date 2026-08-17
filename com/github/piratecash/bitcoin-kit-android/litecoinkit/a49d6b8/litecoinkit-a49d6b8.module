@@ -151,10 +151,10 @@
           "name": "litecoinkit-a49d6b8-sources.jar",
           "url": "litecoinkit-a49d6b8-sources.jar",
           "size": 301155,
-          "sha512": "40ed16c304108662eb94a15250dbc67e965bbd6f78f53a45137bd3e6341621f5ef9efdca8f0e53d643608d095517970614319f2642112a5fea3769de4880deea",
-          "sha256": "8fa0a951a7bbf946300e44e36435c54c024db9abdb7d6ad0a55faf79304af9eb",
-          "sha1": "ef522c3fff84f7abfcb5f429ca87c13bec369515",
-          "md5": "f0b04efd45e2ac0a5bebbca605dc8fdc"
+          "sha512": "24ed640f04714c6c6c3b313a8bd5062108086be20c000f511b4922ac8994181a620305cc0f88312e7fd7989353728f57d3c84545ec7c59cc1e1e8442a37817b1",
+          "sha256": "bf87744db554ce13f3e021f4e7aec0b07b1cf8b08afbce07f99c40a2d33bb0c4",
+          "sha1": "4cc0b696b5ef92d625aab754c019a0cd3bbead42",
+          "md5": "380cea0042f4fa0378ec7029951bb4b6"
         }
       ]
     }

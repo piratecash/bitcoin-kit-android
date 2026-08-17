@@ -171,10 +171,10 @@
           "name": "bitcoincore-a49d6b8-sources.jar",
           "url": "bitcoincore-a49d6b8-sources.jar",
           "size": 1465902,
-          "sha512": "821e911e723bb1f88ece8b57c2faee4002f4e7f7f30b5a444139567ef40f42a3c1c430e29b3cef11e0500e19a2e5253846983beff2b88a6ba20683c219c8b77f",
-          "sha256": "e6088512269d32c27c0b5c385cad98340b6f35dc1501f307ba8f1666a605aec1",
-          "sha1": "0132bb2b0cfc3575aae987ca163b14b4969859b4",
-          "md5": "1e0273987440cb3249c7e2c5588581d6"
+          "sha512": "223015a8f311cb676aea59a388ebd46c328aad08dd800da74a189d98ab2fc7666cc2467900eafd2ae9792622405c9905c78e5bb5df899c6b2afb3b262961cb37",
+          "sha256": "b59b07c51617eece6b04979d10c00ff24f24f0ec51b8c436b8ffa46de5d635c2",
+          "sha1": "602f2256b2e2e0108d37a076be7ba6ca0bfdc887",
+          "md5": "6a0409a4206e9c004d54e6aa25b243c2"
         }
       ]
     }

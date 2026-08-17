@@ -165,10 +165,10 @@
           "name": "piratecashkit-a49d6b8-sources.jar",
           "url": "piratecashkit-a49d6b8-sources.jar",
           "size": 292764,
-          "sha512": "0909976caa976724012df62f1d048990ebe8dd6d116a7ea5fc6495e6169e784230d2a97c4afb617ea6a2e6f029addb3b2fd53aee092e12e5bf0ceb6d2f1fa364",
-          "sha256": "fc21810d9e0499c3896574a20db085f76863cf73ec12d0f3199f04f443195643",
-          "sha1": "844213858efb3d8c94d2575e4fef6642b7155b44",
-          "md5": "0ba75ef45615adc2b359d546abcbdfcc"
+          "sha512": "62f153669b505ec09d46c3295480bcacf462b3b0009cdbbafdbd5cca42f10db475049428084e2754b0683695ba6d397d350e8b124c53cf43eb1584c11e71d7e2",
+          "sha256": "8e3205f4679bb748d26c4904607ad1d6f8c0fd87238670578681c818ec7abe6b",
+          "sha1": "31013f789a989e98d76f853a1c2493f6d99ce220",
+          "md5": "467917b1a795117868a4b43f9b2104d6"
         }
       ]
     }

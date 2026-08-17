@@ -144,10 +144,10 @@
           "name": "dashkit-a49d6b8-sources.jar",
           "url": "dashkit-a49d6b8-sources.jar",
           "size": 279921,
-          "sha512": "12e7c981971a255a90539fd9208dc09367a796c1ae21a283583c4a31b1892c78b032b17ca92aff6b04e8bec22d75cdc415666148948e7afd3ca263c38be82f3d",
-          "sha256": "5fdc51560a33edc86baa65fd50b64a256c88b288816b6e5ff772a441c25d98d3",
-          "sha1": "3df9278532ca8dc1d9af153f28f65440cb489b70",
-          "md5": "4ca0a80178a5db5306b0111a1b354e19"
+          "sha512": "f3ee328920228453ebaa4ca7d22f739dffa74c59cfd14a33c96c9035b52d4238b102d6366ec1093d4846491c192efc1b787948b9ce6e341f3f1b12f2ee8e2618",
+          "sha256": "1a82337b34f12aed13951f4d066760a81ffddcf0903e2d615ea8308d8f126799",
+          "sha1": "dcee84caae747cf23c67e1469fde612e297f7dd3",
+          "md5": "9174389ec55af9d55ecea6e3514bd2b0"
         }
       ]
     }

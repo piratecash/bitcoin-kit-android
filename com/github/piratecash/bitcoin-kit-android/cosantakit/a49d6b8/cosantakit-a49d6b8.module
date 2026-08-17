@@ -165,10 +165,10 @@
           "name": "cosantakit-a49d6b8-sources.jar",
           "url": "cosantakit-a49d6b8-sources.jar",
           "size": 288657,
-          "sha512": "d3cdf538c5c71ad24f28aab2f9e79b504478cee7711abd82a861fa9710712cd53e81ccbb5bff0c4497bc2e7e9033d9e7a99b3d65ed3ea05dca323c6031683bd1",
-          "sha256": "229f148720560536fecd7047899a964c6e8e96689a7c1874d289a00fbad334c8",
-          "sha1": "e72089a1d928a1bf33c758579319cc95e0393814",
-          "md5": "f312b4bf43773e2ec4692e9a0e13b45f"
+          "sha512": "f1a5f6b767989a2bc0106c11bfe48b1ea07d792599084e59830ff6fd27fe49575c210b8ae590b2806193a88e45fac8f8051468e84bd37ca311c3c51317f55db2",
+          "sha256": "92aeee34e6950d7eef470050c36e325b884ec2ceb23237fe6a53a72c83fc30cf",
+          "sha1": "6bfadfa0d62bfcbef2bd8a4c520ec9747d6525f2",
+          "md5": "9b6569615fcc79dd9fea6f8ac9fcf611"
         }
       ]
     }
