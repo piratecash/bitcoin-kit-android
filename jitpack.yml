@@ -2,7 +2,10 @@ jdk:
   - openjdk21
 
 before_install:
+  # The subshell is required: JitPack runs these commands in its own wrapper shell, and a
+  # leaking `set -u` kills it later on an unset variable of its own.
   - |
+    (
     set -eu
     TAG="${JITPACK_VERSION:-${VERSION:-}}"
     case "$TAG" in
@@ -78,6 +81,7 @@ before_install:
       (cd "$module/prebuilt/natives" && find . -type f | sed 's|^\./||' | sort | xargs sha256sum) \
         > "$module/prebuilt/FETCHED.sha256"
     done
+    )
 
 install:
   - echo 'words=""' > local.properties && ./gradlew :dashlib:jvmTest :dashkit:testDebugUnitTest && ./gradlew publishToMavenLocal
