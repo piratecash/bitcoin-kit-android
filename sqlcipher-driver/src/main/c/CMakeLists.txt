@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(sqlcipher_jni C)
 
+# Gradle passes native paths; on Windows CMake would read their backslashes as escapes.
+file(TO_CMAKE_PATH "${SQLCIPHER_SOURCE_DIR}" SQLCIPHER_SOURCE_DIR)
+file(TO_CMAKE_PATH "${LIBTOMCRYPT_SOURCE_DIR}" LIBTOMCRYPT_SOURCE_DIR)
+file(TO_CMAKE_PATH "${JNI_HEADER_DIR}" JNI_HEADER_DIR)
+
 if(NOT DEFINED SQLCIPHER_SOURCE_DIR OR NOT EXISTS "${SQLCIPHER_SOURCE_DIR}/sqlite3.c")
     message(FATAL_ERROR "SQLCIPHER_SOURCE_DIR must contain sqlite3.c and sqlite3.h")
 endif()
