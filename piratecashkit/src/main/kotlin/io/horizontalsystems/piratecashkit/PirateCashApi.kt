@@ -1,5 +1,6 @@
 package io.horizontalsystems.piratecashkit
 
+import co.touchlab.kermit.Logger
 import com.eclipsesource.json.JsonValue
 import io.horizontalsystems.bitcoincore.apisync.loadUntilConsecutiveEmpty
 import io.horizontalsystems.bitcoincore.apisync.mapApiRequests
@@ -21,7 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import timber.log.Timber
+
+private val log = Logger.withTag("PirateCash")
 
 class PirateCashApi(
     networkErrorListener: NetworkErrorListenerHolder? = null
@@ -36,7 +38,7 @@ class PirateCashApi(
     private val apiManager = ApiManager(HOST, networkErrorListener)
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
-        Timber.tag("PirateCash").d("Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]")
+        log.d { "Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]" }
 
         return runBlocking(Dispatchers.IO) {
             val hashes = loadUntilConsecutiveEmpty(addresses, GAP_LIMIT) {
@@ -53,7 +55,7 @@ class PirateCashApi(
         from: Int,
         to: Int
     ): List<String> = try {
-        Timber.tag("PirateCash").d("fetchTransactionHashes for address: $address")
+        log.d { "fetchTransactionHashes for address: $address" }
         val rawJson = apiManager.doOkHttpGetAsString("ext/getaddresstxs/$address/$from/$to")
             ?: return emptyList()
         json.decodeFromString<List<AddressTxDto>>(rawJson).map {
@@ -90,7 +92,7 @@ class PirateCashApi(
     }
 
     override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
-        Timber.tag("PirateCash").d("Calling empty broadcastTransaction")
+        log.d { "Calling empty broadcastTransaction" }
         return com.eclipsesource.json.Json.value("")
     }
 
@@ -111,7 +113,7 @@ class PirateCashApi(
     }
 
     private fun fetchTransactionInfo(transactionHash: String): TransactionItem? = try {
-        Timber.tag("PirateCash").d("fetchTransactionInfo for transactionHash: $transactionHash")
+        log.d { "fetchTransactionInfo for transactionHash: $transactionHash" }
         val rawJson = apiManager.doOkHttpGetAsString("ext/gettx/$transactionHash")!!
         json.decodeFromString<TransactionItemDto>(rawJson).toTransactionItem()
     } catch (ex: Exception) {

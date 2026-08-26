@@ -1,6 +1,5 @@
 package io.horizontalsystems.bitcoincore
 
-import android.content.Context
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApiSyncer
@@ -37,6 +36,7 @@ import io.horizontalsystems.bitcoincore.core.IInitialDownload
 import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.core.IPlugin
 import io.horizontalsystems.bitcoincore.core.IPrivateWallet
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.core.ITransactionInfoConverter
@@ -49,7 +49,6 @@ import io.horizontalsystems.bitcoincore.core.scriptType
 import io.horizontalsystems.bitcoincore.managers.AccountPublicKeyManager
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
-import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.managers.IBloomFilterProvider
 import io.horizontalsystems.bitcoincore.managers.IrregularOutputFinder
 import io.horizontalsystems.bitcoincore.managers.PendingOutpointsProvider
@@ -141,7 +140,7 @@ class BitcoinCoreBuilder {
     val addressConverter = AddressConverterChain()
 
     // required parameters
-    private var context: Context? = null
+    private var connectionManager: IConnectionManager? = null
     private var extendedKey: HDExtendedKey? = null
     private var watchAddressPublicKey: WatchAddressPublicKey? = null
     private var purpose: HDWallet.Purpose? = null
@@ -176,8 +175,8 @@ class BitcoinCoreBuilder {
     private var iInputSigner: IInputSigner? = null
     private var iSchnorrInputSigner: ISchnorrInputSigner? = null
 
-    fun setContext(context: Context): BitcoinCoreBuilder {
-        this.context = context
+    fun setConnectionManager(connectionManager: IConnectionManager): BitcoinCoreBuilder {
+        this.connectionManager = connectionManager
         return this
     }
 
@@ -330,7 +329,6 @@ class BitcoinCoreBuilder {
             "minConnectedPeerSize must be greater than zero"
         }
 
-        val context = checkNotNull(this.context)
         val extendedKey = this.extendedKey
         val watchAddressPublicKey = this.watchAddressPublicKey
         val purpose = checkNotNull(this.purpose)
@@ -362,7 +360,7 @@ class BitcoinCoreBuilder {
             logTag = network.logTag
         )
 
-        val connectionManager = ConnectionManager.getInstance(context)
+        val connectionManager = checkNotNull(this.connectionManager)
 
         var privateWallet: IPrivateWallet? = null
         val publicKeyFetcher: IPublicKeyFetcher

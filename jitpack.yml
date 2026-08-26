@@ -1,6 +1,84 @@
 jdk:
-  - openjdk17
+  - openjdk21
+
+before_install:
+  - |
+    set -eu
+    TAG="${JITPACK_VERSION:-${VERSION:-}}"
+    case "$TAG" in
+      v*) ;;
+      *)
+        echo "the natives ship with version tags only: build a v* tag, or depend on a version that is already published (got '${TAG:-<unset>}')" >&2
+        exit 1
+        ;;
+    esac
+
+    BASE="https://github.com/piratecash/bitcoin-kit-android/releases/download/$TAG"
+    ARCHIVES="dashjbls-linux-x64.tar.gz dashjbls-macos-arm64.tar.gz dashjbls-macos-x64.tar.gz dashjbls-windows-x64.tar.gz sqlcipher-linux-x64.tar.gz sqlcipher-macos-arm64.tar.gz sqlcipher-windows-x64.tar.gz"
+
+    mkdir -p natives-download
+    cd natives-download
+
+    # The tag is visible to JitPack the moment it is pushed, but its binaries appear only
+    # when the release matrix finishes. Wait longer than the matrix takes: a build that
+    # gives up here becomes a failed version, and that needs a manual delete to retry.
+    fetch() {
+      i=1
+      while [ "$i" -le 40 ]; do
+        if curl -fsSL -o "$1" "$BASE/$1"; then
+          return 0
+        fi
+        echo "waiting for $1 of $TAG ($i/40)"
+        sleep 45
+        i=$((i + 1))
+      done
+      echo "$1 never appeared on $TAG" >&2
+      return 1
+    }
+
+    fetch natives.sha256
+    for name in $ARCHIVES SOURCE.sha256; do
+      fetch "$name"
+    done
+
+    # The manifest has to name exactly the shipped set: another set means the release job
+    # published something this route does not know how to install.
+    printf '%s\n' $ARCHIVES SOURCE.sha256 | sort > expected.txt
+    awk '{ sub(/^\*/, "", $2); print $2 }' natives.sha256 | sort > listed.txt
+    diff -u expected.txt listed.txt
+
+    sha256sum --strict -c natives.sha256
+
+    cd ..
+    for module in dashlib-native sqlcipher-driver; do
+      mkdir -p "$module/prebuilt"
+      cp natives-download/SOURCE.sha256 "$module/prebuilt/SOURCE.sha256"
+    done
+    for name in dashjbls-linux-x64 dashjbls-macos-arm64 dashjbls-macos-x64 dashjbls-windows-x64; do
+      tar -xzf "natives-download/$name.tar.gz" -C dashlib-native/prebuilt
+    done
+    for name in sqlcipher-linux-x64 sqlcipher-macos-arm64 sqlcipher-windows-x64; do
+      tar -xzf "natives-download/$name.tar.gz" -C sqlcipher-driver/prebuilt
+    done
+
+    expect() {
+      [ -s "$1" ] || { echo "$1 is missing or empty after unpacking" >&2; exit 1; }
+    }
+    expect dashlib-native/prebuilt/natives/macos-arm64/libdashjbls.dylib
+    expect dashlib-native/prebuilt/natives/macos-x64/libdashjbls.dylib
+    expect dashlib-native/prebuilt/natives/linux-x64/libdashjbls.so
+    expect dashlib-native/prebuilt/natives/windows-x64/dashjbls.dll
+    for binary in macos-arm64/libsqlcipher_jni.dylib linux-x64/libsqlcipher_jni.so windows-x64/sqlcipher_jni.dll; do
+      expect "sqlcipher-driver/prebuilt/natives/$binary"
+      expect "sqlcipher-driver/prebuilt/natives/$binary.sha256"
+    done
+
+    # The same file and format fetchNatives writes. Without it the byte check in
+    # checkNativesComplete would silently be skipped on exactly the publishing route.
+    for module in dashlib-native sqlcipher-driver; do
+      (cd "$module/prebuilt/natives" && find . -type f | sed 's|^\./||' | sort | xargs sha256sum) \
+        > "$module/prebuilt/FETCHED.sha256"
+    done
 
 install:
-  - echo 'words=""' > local.properties
-  - ./gradlew publishToMavenLocal
+  - echo 'words=""' > local.properties && ./gradlew :dashlib:jvmTest :dashkit:testDebugUnitTest && ./gradlew publishToMavenLocal

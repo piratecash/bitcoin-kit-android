@@ -210,7 +210,7 @@ class BitcoinCore(
 
     /**
      * Stops every network activity but keeps the kit usable for local reads:
-     * unlike [stop] it neither clears [dataProvider] nor unregisters from the shared peer group.
+     * unlike [stop] it does not unregister from the shared peer group.
      * Resume with [start].
      */
     fun pauseNetwork() {
@@ -223,7 +223,6 @@ class BitcoinCore(
 
     fun stop() {
         addressExtractor.stop()
-        dataProvider.clear()
         syncManager.stop()
 
         // Snapshot the kit's listeners BEFORE detaching them so we still know
@@ -242,8 +241,13 @@ class BitcoinCore(
         closePeerScopedResources(peerScopedListeners)
     }
 
+    /**
+     * Final teardown. [dataProvider] is cleared only here: its balance subscription cannot be
+     * recreated, so clearing it in [stop] would leave the balance frozen after a restart.
+     */
     fun dispose() {
         stop()
+        dataProvider.clear()
     }
 
     @Synchronized

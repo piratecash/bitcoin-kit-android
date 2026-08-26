@@ -8,10 +8,16 @@ pluginManagement {
     }
 }
 
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 include ':app',             // Demo app
         ':bitcoincore',     // Bitcoin Core
         ':bitcoinkit',      // Bitcoin kit
         ':dashlib',         // Dash library
+        ':dashlib-native',  // Desktop dashjbls natives + loader
+        ':sqlcipher-driver', // Desktop SQLCipher SQLiteDriver + natives
         ':dashkit',         // Dash kit
         ':cosantakit',      // Cosanta kit
         ':piratecashkit',   // Piratecash kit
@@ -20,4 +26,6 @@ include ':app',             // Demo app
         ':litecoinkit',     // Litecoin kit
         ':dogecoinkit',            // Doge kit
         ':hodler',          // Hodler
-        ':tools'            // Checkpoint syncer
+        ':tools',           // Checkpoint syncer
+        ':demo-shared',     // Compose Multiplatform demo UI
+        ':demo-desktop'     // Desktop launcher for the demo

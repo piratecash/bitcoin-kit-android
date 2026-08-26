@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincore.storage
 
+import androidx.room.RoomRawQuery
 import androidx.room.concurrent.AtomicInt
-import androidx.sqlite.db.SimpleSQLiteQuery
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
@@ -305,7 +305,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
             query += " LIMIT $limit"
         }
 
-        return getFullTransactionInfo(store.transaction.getTransactionWithBlockBySql(SimpleSQLiteQuery(query)))
+        return getFullTransactionInfo(store.transaction.getTransactionWithBlockBySql(RoomRawQuery(sql = query)))
     }
 
     override fun getFullTransactionInfo(txHash: ByteArray): FullTransactionInfo? {
@@ -364,7 +364,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun addTransaction(transaction: FullTransaction) {
-        store.runInTransaction {
+        store.inTransaction {
             addWithoutTransaction(transaction)
         }
     }
@@ -374,7 +374,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun updateTransaction(transaction: FullTransaction) {
-        store.runInTransaction {
+        store.inTransaction {
             store.transaction.update(transaction.header)
             transaction.inputs.forEach {
                 store.input.update(it)
@@ -444,7 +444,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     ): List<Transaction> {
         val deletedTransactions = mutableListOf<Transaction>()
 
-        store.runInTransaction {
+        store.inTransaction {
             transactions.forEach { transaction ->
                 // The transaction's status may have changed (confirmed or relayed) while the
                 // reconciler was doing its network lookup, so re-check it here.
@@ -468,7 +468,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     override fun deleteNewExpiredTransactions(transactions: List<Transaction>): List<Transaction> {
         val deletedTransactions = mutableListOf<Transaction>()
 
-        store.runInTransaction {
+        store.inTransaction {
             transactions.forEach { transaction ->
                 val pendingTransaction = store.transaction.getByHash(transaction.hash)
                     ?.takeIf { it.blockHash == null && it.status == Transaction.Status.NEW }
@@ -558,7 +558,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun moveTransactionToInvalidTransactions(invalidTransactions: List<InvalidTransaction>) {
-        store.runInTransaction {
+        store.inTransaction {
             invalidTransactions.forEach { invalidTransaction ->
                 store.invalidTransaction.insert(invalidTransaction)
 
@@ -579,7 +579,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun moveInvalidTransactionToTransactions(invalidTransaction: InvalidTransaction, toTransactions: FullTransaction) {
-        store.runInTransaction {
+        store.inTransaction {
             addWithoutTransaction(toTransactions)
             store.invalidTransaction.delete(invalidTransaction.uid)
         }
@@ -704,7 +704,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     override fun recordBroadcastAttemptIfPending(transaction: SentTransaction): Boolean {
         var recorded = false
 
-        store.runInTransaction {
+        store.inTransaction {
             val isPending = store.transaction.getByHash(transaction.hash)
                 ?.let { it.blockHash == null && it.status == Transaction.Status.NEW }
                 ?: false

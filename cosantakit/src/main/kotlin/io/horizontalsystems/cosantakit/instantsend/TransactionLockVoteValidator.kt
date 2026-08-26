@@ -3,6 +3,7 @@ package io.horizontalsystems.cosantakit.instantsend
 import io.horizontalsystems.bitcoincore.core.IHasher
 import io.horizontalsystems.cosantakit.CosantaKitErrors
 import io.horizontalsystems.cosantakit.ICosantaStorage
+import io.horizontalsystems.dashlib.BLS
 
 class TransactionLockVoteValidator(private val storage: ICosantaStorage, private val hasher: IHasher, private val bls: BLS) {
 

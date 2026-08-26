@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.network.peer
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IPeerAddressManager
 import io.horizontalsystems.bitcoincore.core.IPeerAddressManagerListener
@@ -12,7 +13,6 @@ import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageSerialize
 import io.horizontalsystems.bitcoincore.network.messages.RejectMessage
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.transport.TransportException
-import timber.log.Timber
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
@@ -32,6 +32,7 @@ open class PeerGroup(
     private val localDownloadedBestBlockHeight: Int,
     private val handleAddrMessage: Boolean
 ) : Peer.Listener, IPeerAddressManagerListener {
+    private val log = Logger.withTag(network.logTag)
 
     interface Listener {
         fun onStart() = Unit
@@ -184,7 +185,7 @@ open class PeerGroup(
         // in-memory used-IP entry. Anything else risks markFailed deleting a still-good address
         // because of an exception caused by our own shutdown.
         if (peer.generation != generation.get()) {
-            Timber.tag(network.logTag).i("Peer ${peer.host} from a stale generation disconnected.")
+            log.i { "Peer ${peer.host} from a stale generation disconnected." }
             hostManager.markSuccess(peer.host)
             peerGroupListeners.forEach { it.onPeerDisconnect(peer, e) }
             connectPeersIfRequired()
@@ -195,7 +196,7 @@ open class PeerGroup(
             // Deliberately NOT markFailed: the address is fine, only v2 is unavailable there. Most
             // nodes on these networks still predate BIP324, and deleting them would burn the few
             // DNS seeds PirateCash and Cosanta have.
-            Timber.tag(network.logTag).i("Peer ${peer.host} does not speak v2, falling back to v1.")
+            log.i { "Peer ${peer.host} does not speak v2, falling back to v1." }
             v1OnlyHosts.add(peer.host)
             hostManager.markSuccess(peer.host)
             peerGroupListeners.forEach { it.onPeerDisconnect(peer, e) }
@@ -205,12 +206,12 @@ open class PeerGroup(
 
         when (e) {
             null -> {
-                Timber.tag(network.logTag).i("Peer ${peer.host} disconnected.")
+                log.i { "Peer ${peer.host} disconnected." }
                 hostManager.markSuccess(peer.host)
             }
 
             is PeerTimer.Error.Timeout -> {
-                Timber.tag(network.logTag).w("Peer ${peer.host} disconnected. Warning: ${e.javaClass.simpleName}, ${e.message}.")
+                log.w { "Peer ${peer.host} disconnected. Warning: ${e.javaClass.simpleName}, ${e.message}." }
                 if (acceptedPeer) {
                     hostManager.markSuccess(peer.host)
                 } else {
@@ -219,7 +220,7 @@ open class PeerGroup(
             }
 
             else -> {
-                Timber.tag(network.logTag).w("Peer ${peer.host} disconnected. Error: ${e.javaClass.simpleName}, ${e.message}.")
+                log.w { "Peer ${peer.host} disconnected. Error: ${e.javaClass.simpleName}, ${e.message}." }
                 hostManager.markFailed(peer.host)
             }
         }
@@ -266,12 +267,9 @@ open class PeerGroup(
     }
 
     private fun logPeersStatusThrottled() {
-        if(Timber.treeCount == 0) {
-            return
-        }
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastLogTime >= logIntervalMs) {
-            Timber.tag(network.logTag).d("Peers status: ${peerManager.peersCount} connected, ${peerManager.readyPears().size} ready, isSynced: ${peerManager.hasSyncedPeer()}")
+            log.d { "Peers status: ${peerManager.peersCount} connected, ${peerManager.readyPears().size} ready, isSynced: ${peerManager.hasSyncedPeer()}" }
             lastLogTime = currentTime
         }
     }

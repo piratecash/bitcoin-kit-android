@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.network.peer
 
+import co.touchlab.kermit.Logger as KermitLogger
 import io.horizontalsystems.bitcoincore.io.BitcoinInput
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
@@ -12,7 +13,6 @@ import io.horizontalsystems.bitcoincore.network.transport.MessagePayloadExceptio
 import io.horizontalsystems.bitcoincore.network.transport.SocketDeadlineReader
 import io.horizontalsystems.bitcoincore.network.transport.TransportException
 import io.horizontalsystems.bitcoincore.utils.NetworkUtils
-import timber.log.Timber
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
@@ -35,6 +35,7 @@ class PeerConnection internal constructor(
     internal val generation: Int,
     transportFactory: ITransportFactory,
 ) : Runnable {
+    private val log = KermitLogger.withTag(network.logTag)
 
     /** Public signature kept exactly as it was, so every existing call site compiles untouched. */
     constructor(
@@ -134,7 +135,7 @@ class PeerConnection internal constructor(
     private fun receiveMessage(bitcoinInput: BitcoinInput) {
         try {
             val message = transport.readMessage(bitcoinInput) ?: return
-            Timber.tag(network.logTag).d("<= $message")
+            log.d { "<= $message" }
             listener.onMessage(message)
         } catch (e: TransportException) {
             close(e)

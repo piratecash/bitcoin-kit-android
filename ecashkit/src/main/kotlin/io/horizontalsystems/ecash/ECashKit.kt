@@ -1,7 +1,5 @@
 package io.horizontalsystems.ecash
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import io.horizontalsystems.bitcoincash.blocks.BitcoinCashBlockValidatorHelper
 import io.horizontalsystems.bitcoincash.blocks.validators.AsertValidator
 import io.horizontalsystems.bitcoincash.blocks.validators.DAAValidator
@@ -20,6 +18,7 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyDifficultyAdjustmentValidator
 import io.horizontalsystems.bitcoincore.blocks.validators.ProofOfWorkValidator
 import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.models.Address
@@ -29,6 +28,8 @@ import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
+import io.horizontalsystems.bitcoincore.storage.DatabaseEncryption
+import io.horizontalsystems.bitcoincore.storage.DatabaseMigrationResult
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
 import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
@@ -59,7 +60,8 @@ class ECashKit : AbstractKit {
         }
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         words: List<String>,
         passphrase: String,
         walletId: String,
@@ -67,30 +69,79 @@ class ECashKit : AbstractKit {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold)
+    ) : this(dataDir, connectionManager, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, syncMode, confirmationsThreshold)
 
     constructor(
-        context: Context,
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        words: List<String>,
+        passphrase: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+    ) : this(
+        dataDir = dataDir,
+        databaseKey = databaseKey,
+        connectionManager = connectionManager,
+        seed = Mnemonic().toSeed(words, passphrase),
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+    )
+
+    constructor(
+        dataDir: String,
+        connectionManager: IConnectionManager,
         seed: ByteArray,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
-    ) : this(context, HDExtendedKey(seed, Purpose.BIP44), walletId, networkType, peerSize, syncMode, confirmationsThreshold)
+    ) : this(dataDir, connectionManager, HDExtendedKey(seed, Purpose.BIP44), walletId, networkType, peerSize, syncMode, confirmationsThreshold)
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        seed: ByteArray,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+    ) : this(
+        dataDir = dataDir,
+        databaseKey = databaseKey,
+        connectionManager = connectionManager,
+        extendedKey = HDExtendedKey(seed, Purpose.BIP44),
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param extendedKey HDExtendedKey that contains HDKey and version
-     * @param walletId an arbitrary ID of type String.
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 1 confirmation.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -99,36 +150,76 @@ class ECashKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null
-    ) {
-        network = network(networkType)
-
-        bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = extendedKey,
-            watchAddressPublicKey = null,
-            networkType = networkType,
-            network = network,
-            walletId = walletId,
-            syncMode = syncMode,
-            peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold,
-            iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
-        )
-    }
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = extendedKey,
+        watchAddress = null,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = null,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param databaseKey SQLCipher key of the wallet's databases.
+     * @param connectionManager Source of network connectivity state.
+     * @param extendedKey HDExtendedKey that contains HDKey and version
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
+     * @param networkType The network type. The default is MainNet.
+     * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
+     * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 1 confirmation.
+     */
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = extendedKey,
+        watchAddress = null,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = databaseKey,
+    )
+
+    /**
+     * @constructor Creates and initializes the BitcoinKit
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param watchAddress address for watching in read-only mode
-     * @param walletId an arbitrary ID of type String.
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         watchAddress: String,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -137,15 +228,86 @@ class ECashKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = null,
+        watchAddress = watchAddress,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = null,
+    )
+
+    /**
+     * @constructor Creates and initializes the BitcoinKit
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param databaseKey SQLCipher key of the wallet's databases.
+     * @param connectionManager Source of network connectivity state.
+     * @param watchAddress address for watching in read-only mode
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
+     * @param networkType The network type. The default is MainNet.
+     * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
+     * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 1 confirmation.
+     */
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        watchAddress: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = null,
+        watchAddress = watchAddress,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = databaseKey,
+    )
+
+    private constructor(
+        dataDir: String,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey?,
+        watchAddress: String?,
+        walletId: String,
+        networkType: NetworkType,
+        peerSize: Int,
+        syncMode: SyncMode,
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        databaseKey: ByteArray?,
     ) {
         network = network(networkType)
 
-        val address = parseAddress(watchAddress, network)
-        val watchAddressPublicKey = WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
+        val watchAddressPublicKey = watchAddress?.let {
+            val address = parseAddress(it, network)
+            WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
+        }
 
         bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = null,
+            dataDir = dataDir,
+            connectionManager = connectionManager,
+            extendedKey = extendedKey,
             watchAddressPublicKey = watchAddressPublicKey,
             networkType = networkType,
             network = network,
@@ -154,12 +316,14 @@ class ECashKit : AbstractKit {
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
+            iSchnorrInputSigner = iSchnorrInputSigner,
+            databaseKey = databaseKey,
         )
     }
 
     private fun bitcoinCore(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey?,
         watchAddressPublicKey: WatchAddressPublicKey?,
         networkType: NetworkType,
@@ -169,9 +333,11 @@ class ECashKit : AbstractKit {
         peerSize: Int,
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
-        iSchnorrInputSigner: ISchnorrInputSigner?
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        databaseKey: ByteArray?,
     ): BitcoinCore {
-        val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode))
+        val database =
+            CoreDatabase.getInstance(dataDir, getDatabaseName(networkType, walletId, syncMode), databaseKey)
         val storage = Storage(database)
 
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
@@ -185,7 +351,7 @@ class ECashKit : AbstractKit {
         val bitcoinCoreBuilder = BitcoinCoreBuilder()
 
         val bitcoinCore = bitcoinCoreBuilder
-            .setContext(context)
+            .setConnectionManager(connectionManager)
             .setExtendedKey(extendedKey)
             .setWatchAddressPublicKey(watchAddressPublicKey)
             .setPurpose(purpose)
@@ -298,17 +464,36 @@ class ECashKit : AbstractKit {
         val abcForkBlockHash = "0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c".toReversedByteArray()
         val bchaChainForkBlockHash = "000000000000000004284c9d8b2c8ff731efeaec6be50729bdc9bd07f910757d".toReversedByteArray()
 
-        private fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode): String =
+        internal fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode): String =
             "ECash-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}"
 
-        fun clear(context: Context, networkType: NetworkType, walletId: String) {
-            for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
-                try {
-                    SQLiteDatabase.deleteDatabase(context.getDatabasePath(getDatabaseName(networkType, walletId, syncMode)))
-                } catch (ex: Exception) {
-                    continue
-                }
+        internal fun databaseNames(networkType: NetworkType, walletId: String): List<String> =
+            DatabaseEncryption.supportedSyncModes().map { syncMode ->
+                getDatabaseName(networkType, walletId, syncMode)
             }
+
+        /** Must be called before constructing any kit for this wallet. */
+        suspend fun migrateDatabases(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            databaseKey: ByteArray,
+        ): DatabaseMigrationResult = DatabaseEncryption.migrateDatabases(
+            dataDir = dataDir,
+            databaseNames = databaseNames(networkType, walletId),
+            migrationId = migrationId(networkType, walletId),
+            databaseKey = databaseKey,
+        )
+
+        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
+            DatabaseEncryption.clearDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+            )
         }
+
+        private fun migrationId(networkType: NetworkType, walletId: String): String =
+            "ecash-${networkType.name}-$walletId"
     }
 }

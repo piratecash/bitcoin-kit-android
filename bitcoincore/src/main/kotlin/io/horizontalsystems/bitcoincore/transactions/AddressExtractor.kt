@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.transactions
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.FullApiTransaction
 import io.horizontalsystems.bitcoincore.apisync.blockchair.walletRecipient
@@ -14,7 +15,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import timber.log.Timber
 
 class AddressExtractor(
     private val api: Api,
@@ -22,6 +22,8 @@ class AddressExtractor(
     private val dataListener: IBlockchainDataListener,
     private val logTag: String
 ) {
+    private val log = Logger.withTag(logTag)
+
     // Volatile, and every entry point reads `stopped` only after publishing the scope: either we
     // observe the stop, or stop() observes the new scope and cancels it.
     @Volatile
@@ -35,7 +37,7 @@ class AddressExtractor(
     private fun createCoroutineScope(): CoroutineScope {
         return CoroutineScope(
             SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, ex ->
-                Timber.tag(logTag).d(ex)
+                log.d(ex) { "" }
             }
         )
     }
@@ -97,7 +99,7 @@ class AddressExtractor(
                 )
             }
         } catch (e: Exception) {
-            Timber.tag(logTag).d(e, "Failed to fetch batched transactions for inputs")
+            log.d(e) { "Failed to fetch batched transactions for inputs" }
         }
     }
 

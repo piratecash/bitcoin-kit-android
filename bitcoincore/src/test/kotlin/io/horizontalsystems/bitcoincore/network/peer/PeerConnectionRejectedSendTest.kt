@@ -1,11 +1,12 @@
 package io.horizontalsystems.bitcoincore.network.peer
 
-import com.nhaarman.mockitokotlin2.any
-import com.nhaarman.mockitokotlin2.doThrow
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.never
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.messages.NetworkMessageParser
@@ -32,7 +33,7 @@ class PeerConnectionRejectedSendTest {
 
         val peerConnection = PeerConnection(
             host = "1.2.3.4",
-            network = mock<Network>(),
+            network = mock<Network> { on { logTag } doReturn "test" },
             listener = mock<PeerConnection.Listener>(),
             sendingExecutor = sendingExecutor,
             networkMessageParser = mock<NetworkMessageParser>(),

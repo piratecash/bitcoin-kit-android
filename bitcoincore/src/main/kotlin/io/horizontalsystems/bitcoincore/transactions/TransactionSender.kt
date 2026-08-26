@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.transactions
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
@@ -27,7 +28,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 class TransactionSender(
@@ -45,6 +45,7 @@ class TransactionSender(
     private val logTag: String = "BitcoinCore",
     private val coroutineDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : IPeerTaskHandler, TransactionSendTimer.Listener, PeerGroup.Listener {
+    private val log = Logger.withTag(logTag)
 
     private data class BroadcastDiagnostics(
         val requestedByPeer: Boolean = false,
@@ -158,7 +159,7 @@ class TransactionSender(
             storage.getSentTransaction(transaction.header.hash)?.let { sentTransaction ->
                 storage.deleteSentTransaction(sentTransaction)
             }
-            Timber.tag(logTag).i("Transaction ${transaction.header.hash.toReversedHex()} observed from peer mempool and marked relayed.")
+            log.i { "Transaction ${transaction.header.hash.toReversedHex()} observed from peer mempool and marked relayed." }
         }
     }
 
@@ -235,20 +236,20 @@ class TransactionSender(
             // and this record can never both "win": if the delete already committed, no SentTransaction
             // was written here and the transaction's bytes must not be sent. External transactions
             // already have a SentTransaction from queueExternalBroadcast and are not expiry-deleted.
-            Timber.tag(logTag).d("Skipping API broadcast for tx=$txHash: transaction no longer pending.")
+            log.d { "Skipping API broadcast for tx=$txHash: transaction no longer pending." }
             return RawTransactionBroadcastStatus.AlreadyKnown
         }
 
         try {
             blockchairApi.broadcastTransaction(rawHex(transaction))
 
-            Timber.tag(logTag).i("Transaction $txHash accepted by API broadcast.")
+            log.i { "Transaction $txHash accepted by API broadcast." }
             markBroadcastAccepted(transaction)
             return RawTransactionBroadcastStatus.Submitted
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Throwable) {
-            Timber.tag(logTag).w(error, "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast.")
+            log.w(error) { "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast." }
             val sent = fallback()
             if (!sent) {
                 queueBroadcastRetry(transaction)
@@ -261,10 +262,10 @@ class TransactionSender(
     private fun sendViaP2P(transactions: List<BroadcastTransaction>): Boolean {
         val peers = getPeersToSend()
         if (peers.isEmpty()) {
-            Timber.tag(logTag).d(
+            log.d {
                 "Skipping peer-to-peer broadcast. connected=${peerManager.peersCount}, " +
-                    "synced=${initialBlockDownload.syncedPeers.size}, ready=${peerManager.readyPears().size}"
-            )
+                "synced=${initialBlockDownload.syncedPeers.size}, ready=${peerManager.readyPears().size}"
+            }
             return false
         }
 
@@ -303,7 +304,7 @@ class TransactionSender(
                     external = true,
                 )
             } catch (error: Throwable) {
-                Timber.tag(logTag).w(error, "Dropping invalid external transaction from broadcast queue.")
+                log.w(error) { "Dropping invalid external transaction from broadcast queue." }
                 storage.deleteSentTransaction(sentTransaction)
                 null
             }
@@ -321,15 +322,15 @@ class TransactionSender(
             recordBroadcastAttempt(transaction)
         } else {
             recordBroadcastAttemptIfPending(transaction) ?: run {
-                Timber.tag(logTag).d("Skipping P2P broadcast for tx=$txHash: transaction no longer pending.")
+                log.d { "Skipping P2P broadcast for tx=$txHash: transaction no longer pending." }
                 return false
             }
         }
         ensureDiagnostics(transaction.transaction.header.hash)
 
-        Timber.tag(logTag).d(
+        log.d {
             "Broadcast attempt for tx=$txHash sendType=P2P retry=${sentTransaction.retriesCount + 1} peers=${peers.joinToString { it.host }}"
-        )
+        }
         return true
     }
 
@@ -340,7 +341,7 @@ class TransactionSender(
         if (!networkPaused) {
             timer.startIfNotRunning()
         }
-        Timber.tag(logTag).w("API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry.")
+        log.w { "API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry." }
     }
 
     private fun buildBroadcastAttempt(transaction: BroadcastTransaction, storedTransaction: SentTransaction?): SentTransaction {
@@ -446,11 +447,11 @@ class TransactionSender(
         when (task.completionReason) {
             SendTransactionTask.CompletionReason.REQUESTED_BY_PEER -> {
                 markRequestedByPeer(transaction.header.hash)
-                Timber.tag(logTag).i("Peer ${peer.host} requested tx=$txHash.")
+                log.i { "Peer ${peer.host} requested tx=$txHash." }
             }
 
             SendTransactionTask.CompletionReason.TIMEOUT, null -> {
-                Timber.tag(logTag).d("Peer ${peer.host} did not request tx=$txHash before timeout.")
+                log.d { "Peer ${peer.host} did not request tx=$txHash before timeout." }
             }
         }
 
@@ -459,11 +460,11 @@ class TransactionSender(
 
         if (sentTransaction.retriesCount >= maxRetriesCount) {
             val state = clearDiagnostics(transaction.header.hash)
-            Timber.tag(logTag).w(
+            log.w {
                 "Broadcast attempts exhausted for tx=$txHash retries=${sentTransaction.retriesCount} " +
-                    "requestedByPeer=${state?.requestedByPeer == true} rejectedByPeer=${state?.rejectedByPeer == true} " +
-                    "lastReject=${state?.lastRejectDescription ?: "<none>"}"
-            )
+                "requestedByPeer=${state?.requestedByPeer == true} rejectedByPeer=${state?.rejectedByPeer == true} " +
+                "lastReject=${state?.lastRejectDescription ?: "<none>"}"
+            }
             if (!sentTransaction.external) {
                 transactionSyncer.handleInvalid(transaction)
             }
@@ -505,9 +506,9 @@ class TransactionSender(
             description = "${rejectMessage.rejectCodeName}: ${rejectMessage.reason.ifBlank { "<empty>" }}",
         )
 
-        Timber.tag(logTag).w(
+        log.w {
             "Peer ${peer.host} rejected tx=${rejectedHash.toReversedHex()} code=${rejectMessage.rejectCodeName} reason=${rejectMessage.reason.ifBlank { "<empty>" }}"
-        )
+        }
     }
 
     // TransactionSendTimer.Listener

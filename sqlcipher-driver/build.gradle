@@ -1,0 +1,116 @@
+import javax.inject.Inject
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.process.ExecOperations
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    id 'java-library'
+    id 'org.jetbrains.kotlin.jvm'
+    id 'maven-publish'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+kotlin {
+    compilerOptions { jvmTarget = JvmTarget.JVM_21 }
+}
+
+publishing {
+    publications {
+        release(MavenPublication) {
+            from components.java
+        }
+    }
+}
+
+dependencies {
+    api 'androidx.sqlite:sqlite:2.6.2'
+    testImplementation 'androidx.sqlite:sqlite-bundled:2.6.2'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+ext.nativesAssetPrefix = 'sqlcipher'
+ext.nativesFileNames = [
+        'macos-arm64': 'libsqlcipher_jni.dylib',
+        'linux-x64'  : 'libsqlcipher_jni.so',
+        'windows-x64': 'sqlcipher_jni.dll',
+]
+// The binary plus the sidecar the loader reads, for every shipped target.
+ext.nativesExpectedFiles = ext.nativesFileNames.collectMany { target, name ->
+    ["$target/$name".toString(), "$target/${name}.sha256".toString()]
+}
+// The SQLCipher and LibTomCrypt revisions are pinned in the workflow, so it is attested too.
+ext.nativesAttestedPaths = [
+        'sqlcipher-driver/src/main/c',
+        'sqlcipher-driver/src/main/kotlin',
+        'sqlcipher-driver/build.gradle',
+        'gradle/natives.gradle',
+        '.github/workflows/sqlcipher-natives.yml',
+]
+
+apply from: "$rootDir/gradle/natives.gradle"
+
+interface SqlCipherNativeBuildOps {
+    @Inject ExecOperations getExecOps()
+    @Inject FileSystemOperations getFs()
+}
+
+tasks.register('buildNative') {
+    group = 'build'
+    description = 'Builds the SQLCipher JNI driver for the current supported desktop host'
+
+    def ops = objects.newInstance(SqlCipherNativeBuildOps)
+    def target = (findProperty('nativeTarget') ?: nativeHostTag).toString()
+    def supported = nativesFileNames.keySet()
+    def sqlcipherDir = providers.gradleProperty('sqlcipherSourceDir')
+    def libtomcryptDir = providers.gradleProperty('libtomcryptSourceDir')
+    def nativeBuildDir = layout.buildDirectory.dir("native/$target")
+    def outputDir = file("prebuilt/natives/$target")
+    def expected = nativesFileNames[target]
+    def sha256 = nativesSha256 as Closure
+
+    doLast {
+        if (!supported.contains(target)) {
+            throw new GradleException("unsupported SQLCipher target '$target'; supported: $supported")
+        }
+        if (!sqlcipherDir.present || !libtomcryptDir.present) {
+            throw new GradleException('buildNative requires -PsqlcipherSourceDir and -PlibtomcryptSourceDir')
+        }
+        def amalgamation = new File(sqlcipherDir.get(), 'sqlite3.c')
+        def header = new File(sqlcipherDir.get(), 'sqlite3.h')
+        if (!amalgamation.isFile() || !header.isFile()) {
+            throw new GradleException("SQLCipher amalgamation is missing under ${sqlcipherDir.get()}")
+        }
+
+        ops.fs.delete { delete nativeBuildDir }
+        def configure = [
+                'cmake', '-S', file('src/main/c').absolutePath,
+                '-B', nativeBuildDir.get().asFile.absolutePath,
+                '-DCMAKE_BUILD_TYPE=Release',
+                "-DSQLCIPHER_SOURCE_DIR=${sqlcipherDir.get()}",
+                "-DLIBTOMCRYPT_SOURCE_DIR=${libtomcryptDir.get()}",
+                "-DJNI_HEADER_DIR=${System.getProperty('java.home')}/include",
+        ]
+        if (target == 'macos-arm64') {
+            configure += ['-DCMAKE_OSX_ARCHITECTURES=arm64', '-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0']
+        }
+        ops.execOps.exec { commandLine configure }
+        ops.execOps.exec {
+            commandLine 'cmake', '--build', nativeBuildDir.get().asFile.absolutePath,
+                    '--config', 'Release', '--parallel'
+        }
+
+        def candidates = fileTree(nativeBuildDir).matching { include "**/$expected" }.files
+        if (candidates.size() != 1) {
+            throw new GradleException("expected one $expected, found ${candidates.size()} under ${nativeBuildDir.get().asFile}")
+        }
+        ops.fs.delete { delete outputDir }
+        ops.fs.copy { from candidates.first(); into outputDir }
+        def binary = new File(outputDir, expected)
+        new File(outputDir, "${expected}.sha256").setText(sha256.call(binary) + '\n', 'UTF-8')
+        logger.lifecycle("SQLCipher JNI for $target -> $binary")
+    }
+}

@@ -1,6 +1,6 @@
 package cash.p.dogecoinkit.validators
 
-import android.util.Log
+import co.touchlab.kermit.Logger as KermitLogger
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.blocks.validators.IBlockChainedValidator
 import io.horizontalsystems.bitcoincore.crypto.CompactBits
@@ -16,6 +16,7 @@ class DogeTestNetDifficultyAdjustmentValidator(
 ) : IBlockChainedValidator {
 
     private val logger = Logger.getLogger("DogeDifficultyAdjustmentValidator")
+    private val log = KermitLogger.withTag("Dogecoin")
 
     private companion object {
         const val DIFF_CHANGE_TARGET = 145000
@@ -81,7 +82,7 @@ class DogeTestNetDifficultyAdjustmentValidator(
             // This should never happen. If it does, it means we are following an incorrect or busted chain.
             throw BlockValidatorException.NotDifficultyTransitionEqualBits()
         }
-        Log.d("Dogecoin", "goBack: $goBack")
+        log.d { "goBack: $goBack" }
         cursor = validatorHelper.getPrevious(cursor, goBack - 1)
 
         //We used checkpoints...

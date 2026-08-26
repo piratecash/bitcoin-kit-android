@@ -1,8 +1,7 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
-    ext.kotlin_version = '2.0.21'
-    ext.room_version = '2.6.1'
+    ext.kotlin_version = '2.3.20'
     ext.shortSha = providers.environmentVariable("SHORT_SHA")
         .orElse(provider {
             def process = new ProcessBuilder("git", "rev-parse", "--short=7", "HEAD")
@@ -24,6 +23,9 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:8.12.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "org.jetbrains.kotlin:kotlin-serialization:$kotlin_version"
+        classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+        classpath 'org.jetbrains.compose:compose-gradle-plugin:1.10.1'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -32,7 +34,7 @@ buildscript {
 
 plugins {
     id 'maven-publish'
-    id 'com.google.devtools.ksp' version '2.0.21-1.0.27' apply false
+    id 'com.google.devtools.ksp' version '2.3.2' apply false
 }
 
 allprojects {
@@ -49,12 +51,19 @@ def libraryModules = [
     'ecashkit', 'hodler'
 ]
 
+// Published with the same coordinates, but deliberately outside libraryModules:
+// addLibraryModuleDependencies hardcodes type 'aar', which a plain jar does not have.
+def standaloneModules = ['dashlib-native', 'sqlcipher-driver']
+
 def localMavenRepository = { repositories ->
     repositories.maven {
         name = "local"
         url = uri(rootProject.layout.buildDirectory.dir("maven-repo"))
     }
 }
+
+// KMP roots publish .module/.pom only; their real artifacts live in the -android/-jvm variants.
+def isKmpModule = { name -> rootProject.project(":$name").plugins.hasPlugin('org.jetbrains.kotlin.multiplatform') }
 
 def addLibraryModuleDependencies = { pom ->
     pom.withXml {
@@ -64,7 +73,9 @@ def addLibraryModuleDependencies = { pom ->
             dependencyNode.appendNode('groupId', 'com.github.piratecash.bitcoin-kit-android')
             dependencyNode.appendNode('artifactId', mod)
             dependencyNode.appendNode('version', rootProject.ext.libraryVersion)
-            dependencyNode.appendNode('type', 'aar')
+            if (!isKmpModule(mod)) {
+                dependencyNode.appendNode('type', 'aar')
+            }
         }
     }
 }
@@ -84,12 +95,23 @@ publishing {
 }
 
 subprojects { sub ->
-    if (libraryModules.contains(sub.name)) {
+    ['kotlin-android', 'org.jetbrains.kotlin.multiplatform'].each { pluginId ->
+        sub.plugins.withId(pluginId) {
+            sub.kotlin {
+                jvmToolchain(21)
+            }
+        }
+    }
+
+    if (libraryModules.contains(sub.name) || standaloneModules.contains(sub.name)) {
         sub.afterEvaluate {
             sub.publishing {
                 publications.withType(MavenPublication).configureEach {
                     groupId = "com.github.piratecash.bitcoin-kit-android"
-                    artifactId = sub.name
+                    // KMP generates one publication per target; renaming them all collides.
+                    if (!isKmpModule(sub.name)) {
+                        artifactId = sub.name
+                    }
                     version = rootProject.ext.libraryVersion
                 }
                 repositories {

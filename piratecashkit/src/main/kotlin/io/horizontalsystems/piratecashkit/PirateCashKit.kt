@@ -1,7 +1,5 @@
 package io.horizontalsystems.piratecashkit
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
@@ -12,6 +10,7 @@ import io.horizontalsystems.bitcoincore.apisync.InsightApi
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairBlockHashFetcher
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairTransactionProvider
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
@@ -24,6 +23,8 @@ import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
+import io.horizontalsystems.bitcoincore.storage.DatabaseEncryption
+import io.horizontalsystems.bitcoincore.storage.DatabaseMigrationResult
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
@@ -31,12 +32,12 @@ import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.MerkleBranch
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
+import io.horizontalsystems.dashlib.BLS
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
 import io.horizontalsystems.piratecashkit.core.PirateCashTransactionInfoConverter
 import io.horizontalsystems.piratecashkit.core.SingleSha256Hasher
-import io.horizontalsystems.piratecashkit.instantsend.BLS
 import io.horizontalsystems.piratecashkit.instantsend.ISLockPeerValidator
 import io.horizontalsystems.piratecashkit.instantsend.InstantSendFactory
 import io.horizontalsystems.piratecashkit.instantsend.InstantSendLockValidator
@@ -98,7 +99,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
     private val pirateCashTransactionInfoConverter: PirateCashTransactionInfoConverter
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         words: List<String>,
         passphrase: String,
         walletId: String,
@@ -107,7 +109,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
     ) : this(
-        context,
+        dataDir,
+        connectionManager,
         Mnemonic().toSeed(words, passphrase),
         walletId,
         networkType,
@@ -117,7 +120,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
     )
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         seed: ByteArray,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -125,7 +129,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
     ) : this(
-        context = context,
+        dataDir = dataDir,
+        connectionManager = connectionManager,
         extendedKey = HDExtendedKey(seed, Purpose.BIP44),
         walletId = walletId,
         networkType = networkType,
@@ -135,7 +140,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
     )
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         watchAddress: String,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -145,7 +151,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) : this(
-        context = context,
+        dataDir = dataDir,
+        connectionManager = connectionManager,
         extendedKey = null,
         watchAddress = parseAddress(watchAddress, network(networkType)),
         walletId = walletId,
@@ -158,7 +165,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
     )
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -168,7 +176,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null
     ) : this(
-        context = context,
+        dataDir = dataDir,
+        connectionManager = connectionManager,
         extendedKey = extendedKey,
         watchAddress = null,
         walletId = walletId,
@@ -180,9 +189,107 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         iSchnorrInputSigner = iSchnorrInputSigner
     )
 
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        words: List<String>,
+        passphrase: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+    ) : this(
+        dataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase), walletId,
+        networkType, peerSize, syncMode, confirmationsThreshold,
+    )
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        seed: ByteArray,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = HDExtendedKey(seed, Purpose.BIP44),
+        watchAddress = null,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = null,
+        iSchnorrInputSigner = null,
+        databaseKey = databaseKey,
+    )
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        watchAddress: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = null,
+        watchAddress = parseAddress(watchAddress, network(networkType)),
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = databaseKey,
+    )
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = extendedKey,
+        watchAddress = null,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = databaseKey,
+    )
+
+
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param extendedKey HDExtendedKey that contains HDKey and version
      * @param watchAddress address for watching in read-only mode
      * @param walletId an arbitrary ID of type String.
@@ -192,7 +299,8 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
     private constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey?,
         watchAddress: Address?,
         walletId: String,
@@ -201,13 +309,15 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         syncMode: SyncMode,
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
-        iSchnorrInputSigner: ISchnorrInputSigner?
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        databaseKey: ByteArray? = null,
     ) {
         val coreDatabase =
-            CoreDatabase.getInstance(context, getDatabaseNameCore(networkType, walletId, syncMode))
+            CoreDatabase.getInstance(dataDir, getDatabaseNameCore(networkType, walletId, syncMode), databaseKey)
         val pirateCashDatabase = PirateCashKitDatabase.getInstance(
-            context,
-            getDatabaseName(networkType, walletId, syncMode)
+            dataDir,
+            getDatabaseName(networkType, walletId, syncMode),
+            databaseKey,
         )
 
         val transactionSerializer = PirateCashTransactionSerializer()
@@ -242,7 +352,7 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         }
 
         bitcoinCore = BitcoinCoreBuilder()
-            .setContext(context)
+            .setConnectionManager(connectionManager)
             .setExtendedKey(extendedKey)
             .setWatchAddressPublicKey(watchAddressPublicKey)
             .setPurpose(Purpose.BIP44)
@@ -441,18 +551,39 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
         const val defaultPeerSize: Int = 8
         const val defaultConfirmationsThreshold: Int = 6
 
-        private fun getDatabaseNameCore(
+        internal fun getDatabaseNameCore(
             networkType: NetworkType,
             walletId: String,
             syncMode: SyncMode
         ) =
             "${getDatabaseName(networkType, walletId, syncMode)}-core"
 
-        private fun getDatabaseName(
+        internal fun getDatabaseName(
             networkType: NetworkType,
             walletId: String,
             syncMode: SyncMode
         ) = "PirateCash-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}"
+
+        internal fun databaseNames(networkType: NetworkType, walletId: String): List<String> =
+            DatabaseEncryption.supportedSyncModes().flatMap { syncMode ->
+                listOf(
+                    getDatabaseNameCore(networkType, walletId, syncMode),
+                    getDatabaseName(networkType, walletId, syncMode),
+                )
+            }
+
+        /** Must be called before constructing any kit for this wallet. */
+        suspend fun migrateDatabases(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            databaseKey: ByteArray,
+        ): DatabaseMigrationResult = DatabaseEncryption.migrateDatabases(
+            dataDir = dataDir,
+            databaseNames = databaseNames(networkType, walletId),
+            migrationId = migrationId(networkType, walletId),
+            databaseKey = databaseKey,
+        )
 
         private fun parseAddress(address: String, network: Network): Address {
             return Base58AddressConverter(
@@ -466,32 +597,17 @@ class PirateCashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.List
             NetworkType.TestNet -> TestNetPirateCash()
         }
 
-        fun clear(context: Context, networkType: NetworkType, walletId: String) {
-            for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
-                try {
-                    SQLiteDatabase.deleteDatabase(
-                        context.getDatabasePath(
-                            getDatabaseNameCore(
-                                networkType,
-                                walletId,
-                                syncMode
-                            )
-                        )
-                    )
-                    SQLiteDatabase.deleteDatabase(
-                        context.getDatabasePath(
-                            getDatabaseName(
-                                networkType,
-                                walletId,
-                                syncMode
-                            )
-                        )
-                    )
-                } catch (ex: Exception) {
-                    continue
-                }
-            }
+        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
+            DatabaseEncryption.clearDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+            )
         }
+
+        private fun migrationId(networkType: NetworkType, walletId: String): String =
+            "piratecash-${networkType.name}-$walletId"
+
     }
 
 }

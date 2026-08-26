@@ -10,10 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: set up JDK 17
+      - name: set up JDK 21
         uses: actions/setup-java@v3
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: gradle
 
@@ -25,9 +25,8 @@ jobs:
           echo "words=\"\"" > local.properties
 
       - name: Run Unit tests
-        # Pure-JVM modules only. The Dash family (:dashkit, :piratecashkit, :cosantakit) and :app
-        # pull in :dashlib's native BLS build, which needs the Android NDK that this runner does not
-        # provision — their tests run locally instead.
+        # :dashlib and :dashkit own the BLS fail-closed tests, so they must run here; their
+        # test graphs contain no externalNativeBuild task, so the runner needs no NDK.
         run: >-
           ./gradlew
           :bitcoincore:testDebugUnitTest
@@ -37,3 +36,16 @@ jobs:
           :bitcoincashkit:testDebugUnitTest
           :ecashkit:testDebugUnitTest
           :hodler:testDebugUnitTest
+          :dashlib:testDebugUnitTest
+          :dashkit:testDebugUnitTest
+          :bitcoincore:jvmTest
+          :litecoinkit:jvmTest
+          :bitcoinkit:jvmTest
+          :dogecoinkit:jvmTest
+          :bitcoincashkit:jvmTest
+          :ecashkit:jvmTest
+          :hodler:jvmTest
+          :dashlib:jvmTest
+          :dashkit:jvmTest
+          :cosantakit:jvmTest
+          :piratecashkit:jvmTest

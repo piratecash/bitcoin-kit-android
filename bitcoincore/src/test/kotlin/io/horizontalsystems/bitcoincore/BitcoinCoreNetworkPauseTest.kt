@@ -1,11 +1,11 @@
 package io.horizontalsystems.bitcoincore
 
-import com.nhaarman.mockitokotlin2.any
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.never
-import com.nhaarman.mockitokotlin2.times
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.core.DataProvider
 import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
@@ -51,10 +51,20 @@ class BitcoinCoreNetworkPauseTest {
     }
 
     @Test
-    fun stop_clearsDataProvider_unlikePauseNetwork() {
+    fun stop_keepsDataProviderAlive_soRestartStillUpdatesBalance() {
         val bitcoinCore = bitcoinCore()
 
         bitcoinCore.stop()
+        bitcoinCore.start()
+
+        verify(dataProvider, never()).clear()
+    }
+
+    @Test
+    fun dispose_clearsDataProvider_unlikeStop() {
+        val bitcoinCore = bitcoinCore()
+
+        bitcoinCore.dispose()
 
         verify(dataProvider).clear()
     }

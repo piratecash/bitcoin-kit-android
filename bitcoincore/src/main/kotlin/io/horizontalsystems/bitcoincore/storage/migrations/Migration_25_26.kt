@@ -1,11 +1,12 @@
 package io.horizontalsystems.bitcoincore.storage.migrations
 
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 
 object Migration_25_26 : Migration(25, 26) {
-    override fun migrate(database: SupportSQLiteDatabase) {
-        database.execSQL(
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `OrphanBlock` (
                 `block_version` INTEGER NOT NULL,
@@ -23,7 +24,7 @@ object Migration_25_26 : Migration(25, 26) {
         """.trimIndent()
         )
 
-        database.execSQL(
+        connection.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `Block_new` (
                 `block_version` INTEGER NOT NULL,
@@ -41,7 +42,7 @@ object Migration_25_26 : Migration(25, 26) {
         """.trimIndent()
         )
 
-        database.execSQL(
+        connection.execSQL(
             """
             INSERT INTO Block_new (
                 block_version, previousBlockHash, merkleRoot,
@@ -57,10 +58,10 @@ object Migration_25_26 : Migration(25, 26) {
         """.trimIndent()
         )
 
-        database.execSQL("DROP TABLE Block")
+        connection.execSQL("DROP TABLE Block")
 
-        database.execSQL("ALTER TABLE Block_new RENAME TO Block")
+        connection.execSQL("ALTER TABLE Block_new RENAME TO Block")
 
-        database.execSQL("CREATE INDEX IF NOT EXISTS `index_Block_height` ON `Block` (`height`)")
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_Block_height` ON `Block` (`height`)")
     }
 }

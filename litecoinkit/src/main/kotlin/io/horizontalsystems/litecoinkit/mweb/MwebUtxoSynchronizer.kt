@@ -1,5 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressPool
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
@@ -13,7 +14,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import timber.log.Timber
 import java.io.Closeable
 
 /**
@@ -37,6 +37,8 @@ internal class MwebUtxoSynchronizer(
     private val replayCompleteTimeoutMillis: Long = DEFAULT_REPLAY_COMPLETE_TIMEOUT_MILLIS,
     private val streamHealthyThresholdMillis: Long = DEFAULT_STREAM_HEALTHY_THRESHOLD_MILLIS,
 ) {
+    private val log = Logger.withTag(LOG_TAG)
+
     private var statusPollJob: Job? = null
     private var spentPollJob: Job? = null
     private var canonicalHashJob: Job? = null
@@ -123,7 +125,7 @@ internal class MwebUtxoSynchronizer(
         }
 
         val fromHeight = utxoStreamStartHeight()
-        Timber.tag(LOG_TAG).d("MWEB utxo stream subscribe fromHeight=$fromHeight gen=$generation")
+        log.d { "MWEB utxo stream subscribe fromHeight=$fromHeight gen=$generation" }
         utxoStream = MwebDaemonErrorMapper.map {
             client.utxos(
                 fromHeight = fromHeight,
@@ -234,11 +236,11 @@ internal class MwebUtxoSynchronizer(
         if (result.isSuccess) return
 
         if (!terminal) {
-            Timber.tag(LOG_TAG).d("MWEB utxo stream event dropped after close: ${event.safeDescription()}")
+            log.d { "MWEB utxo stream event dropped after close: ${event.safeDescription()}" }
             return
         }
 
-        Timber.tag(LOG_TAG).w("MWEB terminal stream event dropped after close: ${event.safeDescription()}")
+        log.w { "MWEB terminal stream event dropped after close: ${event.safeDescription()}" }
         coroutineScope.launch {
             stateMutex.withLock {
                 if (event.generation != activeStreamGeneration) return@withLock
@@ -257,9 +259,9 @@ internal class MwebUtxoSynchronizer(
     }
 
     private fun handleStreamUtxo(utxo: MwebUtxo) {
-        Timber.tag(LOG_TAG).v(
+        log.v {
             "MWEB utxo queued outputId=${utxo.outputId.take(LOG_OUTPUT_ID_PREFIX_LENGTH)} height=${utxo.height}"
-        )
+        }
         pendingUtxos.add(utxo)
         scheduleUtxoFlushLocked()
     }
@@ -274,7 +276,7 @@ internal class MwebUtxoSynchronizer(
         utxoFlushJob = null
         val changed = flushPendingUtxosLocked()
         storage.advanceUtxoDeliveryHeight(event.height)
-        Timber.tag(LOG_TAG).d("MWEB utxo replay complete height=${event.height} gen=${event.generation}")
+        log.d { "MWEB utxo replay complete height=${event.height} gen=${event.generation}" }
         if (changed) {
             onSnapshot(loadStoredSnapshot())
         }
@@ -283,11 +285,11 @@ internal class MwebUtxoSynchronizer(
     private fun handleStreamEnded(event: StreamEvent.Ended) {
         val generation = event.generation
         if (generation != activeStreamGeneration) {
-            Timber.tag(LOG_TAG).d("MWEB utxo stream ended for stale gen=$generation reason=${event.reason}")
+            log.d { "MWEB utxo stream ended for stale gen=$generation reason=${event.reason}" }
             return
         }
         if (terminallyEndedGeneration >= generation) {
-            Timber.tag(LOG_TAG).d("MWEB utxo stream terminal already handled gen=$generation reason=${event.reason}")
+            log.d { "MWEB utxo stream terminal already handled gen=$generation reason=${event.reason}" }
             return
         }
         terminallyEndedGeneration = generation
@@ -312,14 +314,13 @@ internal class MwebUtxoSynchronizer(
         consecutiveStreamFailures += 1
         val delayMillis = currentBackoffMillis()
         if (error == null) {
-            Timber.tag(LOG_TAG).w(
+            log.w {
                 "MWEB utxo stream ended reason=${event.reason} gen=$generation failures=$consecutiveStreamFailures reconnectIn=${delayMillis}ms"
-            )
+            }
         } else {
-            Timber.tag(LOG_TAG).w(
-                error,
+            log.w(error) {
                 "MWEB utxo stream ended reason=${event.reason} gen=$generation failures=$consecutiveStreamFailures reconnectIn=${delayMillis}ms"
-            )
+            }
         }
         scheduleReconnect(event.client, generation, delayMillis)
     }
@@ -343,7 +344,7 @@ internal class MwebUtxoSynchronizer(
 
         val utxos = pendingUtxos.toList()
         val heightRange = utxos.minOf { it.height }..utxos.maxOf { it.height }
-        Timber.tag(LOG_TAG).d("MWEB utxo flush count=${utxos.size} heights=$heightRange")
+        log.d { "MWEB utxo flush count=${utxos.size} heights=$heightRange" }
         storage.saveUtxos(utxos)
         pendingUtxos.clear()
         storage.advanceUtxoDeliveryHeight(utxos.maxOf { it.height })
@@ -373,7 +374,7 @@ internal class MwebUtxoSynchronizer(
                 if (terminallyEndedGeneration >= generation) return@withLock
 
                 consecutiveStreamFailures = 0
-                Timber.tag(LOG_TAG).d("MWEB utxo stream healthy gen=$generation")
+                log.d { "MWEB utxo stream healthy gen=$generation" }
             }
         }
     }
@@ -387,7 +388,7 @@ internal class MwebUtxoSynchronizer(
                 if (nativeReplayCompleteSupported != null) return@withLock
 
                 nativeReplayCompleteSupported = false
-                Timber.tag(LOG_TAG).w("MWEB native replay-complete marker missing; using legacy UTXO cursor")
+                log.w { "MWEB native replay-complete marker missing; using legacy UTXO cursor" }
             }
         }
     }
@@ -404,7 +405,7 @@ internal class MwebUtxoSynchronizer(
     private fun handlePollingError(error: Exception) {
         if (error is CancellationException) throw error
         if (error !is MwebError.NativeUnavailable) {
-            Timber.tag(LOG_TAG).w(error, "MWEB polling failed")
+            log.w(error) { "MWEB polling failed" }
             return
         }
 

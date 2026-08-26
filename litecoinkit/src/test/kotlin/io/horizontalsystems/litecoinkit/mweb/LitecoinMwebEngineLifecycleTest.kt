@@ -14,6 +14,9 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.litecoinkit.LitecoinKit
+import io.horizontalsystems.litecoinkit.testAppContext
+import io.horizontalsystems.litecoinkit.testDataDir
+import io.horizontalsystems.litecoinkit.testMwebDataDir
 import io.horizontalsystems.litecoinkit.LitecoinTransactionSerializer
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
@@ -47,7 +50,9 @@ import java.util.concurrent.TimeoutException
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class LitecoinMwebEngineLifecycleTest {
-    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val context = testAppContext()
+    private val dataDir = context.testDataDir
+    private val mwebDataDir = context.testMwebDataDir
     private val walletIds = mutableListOf<String>()
     private val engines = mutableListOf<LitecoinMwebEngine>()
     private val publicPegInSenders = mutableListOf<MwebPublicPegInSender>()
@@ -60,7 +65,7 @@ class LitecoinMwebEngineLifecycleTest {
         engines.forEach { engine -> engine.dispose() }
         publicPegInSenders.forEach { sender -> sender.stop() }
         walletIds.forEach { walletId ->
-            LitecoinMwebEngine.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+            LitecoinMwebEngine.clear(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
         }
         ioDispatcher.close()
     }
@@ -1662,11 +1667,11 @@ class LitecoinMwebEngineLifecycleTest {
         )
 
         assertThrows(IllegalStateException::class.java) {
-            MwebFiles.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+            MwebFiles.clear(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
         }
 
         sender.stop()
-        MwebFiles.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+        MwebFiles.clear(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
     }
 
     @Test
@@ -1679,7 +1684,7 @@ class LitecoinMwebEngineLifecycleTest {
             publicOptions = publicOptions(),
             publicTransactionBridge = bridge,
         )
-        val dataDir = MwebFiles.publicSendDaemonDataDir(context, LitecoinKit.NetworkType.MainNet, walletId)
+        val dataDir = MwebFiles.publicSendDaemonDataDir(mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
         dataDir.mkdirs()
 
         sender.stop()
@@ -1694,7 +1699,7 @@ class LitecoinMwebEngineLifecycleTest {
         val recoveredClient = FakeDaemonClient()
         val clients = mutableListOf(crashedClient, recoveredClient)
         val sender = MwebPublicPegInSender(
-            context = context,
+            mwebDataDir = mwebDataDir,
             walletId = walletId,
             networkType = LitecoinKit.NetworkType.MainNet,
             addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet),
@@ -1772,7 +1777,8 @@ class LitecoinMwebEngineLifecycleTest {
         val walletId = "mweb-test-${System.nanoTime()}"
         walletIds.add(walletId)
         val engine = LitecoinMwebEngine(
-            context = context,
+            dataDir = dataDir,
+            mwebDataDir = mwebDataDir,
             seed = ByteArray(32),
             walletId = walletId,
             dispatcherProvider = dispatcherProvider,
@@ -2062,7 +2068,7 @@ class LitecoinMwebEngineLifecycleTest {
         walletId: String = walletId("mweb-public-pegin-test"),
     ): MwebPublicPegInSender {
         return MwebPublicPegInSender(
-            context = context,
+            mwebDataDir = mwebDataDir,
             walletId = walletId,
             networkType = LitecoinKit.NetworkType.MainNet,
             addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet),

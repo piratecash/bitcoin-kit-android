@@ -1,5 +1,6 @@
 package io.horizontalsystems.piratecashkit.instantsend.instantsendlock
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.InventoryItem
@@ -12,7 +13,6 @@ import io.horizontalsystems.piratecashkit.instantsend.InstantTransactionManager
 import io.horizontalsystems.piratecashkit.messages.ISLockMessage
 import io.horizontalsystems.piratecashkit.tasks.RequestInstantSendLocksTask
 import io.horizontalsystems.piratecashkit.tasks.RequestInstantTransactionsTask
-import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -24,6 +24,7 @@ class InstantSendLockHandler(
         private val peerManager: PeerManager,
         private val logTag: String
 ) {
+    private val log = Logger.withTag(logTag)
 
     data class PendingTransactionRequest(
         val txHash: ByteArray,
@@ -57,7 +58,7 @@ class InstantSendLockHandler(
                 TimeUnit.MILLISECONDS
             )
         } catch (e: Exception) {
-            Timber.tag(logTag).e(e, "Failed to schedule cleanup task for InstantSendLockHandler")
+            log.e(e) { "Failed to schedule cleanup task for InstantSendLockHandler" }
         }
     }
 
@@ -67,12 +68,12 @@ class InstantSendLockHandler(
         pendingTransactionRequests.remove(hashKey)?.let { request ->
             val waitTime = System.currentTimeMillis() - request.firstRequestTime
             val peerList = request.requestedFromPeers.joinToString(", ")
-            Timber.tag(logTag).i("✓ Proactively requested transaction ${transactionHash.toReversedHex()} received after ${waitTime}ms (requested from: $peerList)")
+            log.i { "✓ Proactively requested transaction ${transactionHash.toReversedHex()} received after ${waitTime}ms (requested from: $peerList)" }
         }
 
         // Check if already marked as instant (may have been done preemptively by peer validation)
         if (instantTransactionManager.isTransactionInstant(transactionHash)) {
-            Timber.tag(logTag).d("Transaction ${transactionHash.toReversedHex()} already marked instant, notifying delegate")
+            log.d { "Transaction ${transactionHash.toReversedHex()} already marked instant, notifying delegate" }
             delegate?.onUpdateInstant(transactionHash)
             return
         }
@@ -88,26 +89,26 @@ class InstantSendLockHandler(
     fun handle(peer: Peer, isLock: ISLockMessage) {
         // check transaction already not in instant
         if (instantTransactionManager.isTransactionInstant(isLock.txHash)) {
-            Timber.tag(logTag).d("ISLock received but tx ${isLock.txHash.toReversedHex()} already marked instant")
+            log.d { "ISLock received but tx ${isLock.txHash.toReversedHex()} already marked instant" }
             return
         }
 
         // Save ISLock for later if transaction doesn't exist yet
         val txExists = instantTransactionManager.isTransactionExists(isLock.txHash)
-        Timber.tag(logTag).d("ISLock received from ${peer.host} for tx ${isLock.txHash.toReversedHex()}, txExists=$txExists")
+        log.d { "ISLock received from ${peer.host} for tx ${isLock.txHash.toReversedHex()}, txExists=$txExists" }
         if (!txExists) {
             instantLockManager.add(isLock)
-            Timber.tag(logTag).d("Saved ISLock in relayedLocks, will validate when tx arrives")
+            log.d { "Saved ISLock in relayedLocks, will validate when tx arrives" }
         }
 
         // Add peer confirmation and validate when threshold is reached
         // This works even if transaction doesn't exist yet - we'll mark it as instant preemptively
         val isFirstConfirmation = peerValidator.addConfirmation(peer, isLock) { validatedISLock ->
-            Timber.tag(logTag).d("Validation callback triggered for tx ${validatedISLock.txHash.toReversedHex()}")
+            log.d { "Validation callback triggered for tx ${validatedISLock.txHash.toReversedHex()}" }
             validateSendLock(validatedISLock, txExists)
         }
 
-        Timber.tag(logTag).d("isFirstConfirmation=$isFirstConfirmation for tx ${isLock.txHash.toReversedHex()}")
+        log.d { "isFirstConfirmation=$isFirstConfirmation for tx ${isLock.txHash.toReversedHex()}" }
 
         // Proactively request ISLock from other peers on first confirmation
         if (isFirstConfirmation) {
@@ -121,14 +122,14 @@ class InstantSendLockHandler(
             .take(PROACTIVE_REQUEST_PEER_COUNT)
 
         if (availablePeers.isEmpty()) {
-            Timber.tag(logTag).d("No available peers to proactively request ISLock for tx ${isLock.txHash.toReversedHex()}")
+            log.d { "No available peers to proactively request ISLock for tx ${isLock.txHash.toReversedHex()}" }
             return
         }
 
         val inventoryItem = InventoryItem(InventoryType.MSG_ISDLOCK, isLock.hash)
         val peerHosts = availablePeers.joinToString(", ") { it.host }
 
-        Timber.tag(logTag).d("Proactively requesting ISLock for tx ${isLock.txHash.toReversedHex()} from ${availablePeers.size} peers: $peerHosts")
+        log.d { "Proactively requesting ISLock for tx ${isLock.txHash.toReversedHex()} from ${availablePeers.size} peers: $peerHosts" }
 
         availablePeers.forEach { peer ->
             peer.addTask(RequestInstantSendLocksTask(listOf(inventoryItem)))
@@ -137,15 +138,15 @@ class InstantSendLockHandler(
 
     private fun validateSendLock(isLock: ISLockMessage, txExists: Boolean = true) {
         try {
-            Timber.tag(logTag).d("validateSendLock started for tx: ${isLock.txHash.toReversedHex()}, txExists=$txExists")
+            log.d { "validateSendLock started for tx: ${isLock.txHash.toReversedHex()}, txExists=$txExists" }
 
             instantLockManager.validate(isLock)
-            Timber.tag(logTag).d("instantLockManager.validate completed for tx: ${isLock.txHash.toReversedHex()}")
+            log.d { "instantLockManager.validate completed for tx: ${isLock.txHash.toReversedHex()}" }
 
             // Mark transaction as instant even if it doesn't exist yet
             // This allows immediate spending when the transaction arrives
             instantTransactionManager.makeInstant(isLock.txHash)
-            Timber.tag(logTag).d("instantTransactionManager.makeInstant completed for tx: ${isLock.txHash.toReversedHex()}")
+            log.d { "instantTransactionManager.makeInstant completed for tx: ${isLock.txHash.toReversedHex()}" }
 
             // Remove from pending validations if it was being validated through peer confirmations
             peerValidator.removePending(isLock.txHash)
@@ -158,14 +159,14 @@ class InstantSendLockHandler(
             // Only notify delegate if transaction exists (has actual outputs to update)
             if (txExists) {
                 delegate?.onUpdateInstant(isLock.txHash)
-                Timber.tag(logTag).d("delegate.onUpdateInstant completed for tx: ${isLock.txHash.toReversedHex()}")
+                log.d { "delegate.onUpdateInstant completed for tx: ${isLock.txHash.toReversedHex()}" }
             } else {
-                Timber.tag(logTag).d("Skipped delegate notification - transaction will be marked instant when it arrives")
+                log.d { "Skipped delegate notification - transaction will be marked instant when it arrives" }
             }
 
-            Timber.tag(logTag).d("ISLock validated for tx: ${isLock.txHash.toReversedHex()}")
+            log.d { "ISLock validated for tx: ${isLock.txHash.toReversedHex()}" }
         } catch (e: Exception) {
-            Timber.tag(logTag).e(e, "Failed to validate InstantSend lock")
+            log.e(e) { "Failed to validate InstantSend lock" }
         }
     }
 
@@ -174,7 +175,7 @@ class InstantSendLockHandler(
 
         // Check if already requested
         if (pendingTransactionRequests.containsKey(hashKey)) {
-            Timber.tag(logTag).d("Transaction ${isLock.txHash.toReversedHex()} already requested, skipping")
+            log.d { "Transaction ${isLock.txHash.toReversedHex()} already requested, skipping" }
             return
         }
 
@@ -183,7 +184,7 @@ class InstantSendLockHandler(
             .take(PROACTIVE_REQUEST_PEER_COUNT)
 
         if (availablePeers.isEmpty()) {
-            Timber.tag(logTag).w("No available peers to request transaction ${isLock.txHash.toReversedHex()}")
+            log.w { "No available peers to request transaction ${isLock.txHash.toReversedHex()}" }
             return
         }
 
@@ -199,11 +200,11 @@ class InstantSendLockHandler(
         )
         pendingTransactionRequests[hashKey] = request
 
-        Timber.tag(logTag).i("→ Proactively requesting transaction ${isLock.txHash.toReversedHex()} from ${availablePeers.size} peers: $peerHostsStr")
+        log.i { "→ Proactively requesting transaction ${isLock.txHash.toReversedHex()} from ${availablePeers.size} peers: $peerHostsStr" }
 
         // Send request to each peer
         availablePeers.forEach { peer ->
-            Timber.tag(logTag).d("Adding RequestInstantTransactionsTask to peer ${peer.host}")
+            log.d { "Adding RequestInstantTransactionsTask to peer ${peer.host}" }
             peer.addTask(RequestInstantTransactionsTask(listOf(isLock.txHash)))
         }
     }
@@ -215,8 +216,9 @@ class InstantSendLockHandler(
         pendingTransactionRequests.forEach { (key, request) ->
             val age = now - request.firstRequestTime
             if (age > TRANSACTION_REQUEST_TIMEOUT_MS) {
-                Timber.tag(logTag)
-                    .w("Transaction request for ${request.txHash.toReversedHex()} timed out after ${age}ms (requested from ${request.requestedFromPeers.size} peers)")
+                log.w {
+                    "Transaction request for ${request.txHash.toReversedHex()} timed out after ${age}ms (requested from ${request.requestedFromPeers.size} peers)"
+                }
                 keysToRemove.add(key)
             }
         }
@@ -224,7 +226,7 @@ class InstantSendLockHandler(
         keysToRemove.forEach { pendingTransactionRequests.remove(it) }
 
         if (keysToRemove.isNotEmpty()) {
-            Timber.tag(logTag).d("Cleaned up ${keysToRemove.size} expired transaction request(s)")
+            log.d { "Cleaned up ${keysToRemove.size} expired transaction request(s)" }
         }
     }
 

@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.transactions
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.blocks.IBlockchainDataListener
 import io.horizontalsystems.bitcoincore.core.IStorage
@@ -21,7 +22,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 interface PendingTransactionStatusProvider {
@@ -133,6 +133,8 @@ class PendingTransactionReconciler(
     private val minimumPendingAgeSeconds: Long = DEFAULT_MINIMUM_PENDING_AGE_SECONDS,
     private val minimumNewPendingAgeSeconds: Long = DEFAULT_MINIMUM_NEW_PENDING_AGE_SECONDS,
 ) {
+    private val log = Logger.withTag(logTag)
+
     private var coroutineScope = createCoroutineScope()
     private val running = AtomicBoolean(false)
     private var active = false
@@ -142,7 +144,7 @@ class PendingTransactionReconciler(
     private fun createCoroutineScope(): CoroutineScope {
         return CoroutineScope(
             SupervisorJob() + coroutineDispatcher + CoroutineExceptionHandler { _, ex ->
-                Timber.tag(logTag).d(ex)
+                log.d(ex) { "" }
             }
         )
     }
@@ -195,7 +197,7 @@ class PendingTransactionReconciler(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            Timber.tag(logTag).d(error, "Failed to reconcile pending transactions")
+            log.d(error) { "Failed to reconcile pending transactions" }
         }
     }
 
@@ -250,10 +252,10 @@ class PendingTransactionReconciler(
             return
         }
 
-        Timber.tag(logTag).d(
+        log.d {
             "Deleting malformed relayed outgoing transactions without inputs: " +
-                transactions.joinToString { it.hash.toReversedHex() }
-        )
+            transactions.joinToString { it.hash.toReversedHex() }
+        }
         deletePendingTransactions(transactions)
     }
 
