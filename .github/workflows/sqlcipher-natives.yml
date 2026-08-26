@@ -14,11 +14,20 @@ on:
       - 'gradle/natives.gradle'
       - '.github/workflows/sqlcipher-natives.yml'
   workflow_call:
+    inputs:
+      linux_only:
+        description: Build only the Linux native, the one Android CI runs its JVM tests against.
+        type: boolean
+        default: false
   workflow_dispatch:
 
 env:
   SQLCIPHER_COMMIT: 810db22f575ee7cf94ea96a3e91622b5fcece3dc
   LIBTOMCRYPT_COMMIT: 7e7eb695d581782f04b24dc444cbfde86af59853
+
+# Every Gradle call below uses --configure-on-demand: the driver is a plain JVM module with
+# no project dependencies, while configuring the Android kits needs an SDK the glibc-compat
+# container does not have.
 
 jobs:
   linux-x64:
@@ -56,10 +65,10 @@ jobs:
       # Two invocations, so `test` sees the binary buildNative just produced.
       - name: Build and test Linux native
         run: |
-          ./gradlew :sqlcipher-driver:buildNative \
+          ./gradlew --configure-on-demand :sqlcipher-driver:buildNative \
             -PsqlcipherSourceDir="$RUNNER_TEMP/sqlcipher-amalgamation" \
             -PlibtomcryptSourceDir="$RUNNER_TEMP/libtomcrypt"
-          ./gradlew :sqlcipher-driver:test
+          ./gradlew --configure-on-demand :sqlcipher-driver:test
 
       - uses: actions/upload-artifact@v4
         with:
@@ -75,6 +84,7 @@ jobs:
 
   desktop:
     needs: linux-x64
+    if: ${{ !inputs.linux_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -108,11 +118,11 @@ jobs:
 
       - name: Build and test ${{ matrix.target }} native
         run: |
-          ./gradlew :sqlcipher-driver:buildNative \
+          ./gradlew --configure-on-demand :sqlcipher-driver:buildNative \
             -PnativeTarget=${{ matrix.target }} \
             -PsqlcipherSourceDir="$RUNNER_TEMP/sqlcipher-amalgamation" \
             -PlibtomcryptSourceDir="$RUNNER_TEMP/libtomcrypt"
-          ./gradlew :sqlcipher-driver:test
+          ./gradlew --configure-on-demand :sqlcipher-driver:test
 
       - uses: actions/upload-artifact@v4
         with:

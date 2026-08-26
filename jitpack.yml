@@ -14,7 +14,7 @@ before_install:
     esac
 
     BASE="https://github.com/piratecash/bitcoin-kit-android/releases/download/$TAG"
-    ARCHIVES="dashjbls-linux-x64.tar.gz dashjbls-macos-arm64.tar.gz dashjbls-macos-x64.tar.gz dashjbls-windows-x64.tar.gz sqlcipher-linux-x64.tar.gz sqlcipher-macos-arm64.tar.gz sqlcipher-windows-x64.tar.gz"
+    ARCHIVES="dashjbls-linux-x64.tar.gz dashjbls-macos-arm64.tar.gz dashjbls-windows-x64.tar.gz sqlcipher-linux-x64.tar.gz sqlcipher-macos-arm64.tar.gz sqlcipher-windows-x64.tar.gz"
 
     mkdir -p natives-download
     cd natives-download
@@ -54,7 +54,7 @@ before_install:
       mkdir -p "$module/prebuilt"
       cp natives-download/SOURCE.sha256 "$module/prebuilt/SOURCE.sha256"
     done
-    for name in dashjbls-linux-x64 dashjbls-macos-arm64 dashjbls-macos-x64 dashjbls-windows-x64; do
+    for name in dashjbls-linux-x64 dashjbls-macos-arm64 dashjbls-windows-x64; do
       tar -xzf "natives-download/$name.tar.gz" -C dashlib-native/prebuilt
     done
     for name in sqlcipher-linux-x64 sqlcipher-macos-arm64 sqlcipher-windows-x64; do
@@ -65,7 +65,6 @@ before_install:
       [ -s "$1" ] || { echo "$1 is missing or empty after unpacking" >&2; exit 1; }
     }
     expect dashlib-native/prebuilt/natives/macos-arm64/libdashjbls.dylib
-    expect dashlib-native/prebuilt/natives/macos-x64/libdashjbls.dylib
     expect dashlib-native/prebuilt/natives/linux-x64/libdashjbls.so
     expect dashlib-native/prebuilt/natives/windows-x64/dashjbls.dll
     for binary in macos-arm64/libsqlcipher_jni.dylib linux-x64/libsqlcipher_jni.so windows-x64/sqlcipher_jni.dll; do

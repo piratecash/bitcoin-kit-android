@@ -57,14 +57,12 @@ interface NativeBuildOps {
 // of which is shipped or proven.
 ext.supportedBuildPairs = [
         'macos-arm64': ['macos-arm64'],
-        'macos-x64'  : ['macos-x64'],
         'linux-x64'  : ['linux-x64', 'windows-x64'],
 ]
 
 ext.nativesAssetPrefix = 'dashjbls'
 ext.nativesFileNames = [
         'macos-arm64': 'libdashjbls.dylib',
-        'macos-x64'  : 'libdashjbls.dylib',
         'linux-x64'  : 'libdashjbls.so',
         'windows-x64': 'dashjbls.dll',
 ]

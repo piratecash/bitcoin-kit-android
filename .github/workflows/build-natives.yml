@@ -36,8 +36,6 @@ jobs:
         include:
           - target: macos-arm64
             runner: macos-15
-          - target: macos-x64
-            runner: macos-15-intel
           - target: linux-x64
             runner: ubuntu-22.04
           # Cross-built with MinGW: MSVC has no pthreads, which bls-signatures requires.

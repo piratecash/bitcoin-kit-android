@@ -58,7 +58,6 @@ jobs:
           sort > expected.txt <<'EOF'
           dashjbls-linux-x64.tar.gz:natives/linux-x64/libdashjbls.so
           dashjbls-macos-arm64.tar.gz:natives/macos-arm64/libdashjbls.dylib
-          dashjbls-macos-x64.tar.gz:natives/macos-x64/libdashjbls.dylib
           dashjbls-windows-x64.tar.gz:natives/windows-x64/dashjbls.dll
           sqlcipher-linux-x64.tar.gz:natives/linux-x64/libsqlcipher_jni.so
           sqlcipher-linux-x64.tar.gz:natives/linux-x64/libsqlcipher_jni.so.sha256
@@ -104,7 +103,6 @@ jobs:
             done
           }
           check dashjbls-macos-arm64.tar.gz:natives/macos-arm64/libdashjbls.dylib 'Mach-O' 'arm64'
-          check dashjbls-macos-x64.tar.gz:natives/macos-x64/libdashjbls.dylib 'Mach-O' 'x86_64'
           check dashjbls-linux-x64.tar.gz:natives/linux-x64/libdashjbls.so elf 'X86-64'
           check dashjbls-windows-x64.tar.gz:natives/windows-x64/dashjbls.dll 'PE32+' 'x86-64'
           check sqlcipher-macos-arm64.tar.gz:natives/macos-arm64/libsqlcipher_jni.dylib 'Mach-O' 'arm64'

@@ -15,7 +15,6 @@ not on every system reporting that `os.arch`:
 |---------------|---------------------------------------------------|
 | `linux-x64`   | glibc >= 2.35                                     |
 | `macos-arm64` | macOS >= 12.0                                     |
-| `macos-x64`   | macOS >= 12.0                                     |
 | `windows-x64` | MinGW build, no external DLLs required            |
 
 Below those thresholds, or on any other platform, the load fails and `DashjBlsLibrary.available`

@@ -5,7 +5,14 @@ on:
       - "feature/**"
 
 jobs:
+  # :bitcoincore:jvmTest loads the SQLCipher native, and prebuilt natives are not in git.
+  sqlcipher-native:
+    uses: ./.github/workflows/sqlcipher-natives.yml
+    with:
+      linux_only: true
+
   build:
+    needs: sqlcipher-native
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +23,12 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: gradle
+
+      - name: Restore the SQLCipher native
+        uses: actions/download-artifact@v4
+        with:
+          name: sqlcipher-native-linux-x64
+          path: sqlcipher-driver/prebuilt/natives/linux-x64
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
