@@ -204,11 +204,7 @@ internal class LitecoinMwebEngine(
             refreshJob = coroutineScope.launch {
                 stateMutex.withLock {
                     val client = daemonClient?.takeIf { started } ?: return@withLock
-                    val status = MwebDaemonErrorMapper.mapSuspend {
-                        client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
-                    }
-                    utxoSynchronizer.refresh(client)
-                    applyStatus(status)
+                    utxoSynchronizer.refresh(client, recoverFailure = true)
                 }
             }
         }

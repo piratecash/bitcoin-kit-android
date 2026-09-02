@@ -23,6 +23,7 @@ import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonConfig
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebCreateResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.CoroutineDispatcher
@@ -44,6 +45,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.coroutines.CoroutineContext
 import java.io.Closeable
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeoutException
 
@@ -56,7 +59,14 @@ class LitecoinMwebEngineLifecycleTest {
     private val walletIds = mutableListOf<String>()
     private val engines = mutableListOf<LitecoinMwebEngine>()
     private val publicPegInSenders = mutableListOf<MwebPublicPegInSender>()
-    private val ioDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+    private val uncaughtErrors = CopyOnWriteArrayList<Throwable>()
+    private val ioDispatcher = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "mweb-lifecycle-test").apply {
+            uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { _, error ->
+                if (error !is CancellationException) uncaughtErrors.add(error)
+            }
+        }
+    }.asCoroutineDispatcher()
     private val dispatcherProvider = CoroutineMwebDispatcherProvider(io = ioDispatcher, callback = ImmediateDispatcher)
     private val transactionSerializer = LitecoinTransactionSerializer()
 
@@ -68,6 +78,7 @@ class LitecoinMwebEngineLifecycleTest {
             LitecoinMwebEngine.clear(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
         }
         ioDispatcher.close()
+        assertTrue("Unexpected uncaught coroutine errors: $uncaughtErrors", uncaughtErrors.isEmpty())
     }
 
     @Test
@@ -298,6 +309,114 @@ class LitecoinMwebEngineLifecycleTest {
         waitUntil(timeoutMillis = 2_500) { daemonClient.utxoFromHeights.size == 2 }
 
         assertEquals(listOf(2_257_920, 2_297_120), daemonClient.utxoFromHeights)
+        assertEquals(1, daemonClient.startCount)
+        assertEquals(0, daemonClient.stopCount)
+    }
+
+    @Test
+    fun utxoStream_reconnectSubscriptionFails_restartsDaemonAndRecovers() {
+        val recoveredStatus = MwebDaemonStatus(MwebSyncState(20, 19, 18), nativeVersion = "recovered")
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.status = recoveredStatus
+        daemonClient.failNextUtxoSubscription(IllegalStateException("daemon stopped"))
+        daemonClient.emitUtxoError(IllegalStateException("stream failed"))
+        waitUntil(timeoutMillis = 5_000) {
+            daemonClient.startCount == 2 && daemonClient.utxoFromHeights.size == 3
+        }
+
+        assertEquals(1, daemonClient.stopCount)
+        assertEquals(recoveredStatus.syncState, engine.syncState)
+        assertTrue(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
+    }
+
+    @Test
+    fun refresh_utxoSubscriptionFails_restartsDaemonAndRecovers() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.failNextUtxoSubscription(IllegalStateException("daemon stopped"))
+        engine.refresh()
+        waitUntil(timeoutMillis = 5_000) {
+            daemonClient.startCount == 2 && daemonClient.utxoFromHeights.size == 3
+        }
+
+        assertEquals(1, daemonClient.stopCount)
+        assertTrue(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
+    }
+
+    @Test
+    fun refresh_statusFails_restartsDaemonAndRecovers() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.failNextStatus(IllegalStateException("daemon stopped"))
+        engine.refresh()
+        waitUntil(timeoutMillis = 5_000) {
+            daemonClient.startCount == 2 && daemonClient.utxoFromHeights.size == 2
+        }
+
+        assertEquals(1, daemonClient.stopCount)
+        assertTrue(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
+    }
+
+    @Test
+    fun utxoStream_recoveryStopFails_retriesAndRecovers() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.failNextUtxoSubscription(IllegalStateException("daemon stopped"))
+        daemonClient.failNextStop(IllegalStateException("stop failed"))
+        daemonClient.emitUtxoError(IllegalStateException("stream failed"))
+        waitUntil(timeoutMillis = 10_000) {
+            daemonClient.startCount == 2 && daemonClient.utxoFromHeights.size == 3
+        }
+
+        assertEquals(2, daemonClient.stopCount)
+        assertTrue(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
+    }
+
+    @Test
+    fun utxoStream_recoveryStartNativeUnavailable_stopsClientWithoutRetry() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.failNextUtxoSubscription(IllegalStateException("daemon stopped"))
+        daemonClient.failNextStart(TimeoutException("status timeout"))
+        daemonClient.emitUtxoError(IllegalStateException("stream failed"))
+        waitUntil(timeoutMillis = 5_000) { daemonClient.stopCount == 2 }
+
+        assertEquals(2, daemonClient.startCount)
+        assertEquals(2, daemonClient.utxoFromHeights.size)
+        assertFalse(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
+    }
+
+    @Test
+    fun utxoStream_stopBeforePendingRecovery_doesNotRestartDaemon() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.failNextUtxoSubscription(IllegalStateException("daemon stopped"))
+        daemonClient.emitUtxoError(IllegalStateException("stream failed"))
+        waitUntil(timeoutMillis = 2_500) { daemonClient.utxoFromHeights.size == 2 }
+        engine.stop()
+        Thread.sleep(2_200)
+
+        assertEquals(1, daemonClient.startCount)
+        assertFalse(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
     }
 
     @Test
@@ -575,11 +694,47 @@ class LitecoinMwebEngineLifecycleTest {
 
         engine.start()
         daemonClient.emitUtxoError(UnsatisfiedLinkError("missing native library"))
-        waitUntil { daemonClient.closedUtxoStreams == 1 }
+        waitUntil { daemonClient.stopCount == 1 }
 
+        assertEquals(1, daemonClient.closedUtxoStreams)
+        assertFalse(daemonClient.running)
         assertThrows(MwebError.SyncFailure::class.java) {
             engine.sendInfo(MwebSendRequest.MwebToMweb(mwebDestination(), 50, 1), publicOptions())
         }
+    }
+
+    @Test
+    fun utxoStream_nativeErrorAndStopNativeUnavailable_stopsWithoutRetry() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient)
+
+        engine.start()
+        daemonClient.failNextStop(TimeoutException("stop timeout"))
+        daemonClient.emitUtxoError(UnsatisfiedLinkError("missing native library"))
+        waitUntil { daemonClient.stopCount == 1 }
+        Thread.sleep(2_200)
+
+        assertEquals(1, daemonClient.startCount)
+        assertEquals(1, daemonClient.stopCount)
+        assertEquals(1, daemonClient.closedUtxoStreams)
+        assertThrows(MwebError.SyncFailure::class.java) {
+            engine.sendInfo(MwebSendRequest.MwebToMweb(mwebDestination(), 50, 1), publicOptions())
+        }
+        assertTrue(uncaughtErrors.isEmpty())
+    }
+
+    @Test
+    fun statusPoll_nativeUnavailable_stopsDaemonAndStream() {
+        val daemonClient = FakeDaemonClient()
+        val engine = engineWith(daemonClient, statusPollIntervalMillis = 10)
+
+        engine.start()
+        daemonClient.failNextStatus(TimeoutException("status timeout"))
+        waitUntil { daemonClient.stopCount == 1 }
+
+        assertEquals(1, daemonClient.closedUtxoStreams)
+        assertFalse(daemonClient.running)
+        assertTrue(uncaughtErrors.isEmpty())
     }
 
     @Test
@@ -1834,18 +1989,33 @@ class LitecoinMwebEngineLifecycleTest {
         private var utxoHandler: ((MwebUtxo) -> Unit)? = null
         private var utxoErrorHandler: ((Throwable) -> Unit)? = null
         private var utxoCompleteHandler: (() -> Unit)? = null
+        private val startErrors = ConcurrentLinkedQueue<Throwable>()
+        private val stopErrors = ConcurrentLinkedQueue<Throwable>()
+        private val statusErrors = ConcurrentLinkedQueue<Throwable>()
+        private val utxoSubscriptionErrors = ConcurrentLinkedQueue<Throwable>()
+        @Volatile
+        var running = false
+            private set
 
         override fun start(statusTimeoutMillis: Long): MwebDaemonStatus {
             startCount += 1
             startError?.let { throw it }
+            startErrors.poll()?.let { error ->
+                running = true
+                throw error
+            }
+            running = true
             return status
         }
 
         override fun stop() {
             stopCount += 1
+            stopErrors.poll()?.let { throw it }
+            running = false
         }
 
         override fun status(statusTimeoutMillis: Long): MwebDaemonStatus {
+            statusErrors.poll()?.let { throw it }
             return if (streamCompleted) completeStatus ?: status else status
         }
 
@@ -1873,6 +2043,7 @@ class LitecoinMwebEngineLifecycleTest {
             onError: (Throwable) -> Unit,
         ): Closeable {
             utxoFromHeights.add(fromHeight)
+            utxoSubscriptionErrors.poll()?.let { throw it }
             utxoHandler = onUtxo
             utxoErrorHandler = onError
             utxoCompleteHandler = onComplete
@@ -1903,6 +2074,22 @@ class LitecoinMwebEngineLifecycleTest {
         fun emitUtxoErrorAndComplete(error: Throwable) {
             utxoErrorHandler?.invoke(error)
             utxoCompleteHandler?.invoke()
+        }
+
+        fun failNextStart(error: Throwable) {
+            startErrors.add(error)
+        }
+
+        fun failNextStop(error: Throwable) {
+            stopErrors.add(error)
+        }
+
+        fun failNextStatus(error: Throwable) {
+            statusErrors.add(error)
+        }
+
+        fun failNextUtxoSubscription(error: Throwable) {
+            utxoSubscriptionErrors.add(error)
         }
 
         override fun spent(outputIds: List<String>): List<String> {
