@@ -3,6 +3,7 @@ package io.horizontalsystems.dashkit.instantsend
 import io.horizontalsystems.bitcoincore.core.IHasher
 import io.horizontalsystems.dashkit.DashKitErrors
 import io.horizontalsystems.dashkit.IDashStorage
+import io.horizontalsystems.dashlib.BLS
 
 class TransactionLockVoteValidator(private val storage: IDashStorage, private val hasher: IHasher, private val bls: BLS) {
 

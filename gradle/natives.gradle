@@ -1,0 +1,379 @@
+import javax.inject.Inject
+import org.gradle.api.file.ArchiveOperations
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.api.publish.maven.tasks.AbstractPublishToMaven
+import org.gradle.process.ExecOperations
+
+import java.nio.file.Files
+import java.security.MessageDigest
+
+// Shared wiring for the modules that ship prebuilt native binaries. The binaries are not in
+// git: they are attached to every v* tag and downloaded into <module>/prebuilt by fetchNatives.
+//
+// A module sets these in ext before `apply from:`:
+//   nativesAssetPrefix   - asset name prefix, and the module's key inside SOURCE.sha256
+//   nativesFileNames     - target -> binary file name
+//   nativesExpectedFiles - every file that must exist under prebuilt/natives, natives-relative
+//   nativesAttestedPaths - repository paths the binaries are attested against
+
+// Project.exec and Task.project are both removed in a coming Gradle; inject the services.
+interface NativesOps {
+    @Inject ExecOperations getExecOps()
+
+    @Inject FileSystemOperations getFs()
+
+    @Inject ArchiveOperations getArchives()
+}
+
+static def nativesHostTag() {
+    def os = System.getProperty('os.name').toLowerCase()
+    def arch = System.getProperty('os.arch').toLowerCase()
+    def osTag = os.contains('mac') || os.contains('darwin') ? 'macos'
+            : os.contains('win') ? 'windows'
+            : os.contains('linux') ? 'linux' : os
+    def archTag = arch in ['aarch64', 'arm64'] ? 'arm64'
+            : arch in ['x86_64', 'amd64'] ? 'x64' : arch
+    // Plain String, not GString: a GString key never matches in a map of plain keys.
+    "$osTag-$archTag".toString()
+}
+
+static String sha256(byte[] bytes) {
+    MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString()
+}
+
+static String nothingToAttest() {
+    'cannot attest the natives: a git checkout of the repository is required'
+}
+
+// A missing git binary never starts a process, so it has no exit code; -1 stands for that
+// and the caller classifies it exactly like an unusable repository.
+static Map runGit(ExecOperations execOps, File rootDir, List<String> args) {
+    def out = new ByteArrayOutputStream()
+    try {
+        def result = execOps.exec {
+            commandLine(['git'] + args)
+            workingDir = rootDir
+            standardOutput = out
+            errorOutput = new ByteArrayOutputStream()
+            ignoreExitValue = true
+        }
+        return [exitValue: result.exitValue, output: out.toString('UTF-8')]
+    } catch (Exception ignored) {
+        return [exitValue: -1, output: '']
+    }
+}
+
+static String computeSourceHash(ExecOperations execOps, File rootDir, List<String> paths) {
+    def diff = runGit(execOps, rootDir, ['diff', '--quiet', 'HEAD', '--'] + paths)
+    if (diff.exitValue == 1) {
+        throw new GradleException("cannot attest the natives: commit or revert your changes in ${paths.join(', ')}")
+    }
+    if (diff.exitValue != 0) {
+        throw new GradleException(nothingToAttest())
+    }
+    def index = runGit(execOps, rootDir, ['ls-files', '-s', '-z', '--'] + paths)
+    if (index.exitValue != 0) {
+        throw new GradleException(nothingToAttest())
+    }
+    // Index entries, not working-tree bytes: a blob hash is computed from normalized content,
+    // so a Windows checkout with core.autocrlf yields the same hash as the job that wrote it.
+    def entries = index.output.split('\u0000')
+            .findAll { !it.isEmpty() }
+            .toSorted { it.substring(it.indexOf('\t') + 1) }
+    sha256(entries.collect { it + '\n' }.join('').getBytes('UTF-8'))
+}
+
+static String relativeUnixPath(File base, File file) {
+    base.toPath().relativize(file.toPath()).toString().replace(File.separator, '/')
+}
+
+static void verifyNativesSet(File nativesDir, List<String> expected) {
+    def present = [] as Set
+    if (nativesDir.isDirectory()) {
+        nativesDir.eachFileRecurse { if (it.file) present << relativeUnixPath(nativesDir, it) }
+    }
+    def missing = expected.findAll { !present.contains(it) }
+    if (missing) {
+        throw new GradleException("natives are incomplete: $missing missing under $nativesDir; run fetchNatives")
+    }
+    def unexpected = present.findAll { !expected.contains(it) }
+    if (unexpected) {
+        throw new GradleException("unexpected files under $nativesDir: $unexpected; only the shipped set belongs there")
+    }
+}
+
+static byte[] downloadAsset(String url) {
+    def connection = URI.create(url).toURL().openConnection()
+    connection.connectTimeout = 30_000
+    connection.readTimeout = 120_000
+    connection.setRequestProperty('User-Agent', 'bitcoin-kit-android')
+    connection.inputStream.withStream { it.bytes }
+}
+
+// A missing asset is an answer, not a failure: the tag walk asks every candidate this way.
+// Anything else (503, timeout) still throws, so a network blip cannot masquerade as absence.
+static byte[] downloadAssetIfPresent(String url) {
+    try {
+        return downloadAsset(url)
+    } catch (FileNotFoundException ignored) {
+        return null
+    }
+}
+
+static Map<String, String> parseSha256Manifest(byte[] bytes, String name) {
+    def parsed = [:]
+    new String(bytes, 'UTF-8').split('\r?\n').findAll { !it.trim().isEmpty() }.eachWithIndex { line, i ->
+        def matcher = line =~ /^([0-9a-f]{64})[ \t]+\*?(.+)$/
+        if (!matcher.matches()) {
+            throw new GradleException("$name is unreadable at line ${i + 1}: expected '<64 hex>  <path>'")
+        }
+        parsed[matcher.group(2).trim()] = matcher.group(1)
+    }
+    parsed
+}
+
+static String readSourceHash(File manifest, String key) {
+    def prefix = key + '  '
+    def line = manifest.getText('UTF-8').split('\r?\n').find { it.startsWith(prefix) }
+    if (line == null || !(line.substring(prefix.length()).trim() ==~ /[0-9a-f]{64}/)) {
+        throw new GradleException("$manifest is unreadable: no '$key  <64 hex>' line")
+    }
+    line.substring(prefix.length()).trim()
+}
+
+static void writeFetchedManifest(File nativesDir, File manifest, List<String> paths) {
+    manifest.setText(paths.toSorted().collect { "${sha256(new File(nativesDir, it).bytes)}  $it\n" }.join(''), 'UTF-8')
+}
+
+static List<String> listVersionTags(ExecOperations execOps, File rootDir, int limit) {
+    def result = runGit(execOps, rootDir, ['tag', '--list', 'v*', '--sort=-v:refname'])
+    if (result.exitValue != 0) {
+        return []
+    }
+    result.output.readLines().collect { it.trim() }.findAll { !it.isEmpty() }.take(limit)
+}
+
+ext.nativeHostTag = nativesHostTag()
+ext.nativesSha256 = { File file -> sha256(file.bytes) }
+
+def assetPrefix = ext.nativesAssetPrefix.toString()
+def fileNames = ext.nativesFileNames as Map<String, String>
+def expectedFiles = (ext.nativesExpectedFiles as List<String>).asImmutable()
+def attestedPaths = (ext.nativesAttestedPaths as List<String>).asImmutable()
+
+def prebuiltDir = file('prebuilt')
+def nativesDir = new File(prebuiltDir, 'natives')
+def sourceManifest = new File(prebuiltDir, 'SOURCE.sha256')
+def fetchedManifest = new File(prebuiltDir, 'FETCHED.sha256')
+def releaseManifestName = 'natives.sha256'
+def assetBaseUrl = 'https://github.com/piratecash/bitcoin-kit-android/releases/download'
+
+// Replacement, not addition: a stray natives/ left in src/main/resources of somebody's working
+// copy would otherwise reach the jar at the same path as the downloaded set, past every check.
+sourceSets.main.resources.srcDirs = ['prebuilt']
+// fetchNatives and buildNative write into prebuilt/, the resource source dir: without this,
+// Gradle is free to copy the still-empty directory before either of them has run.
+tasks.named('processResources') {
+    exclude 'SOURCE.sha256', 'FETCHED.sha256'
+    mustRunAfter tasks.matching { it.name == 'fetchNatives' || it.name == 'buildNative' }
+}
+
+def rawVersion = (findProperty('nativesVersion') ?: System.getenv('JITPACK_VERSION') ?: System.getenv('VERSION'))?.toString()?.trim()
+def explicitVersion = rawVersion ?: null
+
+tasks.register('fetchNatives') {
+    group = 'build'
+    description = "Downloads the $assetPrefix natives attached to a v* tag into prebuilt/"
+
+    def ops = objects.newInstance(NativesOps)
+    def repoRoot = rootDir
+    def stagingRoot = layout.buildDirectory.dir('natives-fetch').get().asFile
+    def archiveNames = fileNames.keySet().collect { "$assetPrefix-${it}.tar.gz".toString() }
+
+    doLast {
+        def tag = explicitVersion
+        byte[] manifestBytes
+        if (tag != null) {
+            manifestBytes = downloadAssetIfPresent("$assetBaseUrl/$tag/$releaseManifestName")
+            if (manifestBytes == null) {
+                throw new GradleException("tag '$tag' has no attached natives yet. The version was given " +
+                        'explicitly, so no other tag is substituted: a jar must never be built against another ' +
+                        "tag's binaries. Wait for the release workflow of '$tag', drop -PnativesVersion to fall " +
+                        'back to the newest tag that has them, or build your own with buildNative')
+            }
+        } else {
+            def candidates = listVersionTags(ops.execOps, repoRoot, 10)
+            if (candidates.isEmpty()) {
+                throw new GradleException('no v* tags found: this is not a git checkout, or the tags were not ' +
+                        'fetched. Pass -PnativesVersion <tag>, or build your own natives with buildNative')
+            }
+            def skipped = []
+            for (candidate in candidates) {
+                manifestBytes = downloadAssetIfPresent("$assetBaseUrl/$candidate/$releaseManifestName")
+                if (manifestBytes != null) {
+                    tag = candidate
+                    break
+                }
+                skipped << candidate
+            }
+            if (tag == null) {
+                throw new GradleException("none of the last ${candidates.size()} v* tags has attached natives " +
+                        "(${candidates.join(', ')}). Pass -PnativesVersion <tag with natives>, or build your own " +
+                        'with buildNative')
+            }
+            logger.lifecycle(skipped.isEmpty()
+                    ? "natives: using tag $tag"
+                    : "natives: using tag $tag; newer tags without attached natives: ${skipped.join(', ')}")
+        }
+
+        def manifest = parseSha256Manifest(manifestBytes, "$releaseManifestName of $tag")
+        def wanted = archiveNames + ['SOURCE.sha256']
+        def uncovered = wanted.findAll { !manifest.containsKey(it) }
+        if (uncovered) {
+            throw new GradleException("$releaseManifestName of $tag does not cover $uncovered")
+        }
+
+        Files.createDirectories(stagingRoot.toPath())
+        // Unique per invocation so two concurrent gradle runs cannot unpack over each other, and
+        // under build/ rather than prebuilt/ because prebuilt/ is the module's resource root.
+        def staging = Files.createTempDirectory(stagingRoot.toPath(), 'fetch').toFile()
+        try {
+            def downloads = new File(staging, 'downloads')
+            Files.createDirectories(downloads.toPath())
+            wanted.each { name ->
+                def bytes = downloadAsset("$assetBaseUrl/$tag/$name")
+                def actual = sha256(bytes)
+                if (actual != manifest[name]) {
+                    throw new GradleException("$name of $tag failed its sha256 check: expected ${manifest[name]}, got $actual")
+                }
+                new File(downloads, name).bytes = bytes
+            }
+            archiveNames.each { name ->
+                ops.fs.copy {
+                    from ops.archives.tarTree(ops.archives.gzip(new File(downloads, name)))
+                    into staging
+                }
+            }
+            def unpacked = new File(staging, 'natives')
+            verifyNativesSet(unpacked, expectedFiles)
+
+            // The tree is untouched until the last archive is unpacked, so an unreadable archive
+            // can neither wipe the local set nor leave it half replaced. Delete plus copy, the two
+            // operations buildNative already uses: unlike Files.move they survive a non-empty
+            // target and do not care whether build/ and prebuilt/ share a FileStore.
+            ops.fs.delete { delete nativesDir }
+            ops.fs.copy { from unpacked; into nativesDir }
+            ops.fs.copy { from new File(downloads, 'SOURCE.sha256'); into prebuiltDir }
+        } finally {
+            ops.fs.delete { delete staging }
+        }
+
+        writeFetchedManifest(nativesDir, fetchedManifest, expectedFiles)
+
+        // A warning, not a failure: whoever is editing the C sources must still be able to
+        // download the other platforms and rebuild their own.
+        try {
+            if (computeSourceHash(ops.execOps, repoRoot, attestedPaths) != readSourceHash(sourceManifest, assetPrefix)) {
+                logger.warn("natives: the $assetPrefix sources in this tree differ from the ones the downloaded " +
+                        'binaries were built from; rebuild your platform with buildNative')
+            }
+        } catch (GradleException e) {
+            logger.warn("natives: source attestation skipped: ${e.message}")
+        }
+    }
+}
+
+tasks.register('checkNativesComplete') {
+    group = 'verification'
+    description = "Fails unless the complete $assetPrefix native set is present and matches its manifests"
+
+    def ops = objects.newInstance(NativesOps)
+    def repoRoot = rootDir
+
+    doLast {
+        verifyNativesSet(nativesDir, expectedFiles)
+
+        // Written by both routes that bring in foreign binaries - fetchNatives locally and
+        // before_install on JitPack - so the byte check also runs on the publishing route.
+        // Absent for whoever built everything with buildNative: there is nothing to compare against.
+        if (fetchedManifest.isFile()) {
+            def recorded = parseSha256Manifest(fetchedManifest.bytes, fetchedManifest.toString())
+            expectedFiles.each { path ->
+                if (recorded[path] == null) {
+                    throw new GradleException("$fetchedManifest does not cover $path")
+                }
+                if (recorded[path] != sha256(new File(nativesDir, path).bytes)) {
+                    throw new GradleException("$path changed after it was fetched; run fetchNatives again")
+                }
+            }
+        }
+
+        if (sourceManifest.isFile()) {
+            def attested = readSourceHash(sourceManifest, assetPrefix)
+            String actual
+            try {
+                actual = computeSourceHash(ops.execOps, repoRoot, attestedPaths)
+            } catch (GradleException e) {
+                logger.warn("natives: source attestation skipped: ${e.message}")
+                return
+            }
+            if (actual != attested) {
+                throw new GradleException("the $assetPrefix sources changed since these binaries were built; " +
+                        'rebuild them with the natives workflow')
+            }
+        }
+    }
+}
+
+tasks.withType(AbstractPublishToMaven).configureEach { dependsOn 'checkNativesComplete' }
+
+tasks.register('writeSourceHash') {
+    group = 'build'
+    description = "Writes the $assetPrefix source attestation line for the release workflow"
+
+    def ops = objects.newInstance(NativesOps)
+    def repoRoot = rootDir
+    def output = layout.buildDirectory.file('natives/source-hash.txt')
+
+    doLast {
+        def target = output.get().asFile
+        Files.createDirectories(target.parentFile.toPath())
+        target.setText("$assetPrefix  ${computeSourceHash(ops.execOps, repoRoot, attestedPaths)}\n", 'UTF-8')
+    }
+}
+
+def hostBinary = new File(nativesDir, "${ext.nativeHostTag}/${fileNames[ext.nativeHostTag]}")
+
+tasks.named('test') {
+    if (!hostBinary.isFile()) {
+        // No resolvable version means no download is possible at all (a tarball checkout has no
+        // tags), and then building the host binary is the only way left - today's behaviour.
+        def downloadable = explicitVersion != null ||
+                !listVersionTags(objects.newInstance(NativesOps).execOps, rootDir, 1).isEmpty()
+        dependsOn downloadable ? 'fetchNatives' : 'buildNative'
+    }
+}
+
+def buildTarget = (findProperty('nativeTarget') ?: ext.nativeHostTag).toString()
+
+// This script is applied before the module registers buildNative, and task actions run in the
+// order they were added - registered any earlier, the refresh would hash the outgoing binary.
+afterEvaluate {
+    tasks.matching { it.name == 'buildNative' }.configureEach {
+        // A local build lands on top of a download, never the other way round, so
+        // `gradlew buildNative test` in one invocation tests the binary it just built.
+        mustRunAfter 'fetchNatives'
+
+        doLast {
+            if (fetchedManifest.isFile()) {
+                def recorded = parseSha256Manifest(fetchedManifest.bytes, fetchedManifest.toString())
+                // Every file of the rebuilt target, not just the binary: sqlcipher also writes a
+                // .sha256 sidecar, and updating one line would leave the manifest inconsistent.
+                expectedFiles.findAll { it.startsWith("$buildTarget/") }.each {
+                    recorded[it] = sha256(new File(nativesDir, it).bytes)
+                }
+                fetchedManifest.setText(recorded.keySet().toSorted().collect { "${recorded[it]}  $it\n" }.join(''), 'UTF-8')
+            }
+        }
+    }
+}

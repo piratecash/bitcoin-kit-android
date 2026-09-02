@@ -1,12 +1,13 @@
 package io.horizontalsystems.bitcoincore.storage.migrations
 
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 
 object Migration_26_27 : Migration(26, 27) {
-    override fun migrate(db: SupportSQLiteDatabase) {
+    override fun migrate(connection: SQLiteConnection) {
         // Create new OrphanBlock table without height, stale, partial columns
-        db.execSQL(
+        connection.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `OrphanBlock_new` (
                 `block_version` INTEGER NOT NULL,
@@ -22,7 +23,7 @@ object Migration_26_27 : Migration(26, 27) {
         )
 
         // Copy data from old table to new table (excluding dropped columns)
-        db.execSQL(
+        connection.execSQL(
             """
             INSERT INTO OrphanBlock_new (
                 block_version, previousBlockHash, merkleRoot,
@@ -38,7 +39,7 @@ object Migration_26_27 : Migration(26, 27) {
         )
 
         // Drop old table and rename new table
-        db.execSQL("DROP TABLE OrphanBlock")
-        db.execSQL("ALTER TABLE OrphanBlock_new RENAME TO OrphanBlock")
+        connection.execSQL("DROP TABLE OrphanBlock")
+        connection.execSQL("ALTER TABLE OrphanBlock_new RENAME TO OrphanBlock")
     }
 }

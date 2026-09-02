@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.apisync.blockchair
 
+import co.touchlab.kermit.Logger
 import com.eclipsesource.json.Json
 import com.eclipsesource.json.JsonObject
 import com.eclipsesource.json.JsonValue
@@ -9,18 +10,21 @@ import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.managers.ApiManager
 import io.horizontalsystems.bitcoincore.managers.ApiManagerException
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
+private val log = Logger.withTag("BlockchairApi")
+
 class BlockchairApi(
     private val chainId: String,
+    private val networkErrorListener: NetworkErrorListenerHolder? = null
 ): Api {
-    private val apiManager = ApiManager("https://api.blocksdecoded.com/v1/blockchair")
+    private val apiManager = ApiManager("https://api.blocksdecoded.com/v1/blockchair", networkErrorListener)
     private val limit = 10000
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
@@ -91,7 +95,7 @@ class BlockchairApi(
     }
 
     override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
-        val apiManager = ApiManager("https://api.blockchair.com")
+        val apiManager = ApiManager("https://api.blockchair.com", networkErrorListener)
         val url = "$chainId/push/transaction"
 
         val body = JsonObject().apply {
@@ -144,10 +148,10 @@ class BlockchairApi(
                 )
             }
         } catch (http404Exception: ApiManagerException.Http404Exception) {
-            Timber.d("Blockchair API: 404 for addresses ${addresses.joinToString(", ")}")
+            log.d { "Blockchair API: 404 for addresses ${addresses.joinToString(", ")}" }
             return Pair(emptyList(), emptyList())
         } catch (http500Exception: ApiManagerException.Http500Exception) {
-            Timber.e("Blockchair API: Server error ${http500Exception.responseCode} for addresses ${addresses.joinToString(", ")} - ${http500Exception.message}")
+            log.e { "Blockchair API: Server error ${http500Exception.responseCode} for addresses ${addresses.joinToString(", ")} - ${http500Exception.message}" }
             return Pair(emptyList(), emptyList())
         }
     }
@@ -187,10 +191,10 @@ class BlockchairApi(
             }
             return map
         } catch (http404Exception: ApiManagerException.Http404Exception) {
-            Timber.d("Blockchair API: 404 for block heights ${heights.joinToString(", ")}")
+            log.d { "Blockchair API: 404 for block heights ${heights.joinToString(", ")}" }
             return emptyMap()
         } catch (http500Exception: ApiManagerException.Http500Exception) {
-            Timber.e("Blockchair API: Server error ${http500Exception.responseCode} for block heights ${heights.joinToString(", ")} - ${http500Exception.message}")
+            log.e { "Blockchair API: Server error ${http500Exception.responseCode} for block heights ${heights.joinToString(", ")} - ${http500Exception.message}" }
             return emptyMap()
         }
     }

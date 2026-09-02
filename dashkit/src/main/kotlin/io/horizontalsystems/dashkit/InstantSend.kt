@@ -1,5 +1,6 @@
 package io.horizontalsystems.dashkit
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.IInventoryItemsHandler
@@ -16,8 +17,9 @@ import io.horizontalsystems.dashkit.tasks.RequestInstantSendLocksTask
 import io.horizontalsystems.dashkit.tasks.RequestInstantTransactionsTask
 import io.horizontalsystems.dashkit.tasks.RequestTransactionLockRequestsTask
 import io.horizontalsystems.dashkit.tasks.RequestTransactionLockVotesTask
-import timber.log.Timber
 import java.util.concurrent.Executors
+
+private val log = Logger.withTag("DASH")
 
 class InstantSend(
         private val transactionSyncer: TransactionSyncer,
@@ -118,7 +120,7 @@ class InstantSend(
         // Process transactions that were proactively requested for InstantSend
         if (transactions.isNotEmpty()) {
             val txHashes = transactions.joinToString(", ") { it.header.hash.toReversedHex() }
-            Timber.tag("DASH").d("Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes")
+            log.d { "Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes" }
         }
         transactionSyncer.handleRelayed(transactions)
     }

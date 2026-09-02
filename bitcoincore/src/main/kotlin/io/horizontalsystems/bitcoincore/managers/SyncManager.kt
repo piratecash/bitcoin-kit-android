@@ -46,6 +46,11 @@ class SyncManager(
             it is KitState.NotSynced && it.exception !is BitcoinCore.StateError.NotStarted
         }
 
+    // Not derived from syncState: the initial NotStarted is indistinguishable from a stopped one,
+    // and callbacks arrive on the syncer's own thread.
+    @Volatile
+    private var stopped = false
+
     private var initialBestBlockHeight = bestBlockHeight
     private var currentBestBlockHeight = bestBlockHeight
     private var foundTransactionsCount = 0
@@ -54,6 +59,7 @@ class SyncManager(
     // The peerGroup may be a SharedPeerGroup ref-counted across kits sharing the
     // same wallet/network (BIP44 + BIP84, MWEB, etc.), so stop() must only
     // decrement the count when this manager actually incremented it.
+    @Volatile
     private var peerGroupStarted = false
 
     private fun startSync() {
@@ -79,6 +85,9 @@ class SyncManager(
             peerGroup.start()
             peerGroupStarted = true
         }
+        // stop() may have run between a callback's `stopped` check and this acquisition, in which
+        // case it saw peerGroupStarted == false and skipped teardown — so undo it here instead.
+        if (stopped) stopPeerGroupIfStarted()
     }
 
     private fun stopPeerGroupIfStarted() {
@@ -89,17 +98,23 @@ class SyncManager(
     }
 
     fun start() {
-        if (syncMode is SyncMode.Blockchair) {
-            when (syncState) {
-                is KitState.ApiSyncing,
-                is KitState.Syncing -> return
+        // While stopped nothing is running by definition, so the state guards below are skipped:
+        // a callback that slipped past stop() could have left a stale Syncing/Synced state, and
+        // honouring it would turn the resume after pauseNetwork() into a no-op.
+        if (!stopped) {
+            if (syncMode is SyncMode.Blockchair) {
+                when (syncState) {
+                    is KitState.ApiSyncing,
+                    is KitState.Syncing -> return
 
-                else -> Unit
+                    else -> Unit
+                }
+            } else {
+                if (syncState !is KitState.NotSynced) return
             }
-        } else {
-            if (syncState !is KitState.NotSynced) return
         }
 
+        stopped = false
         pendingTransactionReconciler.start()
 
         if (connectionManager.isConnected) {
@@ -119,6 +134,9 @@ class SyncManager(
         // from any NotSynced state (e.g. user switched wallets before the first
         // sync completed), leaving peer connections and log spam alive in the
         // background.
+        // The flag goes up first so that a syncer callback already past its own cancellation check
+        // is rejected by the guards below instead of resurrecting the sync we are tearing down.
+        stopped = true
         apiSyncer.terminate()
         stopPeerGroupIfStarted()
         pendingTransactionReconciler.stop()
@@ -130,6 +148,10 @@ class SyncManager(
     //
 
     override fun onConnectionChange(isConnected: Boolean) {
+        // Connectivity changes constantly while paused — that is the offline scenario itself — and
+        // the returning network would otherwise restart the whole sync behind pauseNetwork().
+        if (stopped) return
+
         if (isConnected && syncIdle) {
             startSync()
         } else if (!isConnected && (syncState is KitState.Syncing || syncState is KitState.Synced)) {
@@ -142,7 +164,13 @@ class SyncManager(
     // IApiSyncerListener
     //
 
+    // API syncers do blocking, uninterruptible network calls, so their callbacks can arrive after
+    // stop(). Acting on one would move the state out of NotStarted and make the next start() —
+    // the resume after pauseNetwork() — a no-op.
+
     override fun onSyncSuccess() {
+        if (stopped) return
+
         forceAddedBlocksTotal = storage.getApiBlockHashesCount()
 
         if (peerGroup.running) {
@@ -166,10 +194,14 @@ class SyncManager(
     }
 
     override fun onSyncFailed(error: Throwable) {
+        if (stopped) return
+
         syncState = KitState.NotSynced(error)
     }
 
     override fun onTransactionsFound(count: Int) {
+        if (stopped) return
+
         foundTransactionsCount += count
         syncState = KitState.ApiSyncing(foundTransactionsCount)
     }
@@ -179,7 +211,7 @@ class SyncManager(
     //
 
     override fun onCurrentBestBlockHeightUpdate(height: Int, maxBlockHeight: Int) {
-        if (!connectionManager.isConnected) return
+        if (stopped || !connectionManager.isConnected) return
 
         currentBestBlockHeight = max(currentBestBlockHeight, height)
 
@@ -199,6 +231,8 @@ class SyncManager(
     }
 
     override fun onBlockForceAdded() {
+        if (stopped) return
+
         if (syncMode !is SyncMode.Blockchair) {
             syncState = KitState.Syncing(0.0)
             return
@@ -217,11 +251,15 @@ class SyncManager(
     }
 
     override fun onBlockSyncFinished() {
+        if (stopped) return
+
         syncState = KitState.Synced
         pendingTransactionReconciler.reconcileAsync()
     }
 
     private fun onPendingTransactionBlocksFound() {
+        if (stopped) return
+
         forceAddedBlocksTotal = storage.getApiBlockHashesCount()
         if (connectionManager.isConnected && syncState is KitState.Synced) {
             startSync()

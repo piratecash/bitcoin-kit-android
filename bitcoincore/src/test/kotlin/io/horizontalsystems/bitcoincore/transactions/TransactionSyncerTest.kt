@@ -1,6 +1,6 @@
 package io.horizontalsystems.bitcoincore.transactions
 
-import com.nhaarman.mockitokotlin2.*
+import org.mockito.kotlin.*
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
 import io.horizontalsystems.bitcoincore.managers.PublicKeyManager

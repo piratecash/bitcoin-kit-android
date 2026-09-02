@@ -1,7 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
+import io.horizontalsystems.bitcoincore.storage.deleteDatabaseFiles
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import java.io.File
 
@@ -10,18 +9,22 @@ internal object MwebFiles {
         return "Litecoin-MWEB-${networkType.name}-$walletId"
     }
 
-    fun daemonDataDir(context: Context, networkType: LitecoinKit.NetworkType, walletId: String): File {
-        return File(context.noBackupFilesDir, databaseName(networkType, walletId))
+    fun daemonDataDir(mwebDataDir: String, networkType: LitecoinKit.NetworkType, walletId: String): File {
+        return File(mwebDataDir, databaseName(networkType, walletId))
     }
 
-    fun publicSendDaemonDataDir(context: Context, networkType: LitecoinKit.NetworkType, walletId: String): File {
-        return File(context.noBackupFilesDir, "${databaseName(networkType, walletId)}-PublicSend")
+    fun publicSendDaemonDataDir(mwebDataDir: String, networkType: LitecoinKit.NetworkType, walletId: String): File {
+        return File(mwebDataDir, "${databaseName(networkType, walletId)}-PublicSend")
     }
 
-    fun clear(context: Context, networkType: LitecoinKit.NetworkType, walletId: String) {
+    fun clear(dataDir: String, mwebDataDir: String, networkType: LitecoinKit.NetworkType, walletId: String) {
         MwebPublicPegInSender.checkCanClear(walletId, networkType)
-        SQLiteDatabase.deleteDatabase(context.getDatabasePath(databaseName(networkType, walletId)))
-        daemonDataDir(context, networkType, walletId).deleteRecursively()
-        publicSendDaemonDataDir(context, networkType, walletId).deleteRecursively()
+        deleteDatabaseFiles(dataDir, databaseName(networkType, walletId))
+        clearDaemonData(mwebDataDir, networkType, walletId)
+    }
+
+    fun clearDaemonData(mwebDataDir: String, networkType: LitecoinKit.NetworkType, walletId: String) {
+        daemonDataDir(mwebDataDir, networkType, walletId).deleteRecursively()
+        publicSendDaemonDataDir(mwebDataDir, networkType, walletId).deleteRecursively()
     }
 }

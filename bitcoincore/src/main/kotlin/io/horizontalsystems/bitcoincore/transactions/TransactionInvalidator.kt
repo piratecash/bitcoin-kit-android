@@ -7,13 +7,17 @@ import io.horizontalsystems.bitcoincore.models.InvalidTransaction
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 
+fun interface OutgoingTransactionInvalidator {
+    fun invalidate(transaction: Transaction)
+}
+
 class TransactionInvalidator(
         private val storage: IStorage,
         private val transactionInfoConverter: ITransactionInfoConverter,
         private val listener: IBlockchainDataListener
-) {
+) : OutgoingTransactionInvalidator {
 
-    fun invalidate(transaction: Transaction) {
+    override fun invalidate(transaction: Transaction) {
         val currentTransaction = storage.getTransaction(transaction.hash)
             ?.takeIf { it.blockHash == null }
             ?: return

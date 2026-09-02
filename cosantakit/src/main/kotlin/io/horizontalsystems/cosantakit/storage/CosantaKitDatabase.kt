@@ -1,8 +1,9 @@
 package io.horizontalsystems.cosantakit.storage
 
-import android.content.Context
 import androidx.room.*
+import io.horizontalsystems.bitcoincore.core.databaseBuilder
 import io.horizontalsystems.cosantakit.models.*
+import java.io.File
 
 @Database(version = 7, exportSchema = false, entities = [
     Masternode::class,
@@ -20,21 +21,18 @@ abstract class CosantaKitDatabase : RoomDatabase() {
     abstract val instantTransactionInputDao: InstantTransactionInputDao
 
     companion object {
-
-        @Volatile
-        private var instance: CosantaKitDatabase? = null
-
-        @Synchronized
-        fun getInstance(context: Context, dbName: String): CosantaKitDatabase {
-            return instance ?: buildDatabase(context, dbName).also { instance = it }
+        fun getInstance(dataDir: String, dbName: String): CosantaKitDatabase {
+            return buildDatabase(dataDir, dbName)
         }
 
-        private fun buildDatabase(context: Context, dbName: String): CosantaKitDatabase {
-            return Room.databaseBuilder(context, CosantaKitDatabase::class.java, dbName)
-                    .fallbackToDestructiveMigration()
-                    .allowMainThreadQueries()
-                    .build()
+        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): CosantaKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey)
         }
+
+        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): CosantaKitDatabase =
+            databaseBuilder<CosantaKitDatabase>(File(dataDir, dbName).path, databaseKey, allowMainThreadQueries = true)
+                .fallbackToDestructiveMigration(dropAllTables = false)
+                .build()
     }
 }
 

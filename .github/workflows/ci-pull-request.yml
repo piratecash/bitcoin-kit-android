@@ -5,17 +5,30 @@ on:
       - "feature/**"
 
 jobs:
+  # :bitcoincore:jvmTest loads the SQLCipher native, and prebuilt natives are not in git.
+  sqlcipher-native:
+    uses: ./.github/workflows/sqlcipher-natives.yml
+    with:
+      linux_only: true
+
   build:
+    needs: sqlcipher-native
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: set up JDK 17
+      - name: set up JDK 21
         uses: actions/setup-java@v3
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
           cache: gradle
+
+      - name: Restore the SQLCipher native
+        uses: actions/download-artifact@v4
+        with:
+          name: sqlcipher-native-linux-x64
+          path: sqlcipher-driver/prebuilt/natives/linux-x64
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -25,4 +38,27 @@ jobs:
           echo "words=\"\"" > local.properties
 
       - name: Run Unit tests
-        run: ./gradlew :bitcoincore:testDebugUnitTest :litecoinkit:testDebugUnitTest
+        # :dashlib and :dashkit own the BLS fail-closed tests, so they must run here; their
+        # test graphs contain no externalNativeBuild task, so the runner needs no NDK.
+        run: >-
+          ./gradlew
+          :bitcoincore:testDebugUnitTest
+          :litecoinkit:testDebugUnitTest
+          :bitcoinkit:testDebugUnitTest
+          :dogecoinkit:testDebugUnitTest
+          :bitcoincashkit:testDebugUnitTest
+          :ecashkit:testDebugUnitTest
+          :hodler:testDebugUnitTest
+          :dashlib:testDebugUnitTest
+          :dashkit:testDebugUnitTest
+          :bitcoincore:jvmTest
+          :litecoinkit:jvmTest
+          :bitcoinkit:jvmTest
+          :dogecoinkit:jvmTest
+          :bitcoincashkit:jvmTest
+          :ecashkit:jvmTest
+          :hodler:jvmTest
+          :dashlib:jvmTest
+          :dashkit:jvmTest
+          :cosantakit:jvmTest
+          :piratecashkit:jvmTest

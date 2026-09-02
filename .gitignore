@@ -9,3 +9,5 @@
 /.claude/
 /CLAUDE.md
 /.githooks/*
+/docs/plans/*
+/.kotlin/

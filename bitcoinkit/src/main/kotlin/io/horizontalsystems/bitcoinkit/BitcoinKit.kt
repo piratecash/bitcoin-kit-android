@@ -1,7 +1,5 @@
 package io.horizontalsystems.bitcoinkit
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
@@ -16,6 +14,7 @@ import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairTransaction
 import io.horizontalsystems.bitcoincore.blocks.BlockMedianTimeHelper
 import io.horizontalsystems.bitcoincore.blocks.validators.*
 import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.purpose
 import io.horizontalsystems.bitcoincore.managers.*
 import io.horizontalsystems.bitcoincore.models.Address
@@ -30,6 +29,8 @@ import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroupHolder
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
+import io.horizontalsystems.bitcoincore.storage.DatabaseEncryption
+import io.horizontalsystems.bitcoincore.storage.DatabaseMigrationResult
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
 import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
@@ -74,7 +75,9 @@ class BitcoinKit : AbstractKit {
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context.
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param words A list of words of type String.
      * @param passphrase The passphrase to the wallet.
      * @param walletId an arbitrary ID of type String.
@@ -86,7 +89,8 @@ class BitcoinKit : AbstractKit {
      * @param purpose which BIP algorithm to use for wallet generation. Default is BIP44.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         words: List<String>,
         passphrase: String,
         walletId: String,
@@ -97,12 +101,33 @@ class BitcoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null
-    ) : this(context, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder = sharedPeerGroupHolder)
+    ) : this(dataDir, connectionManager, Mnemonic().toSeed(words, passphrase), walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder = sharedPeerGroupHolder)
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        words: List<String>,
+        passphrase: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+    ) : this(
+        dataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase), walletId, networkType,
+        peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder,
+    )
 
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context.
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param seed A byte array that contains the seed.
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet
@@ -113,7 +138,8 @@ class BitcoinKit : AbstractKit {
      * @param purpose which BIP algorithm to use for wallet generation. Default is BIP44.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         seed: ByteArray,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -123,11 +149,31 @@ class BitcoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null
-    ) : this(context, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder)
+    ) : this(dataDir, connectionManager, HDExtendedKey(seed, purpose), purpose, walletId, networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder)
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        seed: ByteArray,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+    ) : this(
+        dataDir, connectionManager, HDExtendedKey(seed, purpose), purpose, null, walletId, networkType,
+        peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder, databaseKey,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param extendedKey HDExtendedKey that contains HDKey and version
      * @param purpose Used for HDKey derivation
      * @param walletId an arbitrary ID of type String.
@@ -140,7 +186,8 @@ class BitcoinKit : AbstractKit {
      * @param iSchnorrInputSigner Optional Schnorr input signer for transaction signing.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey,
         purpose: Purpose,
         walletId: String,
@@ -152,30 +199,38 @@ class BitcoinKit : AbstractKit {
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null
-    ) {
-        network = network(networkType)
+    ) : this(
+        dataDir, connectionManager, extendedKey, purpose, null, walletId, networkType, peerSize,
+        minConnectedPeerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
+        sharedPeerGroupHolder, null,
+    )
 
-        bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = extendedKey,
-            watchAddressPublicKey = null,
-            networkType = networkType,
-            network = network,
-            walletId = walletId,
-            syncMode = syncMode,
-            purpose = purpose,
-            peerSize = peerSize,
-            minConnectedPeerSize = minConnectedPeerSize,
-            confirmationsThreshold = confirmationsThreshold,
-            iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner,
-            sharedPeerGroupHolder = sharedPeerGroupHolder
-        )
-    }
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey,
+        purpose: Purpose,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+    ) : this(
+        dataDir, connectionManager, extendedKey, purpose, null, walletId, networkType, peerSize,
+        minConnectedPeerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
+        sharedPeerGroupHolder, databaseKey,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param watchAddress address for watching in read-only mode
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
@@ -186,7 +241,8 @@ class BitcoinKit : AbstractKit {
      */
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         watchAddress: String,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -195,18 +251,58 @@ class BitcoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+    ) : this(
+        dataDir, connectionManager, null, null, watchAddress, walletId, networkType, peerSize,
+        minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder, null,
+    )
+
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        watchAddress: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        minConnectedPeerSize: Int = defaultMinConnectedPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+    ) : this(
+        dataDir, connectionManager, null, null, watchAddress, walletId, networkType, peerSize,
+        minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder, databaseKey,
+    )
+
+    private constructor(
+        dataDir: String,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey?,
+        purpose: Purpose?,
+        watchAddress: String?,
+        walletId: String,
+        networkType: NetworkType,
+        peerSize: Int,
+        minConnectedPeerSize: Int,
+        syncMode: SyncMode,
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        sharedPeerGroupHolder: SharedPeerGroupHolder?,
+        databaseKey: ByteArray?,
     ) {
         network = network(networkType)
 
-        val address = parseAddress(watchAddress, network)
-        val watchAddressPublicKey = WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
-        val purpose = address.scriptType.purpose ?: throw IllegalStateException("Not supported scriptType ${address.scriptType}")
+        val address = watchAddress?.let { parseAddress(it, network) }
+        val watchAddressPublicKey = address?.let { WatchAddressPublicKey(it.lockingScriptPayload, it.scriptType) }
+        val resolvedPurpose = purpose ?: address?.scriptType?.purpose
+            ?: throw IllegalStateException("Wallet purpose is unavailable")
 
         bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = null,
+            dataDir = dataDir,
+            connectionManager = connectionManager,
+            extendedKey = extendedKey,
             watchAddressPublicKey = watchAddressPublicKey,
-            purpose = purpose,
+            purpose = resolvedPurpose,
             networkType = networkType,
             network = network,
             walletId = walletId,
@@ -214,14 +310,16 @@ class BitcoinKit : AbstractKit {
             peerSize = peerSize,
             minConnectedPeerSize = minConnectedPeerSize,
             confirmationsThreshold = confirmationsThreshold,
-            iInputSigner = null,
-            iSchnorrInputSigner = null,
-            sharedPeerGroupHolder = sharedPeerGroupHolder
+            iInputSigner = iInputSigner,
+            iSchnorrInputSigner = iSchnorrInputSigner,
+            sharedPeerGroupHolder = sharedPeerGroupHolder,
+            databaseKey = databaseKey,
         )
     }
 
     private fun bitcoinCore(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey?,
         watchAddressPublicKey: WatchAddressPublicKey?,
         purpose: Purpose,
@@ -234,9 +332,15 @@ class BitcoinKit : AbstractKit {
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
-        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        databaseKey: ByteArray? = null,
     ): BitcoinCore {
-        val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
+        sharedPeerGroupHolder?.requireDatabaseKey(databaseKey)
+        val database = CoreDatabase.getInstance(
+            dataDir,
+            getDatabaseName(networkType, walletId, syncMode, purpose),
+            databaseKey,
+        )
         val storage = Storage(database)
 
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
@@ -249,7 +353,7 @@ class BitcoinKit : AbstractKit {
         val hodlerPlugin = hodlerPlugin(storage, syncMode, coreBuilder.addressConverter)
 
         val bitcoinCore = coreBuilder
-            .setContext(context)
+            .setConnectionManager(connectionManager)
             .setExtendedKey(extendedKey)
             .setWatchAddressPublicKey(watchAddressPublicKey)
             .setPurpose(purpose)
@@ -263,6 +367,7 @@ class BitcoinKit : AbstractKit {
             .setStorage(storage)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setHandleAddrMessage(false)
             .setAllowBroadcastFromUnsyncedPeers(true)
@@ -352,20 +457,20 @@ class BitcoinKit : AbstractKit {
         checkpoint: Checkpoint
     ) = when (networkType) {
         NetworkType.MainNet -> {
-            val hsBlockHashFetcher = HsBlockHashFetcher("https://api.blocksdecoded.com/v1/blockchains/bitcoin")
+            val hsBlockHashFetcher = HsBlockHashFetcher("https://api.blocksdecoded.com/v1/blockchains/bitcoin", networkErrorHolder)
             if (syncMode is SyncMode.Blockchair) {
-                val blockchairApi = BlockchairApi(network.blockchairChainId)
+                val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
                 val blockchairBlockHashFetcher = BlockchairBlockHashFetcher(blockchairApi)
                 val blockHashFetcher = BlockHashFetcher(hsBlockHashFetcher, blockchairBlockHashFetcher, checkpoint.block.height)
                 val blockchairProvider = BlockchairTransactionProvider(blockchairApi, blockHashFetcher)
                 blockchairProvider
             } else {
-                BlockchainComApi("https://blockchain.info", hsBlockHashFetcher)
+                BlockchainComApi("https://blockchain.info", hsBlockHashFetcher, networkErrorHolder)
             }
         }
 
         NetworkType.TestNet -> {
-            BCoinApi("https://btc-testnet.blocksdecoded.com/api")
+            BCoinApi("https://btc-testnet.blocksdecoded.com/api", networkErrorHolder)
         }
 
         NetworkType.RegTest -> {
@@ -387,78 +492,101 @@ class BitcoinKit : AbstractKit {
 
         private val sharedGroups = ConcurrentHashMap<String, SharedPeerGroupHolder>()
 
-        @Synchronized
         fun getOrCreateSharedPeerGroup(
-            context: Context,
+            dataDir: String,
+            connectionManager: IConnectionManager,
             walletId: String,
             networkType: NetworkType,
             peerSize: Int = defaultPeerSize
+        ): SharedPeerGroupHolder = getOrCreateSharedPeerGroupInternal(
+            dataDir, null, connectionManager, walletId, networkType, peerSize,
+        )
+
+        fun getOrCreateSharedPeerGroup(
+            dataDir: String,
+            databaseKey: ByteArray,
+            connectionManager: IConnectionManager,
+            walletId: String,
+            networkType: NetworkType,
+            peerSize: Int = defaultPeerSize,
+        ): SharedPeerGroupHolder = getOrCreateSharedPeerGroupInternal(
+            dataDir, databaseKey, connectionManager, walletId, networkType, peerSize,
+        )
+
+        @Synchronized
+        private fun getOrCreateSharedPeerGroupInternal(
+            dataDir: String,
+            databaseKey: ByteArray?,
+            connectionManager: IConnectionManager,
+            walletId: String,
+            networkType: NetworkType,
+            peerSize: Int,
         ): SharedPeerGroupHolder {
-            val key = "bitcoin-${networkType.name}-$walletId"
-            return sharedGroups.getOrPut(key) {
-                val network = network(networkType)
-                val peerManager = PeerManager()
-                peerManager.setAllowBroadcastFromUnsyncedPeers(true)
-                val networkMessageParser = NetworkMessageParser(network.magic)
-                val networkMessageSerializer = NetworkMessageSerializer(network.magic)
-                val bloomFilterManager = BloomFilterManager()
-                val connectionManager = ConnectionManager.getInstance(context)
-
-                val sharedDbName = "Bitcoin-Shared-${networkType.name}-$walletId"
-                val sharedDb = CoreDatabase.getInstance(context, sharedDbName)
-                val sharedStorage = Storage(sharedDb)
-                val peerAddressManager = PeerAddressManager(network, sharedStorage)
-
-                val peerGroup = SharedPeerGroup(
-                    hostManager = peerAddressManager,
-                    network = network,
-                    peerManager = peerManager,
-                    peerSize = peerSize,
-                    networkMessageParser = networkMessageParser,
-                    networkMessageSerializer = networkMessageSerializer,
-                    connectionManager = connectionManager,
-                    localDownloadedBestBlockHeight = 0,
-                    handleAddrMessage = false
-                )
-                peerAddressManager.listener = peerGroup
-
-                val blockHeaderHasher = DoubleSha256Hasher()
-                val transactionSerializer = BaseTransactionSerializer()
-
-                networkMessageParser.add(AddrMessageParser())
-                networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
-                networkMessageParser.add(InvMessageParser())
-                networkMessageParser.add(GetDataMessageParser())
-                networkMessageParser.add(PingMessageParser())
-                networkMessageParser.add(PongMessageParser())
-                networkMessageParser.add(TransactionMessageParser(transactionSerializer))
-                networkMessageParser.add(VerAckMessageParser())
-                networkMessageParser.add(VersionMessageParser())
-                networkMessageParser.add(RejectMessageParser())
-                networkMessageParser.add(GetAddrMessageParser())
-
-                networkMessageSerializer.add(FilterLoadMessageSerializer())
-                networkMessageSerializer.add(GetBlocksMessageSerializer())
-                networkMessageSerializer.add(InvMessageSerializer())
-                networkMessageSerializer.add(GetDataMessageSerializer())
-                networkMessageSerializer.add(MempoolMessageSerializer())
-                networkMessageSerializer.add(PingMessageSerializer())
-                networkMessageSerializer.add(PongMessageSerializer())
-                networkMessageSerializer.add(TransactionMessageSerializer(transactionSerializer))
-                networkMessageSerializer.add(VerAckMessageSerializer())
-                networkMessageSerializer.add(VersionMessageSerializer())
-                networkMessageSerializer.add(GetAddrMessageSerializer())
-
-                SharedPeerGroupHolder(
-                    peerGroup, peerManager, bloomFilterManager,
-                    networkMessageParser, networkMessageSerializer
-                )
+            val key = migrationId(networkType, walletId)
+            sharedGroups[key]?.let { holder ->
+                holder.requireDatabaseKey(databaseKey)
+                return holder
             }
+            val network = network(networkType)
+            val peerManager = PeerManager()
+            peerManager.setAllowBroadcastFromUnsyncedPeers(true)
+            val networkMessageParser = NetworkMessageParser(network.magic)
+            val networkMessageSerializer = NetworkMessageSerializer(network.magic)
+            val bloomFilterManager = BloomFilterManager()
+
+            val sharedDb = CoreDatabase.getInstance(dataDir, sharedDbName(networkType, walletId), databaseKey)
+            val sharedStorage = Storage(sharedDb)
+            val peerAddressManager = PeerAddressManager(network, sharedStorage)
+
+            val peerGroup = SharedPeerGroup(
+                hostManager = peerAddressManager,
+                network = network,
+                peerManager = peerManager,
+                peerSize = peerSize,
+                networkMessageParser = networkMessageParser,
+                networkMessageSerializer = networkMessageSerializer,
+                connectionManager = connectionManager,
+                localDownloadedBestBlockHeight = 0,
+                handleAddrMessage = false
+            )
+            peerAddressManager.listener = peerGroup
+
+            val blockHeaderHasher = DoubleSha256Hasher()
+            val transactionSerializer = BaseTransactionSerializer()
+
+            networkMessageParser.add(AddrMessageParser())
+            networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
+            networkMessageParser.add(InvMessageParser())
+            networkMessageParser.add(GetDataMessageParser())
+            networkMessageParser.add(PingMessageParser())
+            networkMessageParser.add(PongMessageParser())
+            networkMessageParser.add(TransactionMessageParser(transactionSerializer))
+            networkMessageParser.add(VerAckMessageParser())
+            networkMessageParser.add(VersionMessageParser())
+            networkMessageParser.add(RejectMessageParser())
+            networkMessageParser.add(GetAddrMessageParser())
+
+            networkMessageSerializer.add(FilterLoadMessageSerializer())
+            networkMessageSerializer.add(GetBlocksMessageSerializer())
+            networkMessageSerializer.add(InvMessageSerializer())
+            networkMessageSerializer.add(GetDataMessageSerializer())
+            networkMessageSerializer.add(MempoolMessageSerializer())
+            networkMessageSerializer.add(PingMessageSerializer())
+            networkMessageSerializer.add(PongMessageSerializer())
+            networkMessageSerializer.add(TransactionMessageSerializer(transactionSerializer))
+            networkMessageSerializer.add(VerAckMessageSerializer())
+            networkMessageSerializer.add(VersionMessageSerializer())
+            networkMessageSerializer.add(GetAddrMessageSerializer())
+
+            return SharedPeerGroupHolder(
+                peerGroup, peerManager, bloomFilterManager,
+                networkMessageParser, networkMessageSerializer, databaseKey,
+            ).also { sharedGroups[key] = it }
         }
 
         @Synchronized
         fun releaseSharedPeerGroup(walletId: String, networkType: NetworkType) {
-            val key = "bitcoin-${networkType.name}-$walletId"
+            val key = migrationId(networkType, walletId)
             sharedGroups.remove(key)?.peerGroup?.forceStop()
         }
 
@@ -471,29 +599,55 @@ class BitcoinKit : AbstractKit {
          * @return database name
          */
 
-        private fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode, purpose: Purpose): String =
+        internal fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode, purpose: Purpose): String =
             "Bitcoin-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}-${purpose.name}"
+
+        internal fun sharedDbName(networkType: NetworkType, walletId: String): String =
+            "Bitcoin-Shared-${networkType.name}-$walletId"
+
+        internal fun databaseNames(networkType: NetworkType, walletId: String): List<String> = buildList {
+            add(sharedDbName(networkType, walletId))
+            DatabaseEncryption.supportedSyncModes().forEach { syncMode ->
+                Purpose.values().forEach { purpose -> add(getDatabaseName(networkType, walletId, syncMode, purpose)) }
+            }
+        }
+
+        /** Must be called before constructing any kit for this wallet. */
+        suspend fun migrateDatabases(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            databaseKey: ByteArray,
+        ): DatabaseMigrationResult {
+            check(!sharedGroups.containsKey(migrationId(networkType, walletId))) {
+                "Dispose the active BitcoinKit instances before migrating their databases"
+            }
+            return DatabaseEncryption.migrateDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+                databaseKey = databaseKey,
+            )
+        }
 
         /**
          * Clears the database
-         * @param context The context of the BitcoinKit.
+         * @param dataDir Absolute path of the app's `databases` directory
+         *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
          * @param networkType The networkType of the BitcoinKit.
          * @param walletId The string wallet ID of the BitcoinKit.
          */
-        fun clear(context: Context, networkType: NetworkType, walletId: String) {
+        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
             releaseSharedPeerGroup(walletId, networkType)
-            try {
-                val sharedDbName = "Bitcoin-Shared-${networkType.name}-$walletId"
-                SQLiteDatabase.deleteDatabase(context.getDatabasePath(sharedDbName))
-            } catch (_: Exception) { }
-            for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
-                for (purpose in Purpose.values()) try {
-                    SQLiteDatabase.deleteDatabase(context.getDatabasePath(getDatabaseName(networkType, walletId, syncMode, purpose)))
-                } catch (ex: Exception) {
-                    continue
-                }
-            }
+            DatabaseEncryption.clearDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+            )
         }
+
+        private fun migrationId(networkType: NetworkType, walletId: String): String =
+            "bitcoin-${networkType.name}-$walletId"
 
         private fun network(networkType: NetworkType) = when (networkType) {
             NetworkType.MainNet -> MainNet()

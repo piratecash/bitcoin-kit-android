@@ -1,61 +1,28 @@
 package io.horizontalsystems.bitcoincore.managers
 
-import com.eclipsesource.json.JsonObject
-import com.nhaarman.mockitokotlin2.whenever
-import io.horizontalsystems.bitcoincore.RxTestRule
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
-import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.mockito.Mockito.mock
-import org.powermock.api.mockito.PowerMockito
-import org.powermock.core.classloader.annotations.PrepareForTest
-import org.powermock.modules.junit4.PowerMockRunner
-import java.io.FileNotFoundException
-import java.net.URL
-import java.net.URLConnection
 
-/*
-@RunWith(PowerMockRunner::class)
-@PrepareForTest(ApiManager::class, URL::class)
 class ApiManagerTest {
 
-    private val url = mock(URL::class.java)
-    private val urlConnection = mock(URLConnection::class.java)
-
-    private lateinit var apiManager: ApiManager
-
-    @Before
-    fun setup() {
-        RxTestRule.setup()
-
-        PowerMockito
-                .whenNew(URL::class.java)
-                .withAnyArguments()
-                .thenReturn(url)
-
-        whenever(url.openConnection()).thenReturn(urlConnection)
-
-        apiManager = ApiManager("https://ipfs.blocksdecoded.com")
-    }
-
     @Test
-    fun get() {
-        val data = "data"
-        val resp = "{\"field\":\"$data\"}"
+    fun doOkHttpGetAsString_separateManagers_reusesConnection() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setBody("first"))
+        server.enqueue(MockResponse().setBody("second"))
+        server.start()
 
-        whenever(urlConnection.getInputStream()).thenReturn(resp.byteInputStream())
+        try {
+            val host = server.url("/").toString().removeSuffix("/")
 
-        val json = apiManager.get("/file.json")
-        assert(json is JsonObject)
-//        assertEquals(data, json.asObject()["field"].asString())
+            assertEquals("first", ApiManager(host).doOkHttpGetAsString("first"))
+            assertEquals("second", ApiManager(host).doOkHttpGetAsString("second"))
+            assertEquals(0, server.takeRequest().sequenceNumber)
+            assertEquals(1, server.takeRequest().sequenceNumber)
+        } finally {
+            server.shutdown()
+        }
     }
-
-    @Test(expected = FileNotFoundException::class)
-    fun get_Throws() {
-        whenever(urlConnection.getInputStream()).thenThrow(FileNotFoundException())
-        apiManager.get("/file.json")
-    }
-
 }
-*/

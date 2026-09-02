@@ -1,5 +1,6 @@
 package io.horizontalsystems.dashkit.managers
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.blocks.IPeerSyncListener
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
@@ -15,7 +16,6 @@ import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessage
 import io.horizontalsystems.dashkit.tasks.PeerTaskFactory
 import io.horizontalsystems.dashkit.tasks.RequestMasternodeListDiffTask
-import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 class MasternodeListSyncer(
@@ -26,6 +26,7 @@ class MasternodeListSyncer(
     private val storage: IStorage,
     private val logTag: String
 ) : IPeerTaskHandler, IPeerSyncListener, PeerGroup.Listener, AutoCloseable {
+    private val log = Logger.withTag(logTag)
 
     // Track active requests per block hash with associated peers
     private data class ActiveRequest(
@@ -89,7 +90,7 @@ class MasternodeListSyncer(
         val wasWorking = workingPeers.remove(peer)
 
         if (wasWorking) {
-            Timber.tag(logTag).d("Working peer ${peer.host} disconnected, reassigning tasks")
+            log.d { "Working peer ${peer.host} disconnected, reassigning tasks" }
         }
 
         // Find and reassign active requests from this peer
@@ -98,14 +99,16 @@ class MasternodeListSyncer(
         activeRequests.entries.forEach { (key, request) ->
             if (request.peers.remove(peer)) {
                 requestsToReassign.add(request)
-                Timber.tag(logTag)
-                    .d("Removing ${peer.host} from active request ${request.blockHash.toReversedHex()}")
+                log.d {
+                    "Removing ${peer.host} from active request ${request.blockHash.toReversedHex()}"
+                }
 
                 // If no peers left for this request, remove it entirely
                 if (request.peers.isEmpty()) {
                     activeRequestKeysToRemove.add(key)
-                    Timber.tag(logTag)
-                        .d("No peers left for active request ${request.blockHash.toReversedHex()}, removing")
+                    log.d {
+                        "No peers left for active request ${request.blockHash.toReversedHex()}, removing"
+                    }
                 }
             }
         }
@@ -121,8 +124,9 @@ class MasternodeListSyncer(
             }
         }
         if (keysToRemove.isNotEmpty()) {
-            Timber.tag(logTag)
-                .d("Removing ${keysToRemove.size} pending MNLISTDIFF entries after ${peer.host} disconnected")
+            log.d {
+                "Removing ${keysToRemove.size} pending MNLISTDIFF entries after ${peer.host} disconnected"
+            }
             keysToRemove.forEach {
                 pendingMnlistDiffs.remove(it)
                 // Also remove from active requests
@@ -156,8 +160,9 @@ class MasternodeListSyncer(
 
                 // Check if we already have enough peers working on this request
                 if (activeRequest.peers.size >= maxPeersPerRequest) {
-                    Timber.tag(logTag)
-                        .d("MNLISTDIFF for block $blockHashKey already has ${activeRequest.peers.size} peers working, skipping")
+                    log.d {
+                        "MNLISTDIFF for block $blockHashKey already has ${activeRequest.peers.size} peers working, skipping"
+                    }
                     return@execute
                 }
 
@@ -171,7 +176,7 @@ class MasternodeListSyncer(
                     .take(maxPeersPerRequest - activeRequest.peers.size)
 
                 if (availablePeers.isEmpty()) {
-                    Timber.tag(logTag).d("No available peers for MNLISTDIFF request")
+                    log.d { "No available peers for MNLISTDIFF request" }
                     return@execute
                 }
 
@@ -187,8 +192,9 @@ class MasternodeListSyncer(
                     activeRequest.peers.add(peer)
                     workingPeers.add(peer)
 
-                    Timber.tag(logTag)
-                        .d("Assigned MNLISTDIFF request for block $blockHashKey to peer ${peer.host} (${activeRequest.peers.size}/$maxPeersPerRequest)")
+                    log.d {
+                        "Assigned MNLISTDIFF request for block $blockHashKey to peer ${peer.host} (${activeRequest.peers.size}/$maxPeersPerRequest)"
+                    }
                 }
 
                 activeRequest.lastRequestTimestamp = System.currentTimeMillis()
@@ -213,7 +219,7 @@ class MasternodeListSyncer(
         val diffMessage = task.masternodeListDiffMessage
 
         if (diffMessage == null) {
-            Timber.tag(logTag).w("Masternode list diff timed out for ${peer.host}")
+            log.w { "Masternode list diff timed out for ${peer.host}" }
 
             // Remove peer from active request
             val blockHashKey = task.blockHash.toReversedHex()
@@ -244,23 +250,26 @@ class MasternodeListSyncer(
                 request.peers.forEach { otherPeer ->
                     if (otherPeer != peer) {
                         workingPeers.remove(otherPeer)
-                        Timber.tag(logTag)
-                            .d("Cancelled redundant MNLISTDIFF request from ${otherPeer.host} (already received from ${peer.host})")
+                        log.d {
+                            "Cancelled redundant MNLISTDIFF request from ${otherPeer.host} (already received from ${peer.host})"
+                        }
                     }
                 }
             }
 
             pendingMnlistDiffs.remove(blockHashKey)
 
-            Timber.tag(logTag)
-                .d("Successfully processed masternode diff for block $blockHashKey from ${peer.host}")
+            log.d {
+                "Successfully processed masternode diff for block $blockHashKey from ${peer.host}"
+            }
 
             // Assign next sync peer to continue with next block
             assignNextSyncPeer()
         } catch (error: MasternodeListManager.ValidationError.NoMerkleBlockHeader) {
             // Block not loaded - request it and defer processing
-            Timber.tag(logTag)
-                .w("Block $blockHashKey not loaded yet, requesting...")
+            log.w {
+                "Block $blockHashKey not loaded yet, requesting..."
+            }
 
             // Keep in active requests to prevent re-requesting MNLISTDIFF
             // It will be removed when we successfully process or when all peers disconnect
@@ -275,8 +284,9 @@ class MasternodeListSyncer(
                     if (iterator.hasNext()) {
                         val removedPeer = iterator.next()
                         iterator.remove()
-                        Timber.tag(logTag)
-                            .d("Dropping least-recent peer ${removedPeer.host} for pending diff $blockHashKey")
+                        log.d {
+                            "Dropping least-recent peer ${removedPeer.host} for pending diff $blockHashKey"
+                        }
                     } else {
                         break
                     }
@@ -289,22 +299,23 @@ class MasternodeListSyncer(
             // DON'T call assignNextSyncPeer() - we're waiting for block to be downloaded
             // onPeerSynced() will retry pending diffs when block is ready
         } catch (error: MasternodeListManager.ValidationError) {
-            Timber.tag(logTag).w(error, "Invalid masternode list diff from ${peer.host}")
+            log.w(error) { "Invalid masternode list diff from ${peer.host}" }
 
             // Remove this peer from active request but keep others
             activeRequests[blockHashKey]?.peers?.remove(peer)
 
             handlePeerFailure(peer, error)
         } catch (error: QuorumListManager.ValidationError) {
-            Timber.tag(logTag).w(error, "Invalid quorum diff from ${peer.host}")
+            log.w(error) { "Invalid quorum diff from ${peer.host}" }
 
             // Remove this peer from active request but keep others
             activeRequests[blockHashKey]?.peers?.remove(peer)
 
             handlePeerFailure(peer, error)
         } catch (error: Exception) {
-            Timber.tag(logTag)
-                .e(error, "Unexpected error while processing masternode diff from ${peer.host}")
+            log.e(error) {
+                "Unexpected error while processing masternode diff from ${peer.host}"
+            }
 
             // Remove this peer from active request but keep others
             activeRequests[blockHashKey]?.peers?.remove(peer)
@@ -325,8 +336,9 @@ class MasternodeListSyncer(
             when {
                 // Case 1: Block complete (has merkleRoot) - trigger immediate retry
                 existingBlock != null && existingBlock.merkleRoot.isNotEmpty() -> {
-                    Timber.tag(logTag)
-                        .d("Block ${blockHash.toReversedHex()} ready, retrying pending MNLISTDIFF now")
+                    log.d {
+                        "Block ${blockHash.toReversedHex()} ready, retrying pending MNLISTDIFF now"
+                    }
                     processPendingMnlistDiffs()
                 }
 
@@ -349,25 +361,28 @@ class MasternodeListSyncer(
                                 )
                             )
                         )
-                        Timber.tag(logTag)
-                            .d("Added incomplete block to download queue: ${blockHash.toReversedHex()}")
+                        log.d {
+                            "Added incomplete block to download queue: ${blockHash.toReversedHex()}"
+                        }
                     } else {
-                        Timber.tag(logTag)
-                            .d("Block already in queue, waiting for download: ${blockHash.toReversedHex()}")
+                        log.d {
+                            "Block already in queue, waiting for download: ${blockHash.toReversedHex()}"
+                        }
                     }
                 }
 
                 // Case 3: Block doesn't exist at all - it will be added through normal sync
                 else -> {
-                    Timber.tag(logTag)
-                        .d("Block ${blockHash.toReversedHex()} not found, will be synced normally")
+                    log.d {
+                        "Block ${blockHash.toReversedHex()} not found, will be synced normally"
+                    }
                 }
             }
 
             // Block will be downloaded by GetMerkleBlocksTask
             // onPeerSynced() will retry pending MNLISTDIFF when ready
         } catch (e: Exception) {
-            Timber.tag(logTag).e(e, "Failed to ensure block in download queue")
+            log.e(e) { "Failed to ensure block in download queue" }
         }
     }
 
@@ -380,7 +395,7 @@ class MasternodeListSyncer(
             return
         }
 
-        Timber.tag(logTag).d("Processing ${pendingMnlistDiffs.size} pending masternode diffs...")
+        log.d { "Processing ${pendingMnlistDiffs.size} pending masternode diffs..." }
 
         val entriesSnapshot = pendingMnlistDiffs.entries.toList()
         val keysToRemove = mutableListOf<String>()
@@ -395,16 +410,19 @@ class MasternodeListSyncer(
                 // Remove from active requests since we're done with this block
                 activeRequests.remove(blockHashKey)
 
-                Timber.tag(logTag)
-                    .d("Successfully processed pending masternode diff for block $blockHashKey")
+                log.d {
+                    "Successfully processed pending masternode diff for block $blockHashKey"
+                }
             } catch (error: MasternodeListManager.ValidationError.NoMerkleBlockHeader) {
                 // Block still not loaded - keep in queue
-                Timber.tag(logTag)
-                    .d("Block $blockHashKey still not loaded for pending masternode diff")
+                log.d {
+                    "Block $blockHashKey still not loaded for pending masternode diff"
+                }
                 val candidatePeer = pending.peers.firstOrNull { it.connected }
                 if (candidatePeer == null) {
-                    Timber.tag(logTag)
-                        .d("No connected peers available for pending diff $blockHashKey")
+                    log.d {
+                        "No connected peers available for pending diff $blockHashKey"
+                    }
                     if (pending.peers.isEmpty()) {
                         keysToRemove.add(blockHashKey)
                         // Remove from active requests since we have no peers to help
@@ -420,8 +438,9 @@ class MasternodeListSyncer(
                 // Remove from active requests since we're giving up on this block
                 activeRequests.remove(blockHashKey)
 
-                Timber.tag(logTag)
-                    .e(error, "Failed to process pending masternode diff for block $blockHashKey")
+                log.e(error) {
+                    "Failed to process pending masternode diff for block $blockHashKey"
+                }
             }
         }
 
@@ -435,15 +454,17 @@ class MasternodeListSyncer(
 
     private fun requestMissingBlockFromPeer(pending: PendingDiff, peer: Peer) {
         if (!peer.connected) {
-            Timber.tag(logTag)
-                .d("Peer ${peer.host} not connected, skipping block request for diff ${pending.diff.blockHash.toReversedHex()}")
+            log.d {
+                "Peer ${peer.host} not connected, skipping block request for diff ${pending.diff.blockHash.toReversedHex()}"
+            }
             return
         }
         val now = System.currentTimeMillis()
         val shouldEnforceRateLimit = pending.peers.size >= maxPeersPerRequest
         if (shouldEnforceRateLimit && now - pending.lastRequestTimestamp < minRequestIntervalMs) {
-            Timber.tag(logTag)
-                .d("Recently requested block ${pending.diff.blockHash.toReversedHex()}, waiting before retry")
+            log.d {
+                "Recently requested block ${pending.diff.blockHash.toReversedHex()}, waiting before retry"
+            }
             return
         }
         pending.lastRequestTimestamp = now

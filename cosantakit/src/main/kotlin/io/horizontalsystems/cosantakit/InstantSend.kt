@@ -1,5 +1,6 @@
 package io.horizontalsystems.cosantakit
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.IInventoryItemsHandler
@@ -16,8 +17,9 @@ import io.horizontalsystems.cosantakit.tasks.RequestInstantSendLocksTask
 import io.horizontalsystems.cosantakit.tasks.RequestInstantTransactionsTask
 import io.horizontalsystems.cosantakit.tasks.RequestTransactionLockRequestsTask
 import io.horizontalsystems.cosantakit.tasks.RequestTransactionLockVotesTask
-import timber.log.Timber
 import java.util.concurrent.Executors
+
+private val log = Logger.withTag("COSANTA")
 
 class InstantSend(
         private val transactionSyncer: TransactionSyncer,
@@ -118,7 +120,7 @@ class InstantSend(
         // Process transactions that were proactively requested for InstantSend
         if (transactions.isNotEmpty()) {
             val txHashes = transactions.joinToString(", ") { it.header.hash.toReversedHex() }
-            Timber.tag("COSANTA").d("Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes")
+            log.d { "Received ${transactions.size} proactively requested InstantSend transaction(s): $txHashes" }
         }
         transactionSyncer.handleRelayed(transactions)
     }
