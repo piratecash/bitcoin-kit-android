@@ -103,6 +103,8 @@ dependencies {
     add("kspJvm", libs.room.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.mockito.kotlin)
     testImplementation(libs.robolectric)
     testImplementation(libs.secp256k1.jni.jvm)
     testImplementation(libs.core)

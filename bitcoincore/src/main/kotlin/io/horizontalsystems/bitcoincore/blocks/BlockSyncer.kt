@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.blocks
 
+import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.core.IBlockSyncListener
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
 import io.horizontalsystems.bitcoincore.core.IStorage
@@ -10,6 +11,7 @@ import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
+import java.util.concurrent.ConcurrentHashMap
 import java.util.logging.Logger
 
 class BlockSyncer(
@@ -25,6 +27,8 @@ class BlockSyncer(
     var listener: IBlockSyncListener? = null
 
     private val sqliteMaxVariableNumber = 999
+
+    private val missingAncestors = ConcurrentHashMap<Int, BlockHash>()
 
     val localDownloadedBestBlockHeight: Int
         get() = storage.lastBlock()?.height ?: 0
@@ -45,6 +49,8 @@ class BlockSyncer(
 
         clearPartialBlocks()
         clearBlockHashes() // we need to clear block hashes when "syncPeer" is disconnected
+        // Pending recovery belongs to the discarded download context; the failing block re-queues it
+        missingAncestors.clear()
 
         blockchain.handleFork()
     }
@@ -67,7 +73,7 @@ class BlockSyncer(
     }
 
     fun getBlockHashes(limit: Int): List<BlockHash> {
-        return storage.getBlockHashesSortedBySequenceAndHeight(limit)
+        return missingAncestors.values.toList() + storage.getBlockHashesSortedBySequenceAndHeight(limit)
     }
 
     fun getOrphanParents(): List<BlockHash> {
@@ -125,10 +131,12 @@ class BlockSyncer(
     }
 
     private fun handleMerkleBlock(merkleBlock: MerkleBlock, maxBlockHeight: Int, recursionDepth: Int) {
-        val block = when (val height = merkleBlock.height) {
-            null -> blockchain.connect(merkleBlock)
+        val height = merkleBlock.height
+        val block = when (height) {
+            null -> connectOrQueueMissingAncestor(merkleBlock)
             else -> blockchain.forceAdd(merkleBlock, height)
         }
+        val recoveredAncestor = height != null && consumeMissingAncestor(merkleBlock.blockHash, height)
 
         try {
             transactionProcessor.processReceived(
@@ -146,13 +154,62 @@ class BlockSyncer(
             storage.deleteBlockHash(block.headerHash)
         }
 
-        if (merkleBlock.height != null) {
-            listener?.onBlockForceAdded()
+        if (height != null) {
+            // A recovered ancestor is a backfill below the tip, not sync progress
+            if (!recoveredAncestor) {
+                listener?.onBlockForceAdded()
+            }
         } else {
             listener?.onCurrentBestBlockHeightUpdate(block.height, maxBlockHeight)
         }
 
         checkParentsForOrphans(block, maxBlockHeight, recursionDepth)
+    }
+
+    private fun connectOrQueueMissingAncestor(merkleBlock: MerkleBlock): Block {
+        try {
+            return blockchain.connect(merkleBlock)
+        } catch (e: BlockValidatorException.NoCheckpointBlock) {
+            val missingHeight = e.height ?: throw e
+            if (!enqueueMissingAncestor(merkleBlock, missingHeight)) throw e
+
+            throw BlockValidatorException.AncestorDownloadQueued(missingHeight)
+        }
+    }
+
+    /**
+     * Walks down the stored ancestors of the failing block by header hash and queues the first
+     * broken link. Following hashes rather than heights is what keeps the recovered block on the
+     * chain being validated: a retained fork row at the same height is never an ancestor.
+     * @return true when a download was queued.
+     */
+    private fun enqueueMissingAncestor(merkleBlock: MerkleBlock, missingHeight: Int): Boolean {
+        var cursor = storage.getBlock(merkleBlock.header.previousBlockHeaderHash) ?: return false
+
+        while (cursor.height > missingHeight) {
+            if (cursor.previousBlockHash.isEmpty()) {
+                // API placeholder knows no parent: repair it first, the descent resumes next round
+                return queueAncestor(BlockHash(cursor.headerHash, cursor.height))
+            }
+
+            cursor = storage.getBlock(cursor.previousBlockHash)
+                ?: return queueAncestor(BlockHash(cursor.previousBlockHash, cursor.height - 1))
+        }
+
+        return false
+    }
+
+    private fun queueAncestor(target: BlockHash): Boolean {
+        missingAncestors[target.height] = target
+        return true
+    }
+
+    private fun consumeMissingAncestor(headerHash: ByteArray, height: Int): Boolean {
+        val pending = missingAncestors[height] ?: return false
+        if (!pending.headerHash.contentEquals(headerHash)) return false
+
+        missingAncestors.remove(height)
+        return true
     }
 
     /***

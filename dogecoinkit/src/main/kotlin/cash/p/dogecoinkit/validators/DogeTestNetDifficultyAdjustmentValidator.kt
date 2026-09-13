@@ -37,9 +37,8 @@ class DogeTestNetDifficultyAdjustmentValidator(
     }
 
     override fun validate(block: Block, previousBlock: Block) {
-        val storedPrev = checkNotNull(validatorHelper.getPrevious(block, 1)) {
-            BlockValidatorException.NoCheckpointBlock()
-        }
+        val storedPrev = validatorHelper.getPrevious(block, 1)
+            ?: throw BlockValidatorException.NoCheckpointBlock(block.height - 1)
         val newDiffAlgo = storedPrev.height + 1 >= DIFF_CHANGE_TARGET
         var retargetInterval = INTERVAL
         var retargetTimespan = TARGET_TIMESPAN

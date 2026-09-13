@@ -183,6 +183,8 @@ class GetMerkleBlocksTask(
             log.d {
                 "GetMerkleBlocksTask: Orphan merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}"
             }
+        } catch (e: BlockValidatorException.AncestorDownloadQueued) {
+            log.d { "GetMerkleBlocksTask: missing ancestor at height ${e.height} queued; keeping peer" }
         } catch (e: Exception) {
             log.e(e) {
                 "Failed to process merkle block: hash=${merkleBlock.blockHash.contentToString()}, height=${merkleBlock.height}"

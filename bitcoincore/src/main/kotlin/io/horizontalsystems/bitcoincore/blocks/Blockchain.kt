@@ -24,45 +24,7 @@ class Blockchain(
         if (blockInDB != null) {
             log.d { "Block already exists in DB: hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}" }
 
-            val header = merkleBlock.header
-            var needsUpdate = false
-
-            if (blockInDB.merkleRoot.isEmpty()) {
-                blockInDB.merkleRoot = header.merkleRoot.copyOf()
-                needsUpdate = true
-            }
-
-            if (blockInDB.version != header.version) {
-                blockInDB.version = header.version
-                needsUpdate = true
-            }
-
-            if (!blockInDB.previousBlockHash.contentEquals(header.previousBlockHeaderHash)) {
-                blockInDB.previousBlockHash = header.previousBlockHeaderHash.copyOf()
-                needsUpdate = true
-            }
-
-            if (blockInDB.timestamp != header.timestamp) {
-                blockInDB.timestamp = header.timestamp
-                needsUpdate = true
-            }
-
-            if (blockInDB.bits != header.bits) {
-                blockInDB.bits = header.bits
-                needsUpdate = true
-            }
-
-            if (blockInDB.nonce != header.nonce) {
-                blockInDB.nonce = header.nonce
-                needsUpdate = true
-            }
-
-            if (needsUpdate) {
-                storage.updateBlock(blockInDB)
-                log.d { "Block data refreshed from merkle block: hash=${merkleBlock.blockHash.toHexString()}" }
-            }
-
-            return blockInDB
+            return refreshFromHeader(blockInDB, merkleBlock.header)
         }
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
@@ -99,10 +61,51 @@ class Blockchain(
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
             log.d { "Block already exists in DB (forceAdd): hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}" }
-            return blockInDB
+            return refreshFromHeader(blockInDB, merkleBlock.header)
         }
         log.d { "Force adding block: hash=${merkleBlock.blockHash.toHexString()}, height=$height" }
         return addBlockAndNotify(Block(merkleBlock.header, height))
+    }
+
+    private fun refreshFromHeader(blockInDB: Block, header: BlockHeader): Block {
+        var needsUpdate = false
+
+        if (blockInDB.merkleRoot.isEmpty()) {
+            blockInDB.merkleRoot = header.merkleRoot.copyOf()
+            needsUpdate = true
+        }
+
+        if (blockInDB.version != header.version) {
+            blockInDB.version = header.version
+            needsUpdate = true
+        }
+
+        if (!blockInDB.previousBlockHash.contentEquals(header.previousBlockHeaderHash)) {
+            blockInDB.previousBlockHash = header.previousBlockHeaderHash.copyOf()
+            needsUpdate = true
+        }
+
+        if (blockInDB.timestamp != header.timestamp) {
+            blockInDB.timestamp = header.timestamp
+            needsUpdate = true
+        }
+
+        if (blockInDB.bits != header.bits) {
+            blockInDB.bits = header.bits
+            needsUpdate = true
+        }
+
+        if (blockInDB.nonce != header.nonce) {
+            blockInDB.nonce = header.nonce
+            needsUpdate = true
+        }
+
+        if (needsUpdate) {
+            storage.updateBlock(blockInDB)
+            log.d { "Block data refreshed from header: hash=${blockInDB.headerHash.toHexString()}" }
+        }
+
+        return blockInDB
     }
 
     fun insertLastBlock(header: BlockHeader, height: Int) {
