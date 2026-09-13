@@ -36,7 +36,7 @@ class BlockchairApi(
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
         val transactionItemsMap = mutableMapOf<String, TransactionItem>()
 
-        for (chunk in addresses.chunked(100)) {
+        for (chunk in addresses.chunkedForRequest()) {
             val (addressItems, transactions) = fetchTransactions(chunk, stopHeight)
 
             for (transaction in transactions) {
@@ -112,8 +112,8 @@ class BlockchairApi(
         receivedTransactionItems: List<Transaction> = emptyList()
     ): Pair<List<AddressItem>, List<Transaction>> {
         try {
-            val params = "?transaction_details=true&limit=$limit&offset=${receivedTransactionItems.size}"
-            val url = "$chainId/dashboards/addresses/${addresses.joinToString(separator = ",")}"
+            val params = transactionsParams(receivedTransactionItems.size)
+            val url = addressesUrl(addresses)
             val response = apiManager.doOkHttpGet(url + params).asObject()
             val data = response.get("data").asObject()
 
@@ -193,6 +193,39 @@ class BlockchairApi(
         }
     }
 
+    private fun addressesUrl(addresses: List<String>) =
+        "$chainId/dashboards/addresses/${addresses.joinToString(separator = ",")}"
+
+    private fun transactionsParams(offset: Int) =
+        "?transaction_details=true&limit=$limit&offset=$offset"
+
+    // An oversized HTTP/2 header is answered with GOAWAY, which drops the connection shared by every
+    // coin, so a batch is bounded by request-target length and not by address count alone. The widest
+    // offset is reserved because fetchTransactions re-requests the same chunk as it pages.
+    private fun List<String>.chunkedForRequest(): List<List<String>> {
+        val maxAddressesLength = MAX_REQUEST_TARGET_LENGTH -
+            HOST_BASE_PATH_RESERVE -
+            addressesUrl(emptyList()).length -
+            transactionsParams(Int.MAX_VALUE).length
+
+        val chunks = mutableListOf<MutableList<String>>()
+        var length = 0
+
+        for (address in this) {
+            val chunk = chunks.lastOrNull()
+            val grown = length + address.length + 1 // the comma separator
+            if (chunk == null || chunk.size == MAX_ADDRESSES_PER_REQUEST || grown > maxAddressesLength) {
+                chunks += mutableListOf(address)
+                length = address.length
+            } else {
+                chunk += address
+                length = grown
+            }
+        }
+
+        return chunks
+    }
+
     private data class Transaction(
         val hash: String,
         val blockId: Int?,
@@ -202,5 +235,12 @@ class BlockchairApi(
 
     private companion object {
         const val DEFAULT_HOST = "https://api.blocksdecoded.com/v1/blockchair"
+        const val MAX_ADDRESSES_PER_REQUEST = 100
+
+        // Measured against the production host: a 5255 B target is served, 5444 B is refused.
+        const val MAX_REQUEST_TARGET_LENGTH = 4000
+
+        // ApiManager prepends the host's own base path, which is not visible from here.
+        const val HOST_BASE_PATH_RESERVE = 128
     }
 }
