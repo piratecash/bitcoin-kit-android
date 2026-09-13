@@ -1,7 +1,7 @@
 //package io.horizontalsystems.bitcoincore.managers
 //
-//import com.nhaarman.mockitokotlin2.mock
-//import com.nhaarman.mockitokotlin2.whenever
+//import org.mockito.kotlin.mock
+//import org.mockito.kotlin.whenever
 //import io.horizontalsystems.bitcoincore.core.IInitialSyncApi
 //import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 //import io.horizontalsystems.bitcoincore.models.PublicKey

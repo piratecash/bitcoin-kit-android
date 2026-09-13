@@ -1,7 +1,8 @@
 package io.horizontalsystems.bitcoincore.storage.migrations
 
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 
 /**
  * This migration clears all blocks, orphan blocks, and block hashes from the database
@@ -15,35 +16,35 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * 5. Clean up related transaction data that depends on blocks
  */
 object Migration_27_28 : Migration(27, 28) {
-    override fun migrate(db: SupportSQLiteDatabase) {
+    override fun migrate(connection: SQLiteConnection) {
         // Clear all blocks (both stale and non-stale)
-        db.execSQL("DELETE FROM Block")
+        connection.execSQL("DELETE FROM Block")
 
         // Clear all orphan blocks
-        db.execSQL("DELETE FROM OrphanBlock")
+        connection.execSQL("DELETE FROM OrphanBlock")
 
         // Clear all block hashes
-        db.execSQL("DELETE FROM BlockHash")
+        connection.execSQL("DELETE FROM BlockHash")
 
         // Clear block hash public keys
-        db.execSQL("DELETE FROM BlockHashPublicKey")
+        connection.execSQL("DELETE FROM BlockHashPublicKey")
 
         // Reset blockchain state to force re-synchronization
-        db.execSQL("UPDATE BlockchainState SET initialRestored = 0")
+        connection.execSQL("UPDATE BlockchainState SET initialRestored = 0")
 
         // Clean up transactions that are associated with blocks
-        db.execSQL("DELETE FROM `Transaction`")
+        connection.execSQL("DELETE FROM `Transaction`")
 
         // Clean up transaction inputs for deleted transactions
-        db.execSQL("DELETE FROM `TransactionInput`")
+        connection.execSQL("DELETE FROM `TransactionInput`")
 
         // Clean up transaction outputs for deleted transactions
-        db.execSQL("DELETE FROM `TransactionOutput`")
+        connection.execSQL("DELETE FROM `TransactionOutput`")
 
         // Clean up transaction metadata for deleted transactions
-        db.execSQL("DELETE FROM `TransactionMetadata`")
+        connection.execSQL("DELETE FROM `TransactionMetadata`")
 
         // Clean up invalid transactions that might be associated with blocks
-        db.execSQL("DELETE FROM `InvalidTransaction`")
+        connection.execSQL("DELETE FROM `InvalidTransaction`")
     }
 }

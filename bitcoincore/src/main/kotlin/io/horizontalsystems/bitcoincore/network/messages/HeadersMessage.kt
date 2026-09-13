@@ -16,9 +16,11 @@ class HeadersMessageParser(private val hasher: IHasher) : IMessageParser {
     override val command: String = "headers"
 
     override fun parseMessage(input: BitcoinInputMarkable): IMessage {
-        val count = input.readVarInt().toInt()
+        val count = input.readVarInt()
+        // Bound the allocation: the count is attacker-supplied and the protocol caps a reply at 2000
+        require(count in 0..MAX_HEADERS) { "Headers message declares $count headers" }
 
-        val headers = Array(count) {
+        val headers = Array(count.toInt()) {
             val version = input.readInt()
             val prevHash = input.readBytes(32)
             val merkleHash = input.readBytes(32)
@@ -40,6 +42,10 @@ class HeadersMessageParser(private val hasher: IHasher) : IMessageParser {
         }
 
         return HeadersMessage(headers)
+    }
+
+    companion object {
+        const val MAX_HEADERS = 2000L
     }
 }
 
