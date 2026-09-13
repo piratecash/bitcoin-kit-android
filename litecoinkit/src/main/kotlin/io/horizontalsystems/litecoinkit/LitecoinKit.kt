@@ -1111,6 +1111,8 @@ class LitecoinKit : AbstractKit {
             networkMessageParser.add(VersionMessageParser())
             networkMessageParser.add(RejectMessageParser())
             networkMessageParser.add(GetAddrMessageParser())
+            // The ancestor header walk runs on shared kits too
+            networkMessageParser.add(HeadersMessageParser(blockHeaderHasher))
 
             networkMessageSerializer.add(FilterLoadMessageSerializer())
             networkMessageSerializer.add(GetBlocksMessageSerializer())
@@ -1123,6 +1125,7 @@ class LitecoinKit : AbstractKit {
             networkMessageSerializer.add(VerAckMessageSerializer())
             networkMessageSerializer.add(VersionMessageSerializer())
             networkMessageSerializer.add(GetAddrMessageSerializer())
+            networkMessageSerializer.add(GetHeadersMessageSerializer())
 
             return SharedPeerGroupHolder(
                 peerGroup, peerManager, bloomFilterManager,

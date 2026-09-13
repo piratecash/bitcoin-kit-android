@@ -56,6 +56,49 @@ class BlockchainForceAddRefreshTest {
         assertEquals(BITS, block.bits)
     }
 
+    @Test
+    fun `insertVerifiedAncestor - stored row is an api placeholder - is repaired from the proven header`() {
+        val stored = placeholderBlock()
+        whenever(storage.getBlock(HEADER_HASH)).thenReturn(stored)
+
+        val block = blockchain.insertVerifiedAncestor(merkleBlock().header, HEIGHT)
+
+        verify(storage).updateBlock(stored)
+        assertEquals(BITS, block.bits)
+        assertArrayEquals(PREVIOUS_HASH, block.previousBlockHash)
+    }
+
+    @Test
+    fun `insertVerifiedAncestor - no stored row - inserts the header at the proven height`() {
+        whenever(storage.getBlock(HEADER_HASH)).thenReturn(null)
+
+        val block = blockchain.insertVerifiedAncestor(merkleBlock().header, HEIGHT)
+
+        verify(storage).addBlock(block)
+        assertEquals(HEIGHT, block.height)
+    }
+
+    @Test
+    fun `insertLastBlock - a complete row already exists - is never overwritten by an api placeholder`() {
+        val stored = completeBlock()
+        whenever(storage.getBlock(HEADER_HASH)).thenReturn(stored)
+
+        blockchain.insertLastBlock(placeholderHeader(), HEIGHT)
+
+        verify(storage, never()).updateBlock(any())
+        verify(storage, never()).addBlock(any())
+    }
+
+    private fun placeholderHeader() = BlockHeader(
+        version = 0,
+        previousBlockHeaderHash = byteArrayOf(),
+        merkleRoot = byteArrayOf(),
+        timestamp = TIMESTAMP,
+        bits = -1,
+        nonce = 0,
+        hash = HEADER_HASH
+    )
+
     private fun placeholderBlock() = Block().apply {
         height = HEIGHT
         headerHash = HEADER_HASH

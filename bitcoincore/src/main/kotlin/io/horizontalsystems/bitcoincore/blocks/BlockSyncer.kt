@@ -10,8 +10,11 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
+import io.horizontalsystems.bitcoincore.storage.BlockHeader
 import io.horizontalsystems.bitcoincore.transactions.BlockTransactionProcessor
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import java.util.logging.Logger
 
 class BlockSyncer(
@@ -20,15 +23,20 @@ class BlockSyncer(
     private val transactionProcessor: BlockTransactionProcessor,
     private val publicKeyManager: IPublicKeyManager,
     private val checkpoint: Checkpoint,
-    private val state: State = State()
+    private val state: State = State(),
+    private val headerWalkEnabled: Boolean = false
 ) {
     private val logger = Logger.getLogger("BlockSyncer")
 
     var listener: IBlockSyncListener? = null
 
     private val sqliteMaxVariableNumber = 999
+    private val maxWalkAnchors = 10
 
     private val missingAncestors = ConcurrentHashMap<Int, BlockHash>()
+
+    private val headerWalk = AtomicReference<AncestorHeaderWalk?>(null)
+    private val headerWalkAbandoned = AtomicBoolean(false)
 
     val localDownloadedBestBlockHeight: Int
         get() = storage.lastBlock()?.height ?: 0
@@ -51,6 +59,8 @@ class BlockSyncer(
         clearBlockHashes() // we need to clear block hashes when "syncPeer" is disconnected
         // Pending recovery belongs to the discarded download context; the failing block re-queues it
         missingAncestors.clear()
+        headerWalk.set(null)
+        headerWalkAbandoned.set(false)
 
         blockchain.handleFork()
     }
@@ -171,37 +181,137 @@ class BlockSyncer(
             return blockchain.connect(merkleBlock)
         } catch (e: BlockValidatorException.NoCheckpointBlock) {
             val missingHeight = e.height ?: throw e
-            if (!enqueueMissingAncestor(merkleBlock, missingHeight)) throw e
+            if (!recoverMissingAncestor(merkleBlock, missingHeight)) throw e
 
             throw BlockValidatorException.AncestorDownloadQueued(missingHeight)
         }
     }
 
     /**
-     * Walks down the stored ancestors of the failing block by header hash and queues the first
-     * broken link. Following hashes rather than heights is what keeps the recovered block on the
-     * chain being validated: a retained fork row at the same height is never an ancestor.
-     * @return true when a download was queued.
+     * Starts a header walk where the chain allows one, because it recovers the whole gap in a few
+     * round trips instead of one block per download round. Falls back to the merkle-block descent.
      */
-    private fun enqueueMissingAncestor(merkleBlock: MerkleBlock, missingHeight: Int): Boolean {
-        var cursor = storage.getBlock(merkleBlock.header.previousBlockHeaderHash) ?: return false
+    private fun recoverMissingAncestor(merkleBlock: MerkleBlock, missingHeight: Int): Boolean {
+        val cursor = findMissingAncestor(merkleBlock, missingHeight) ?: return false
 
-        while (cursor.height > missingHeight) {
-            if (cursor.previousBlockHash.isEmpty()) {
-                // API placeholder knows no parent: repair it first, the descent resumes next round
-                return queueAncestor(BlockHash(cursor.headerHash, cursor.height))
+        // A failed walk would restart on every retry of the failing block, and each restart costs
+        // the task's idle timeout — far slower than the descent it is meant to accelerate.
+        if (headerWalkEnabled && !headerWalkAbandoned.get()) {
+            // The failing block stays queued and keeps re-entering here while the walk runs.
+            // Replacing the walk would discard its progress and restart it forever.
+            if (headerWalk.get() != null) return true
+
+            val anchors = headerWalkAnchors(missingHeight)
+            if (anchors.isNotEmpty()) {
+                headerWalk.compareAndSet(
+                    null,
+                    AncestorHeaderWalk(
+                        targetHeight = missingHeight,
+                        merkleBlock = merkleBlock,
+                        endHash = cursor.headerHash,
+                        endHeight = cursor.height,
+                        anchors = anchors
+                    )
+                )
+                return true
             }
-
-            cursor = storage.getBlock(cursor.previousBlockHash)
-                ?: return queueAncestor(BlockHash(cursor.previousBlockHash, cursor.height - 1))
         }
 
-        return false
+        return queueAncestor(cursor)
     }
 
-    private fun queueAncestor(target: BlockHash): Boolean {
+    /**
+     * Walks down the stored ancestors of the failing block by header hash and returns the lowest
+     * one reached. Following hashes rather than heights is what keeps the recovered block on the
+     * chain being validated: a retained fork row at the same height is never an ancestor.
+     */
+    private fun findMissingAncestor(merkleBlock: MerkleBlock, missingHeight: Int): Block? {
+        var cursor = storage.getBlock(merkleBlock.header.previousBlockHeaderHash) ?: return null
+
+        while (cursor.height > missingHeight) {
+            if (cursor.previousBlockHash.isEmpty()) return cursor
+
+            cursor = storage.getBlock(cursor.previousBlockHash) ?: return cursor
+        }
+
+        return null
+    }
+
+    private fun enqueueMissingAncestor(merkleBlock: MerkleBlock, missingHeight: Int): Boolean {
+        val cursor = findMissingAncestor(merkleBlock, missingHeight) ?: return false
+
+        return queueAncestor(cursor)
+    }
+
+    private fun queueAncestor(cursor: Block): Boolean {
+        val target = if (cursor.previousBlockHash.isEmpty()) {
+            // API placeholder knows no parent: repair it first, the descent resumes next round
+            BlockHash(cursor.headerHash, cursor.height)
+        } else {
+            BlockHash(cursor.previousBlockHash, cursor.height - 1)
+        }
+
         missingAncestors[target.height] = target
         return true
+    }
+
+    /**
+     * Block locator for the walk: stored blocks below the gap, spaced exponentially, with the
+     * checkpoint as the last resort. A wrong anchor cannot mislead the walk — it only shifts the
+     * derived heights, which the endpoint-height check then rejects.
+     */
+    private fun headerWalkAnchors(missingHeight: Int): List<Pair<ByteArray, Int>> {
+        val anchors = mutableListOf<Pair<ByteArray, Int>>()
+        var height = missingHeight - 1
+        var step = 1
+
+        while (height > checkpoint.block.height && anchors.size < maxWalkAnchors) {
+            storage.getBlock(height)?.let { anchors.add(it.headerHash to it.height) }
+            height -= step
+            step *= 2
+        }
+
+        if (checkpoint.block.height < missingHeight) {
+            anchors.add(checkpoint.block.headerHash to checkpoint.block.height)
+        }
+
+        return anchors
+    }
+
+    fun pendingHeaderLocator(): List<ByteArray>? = headerWalk.get()?.locator
+
+    fun handleBlockHeaders(headers: Array<BlockHeader>) {
+        val walk = headerWalk.get() ?: return
+
+        when (val result = walk.accept(headers)) {
+            is AncestorHeaderWalk.Result.Continue -> Unit
+
+            is AncestorHeaderWalk.Result.Abort ->
+                if (headerWalk.compareAndSet(walk, null)) {
+                    headerWalkAbandoned.set(true)
+                    enqueueMissingAncestor(walk.merkleBlock, walk.targetHeight)
+                }
+
+            is AncestorHeaderWalk.Result.Resolved ->
+                if (headerWalk.compareAndSet(walk, null)) {
+                    publishVerifiedAncestors(walk, result.headers)
+                }
+        }
+    }
+
+    private fun publishVerifiedAncestors(
+        walk: AncestorHeaderWalk,
+        headers: List<AncestorHeaderWalk.VerifiedHeader>
+    ) {
+        // Endpoint first, target last: an interruption then leaves the target absent, so the
+        // validator raises NoCheckpointBlock again and recovery runs from a clean state.
+        headers.asReversed().forEach {
+            // The proof rests on the endpoint still being committed ancestry, and a concurrent
+            // handleFork can drop it mid-loop, so re-read it rather than trust one check.
+            if (storage.getBlock(walk.endHash)?.height != walk.endHeight) return
+
+            blockchain.insertVerifiedAncestor(it.header, it.height)
+        }
     }
 
     private fun consumeMissingAncestor(headerHash: ByteArray, height: Int): Boolean {

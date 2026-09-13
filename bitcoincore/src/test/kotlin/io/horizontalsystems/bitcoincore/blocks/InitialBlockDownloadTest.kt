@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.blocks
 
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.any
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -9,6 +10,7 @@ import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHashesTask
+import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHeadersTask
 import io.horizontalsystems.bitcoincore.network.peer.task.GetMerkleBlocksTask
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
@@ -34,6 +36,28 @@ class InitialBlockDownloadTest {
         blockMessageExtractor = mock()
         ibd = InitialBlockDownload(blockSyncer, peerManager, merkleBlockExtractor, blockMessageExtractor, "TEST")
         peer = mock { on { host } doReturn "1.2.3.4" }
+    }
+
+    @Test
+    fun `handleCompletedTask - storing recovered ancestors fails - the peer is dropped so recovery restarts`() {
+        val task = GetBlockHeadersTask(emptyList())
+        task.owner = ibd
+        val failure = RuntimeException("db is gone")
+        whenever(blockSyncer.handleBlockHeaders(any())).thenThrow(failure)
+
+        assertTrue(ibd.handleCompletedTask(peer, task))
+
+        verify(peer).close(failure)
+    }
+
+    @Test
+    fun `handleCompletedTask - recovered ancestors are stored - the peer is kept`() {
+        val task = GetBlockHeadersTask(emptyList())
+        task.owner = ibd
+
+        assertTrue(ibd.handleCompletedTask(peer, task))
+
+        verify(peer, never()).close(any())
     }
 
     // Task ownership tests

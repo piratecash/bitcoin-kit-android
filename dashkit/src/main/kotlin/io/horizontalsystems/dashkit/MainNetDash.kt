@@ -33,6 +33,8 @@ class MainNetDash(seeds: List<String> = defaultSeeds) : Network() {
 
     override val logTag = "DASH"
 
+    override val usesPlainBlockHeaders = true
+
     override val supportsV2Transport = true
     override val usesDashV2ShortIds = true
 

@@ -517,7 +517,8 @@ class BitcoinCoreBuilder {
             blockchain = blockchain,
             transactionProcessor = blockTransactionProcessor,
             publicKeyManager = publicKeyManager,
-            checkpoint = checkpoint
+            checkpoint = checkpoint,
+            headerWalkEnabled = network.usesPlainBlockHeaders
         )
 
 
@@ -576,7 +577,7 @@ class BitcoinCoreBuilder {
                 val blockDiscovery = BlockHashDiscoveryBatch(
                     blockHashScanner,
                     publicKeyFetcher,
-                    checkpoint.block.height,
+                    Checkpoint.apiDiscoveryCeiling(checkpoint, storage),
                     gapLimit
                 )
                 apiSyncer = ApiSyncer(
@@ -794,9 +795,9 @@ class BitcoinCoreBuilder {
             networkMessageParser.add(GetAddrMessageParser())
             networkMessageSerializer.add(GetAddrMessageSerializer())
 
-            // The chain-identity probe (see Peer) sends getheaders and parses the headers reply.
-            // Only networks that share their wire format with another chain (eCash) define an anchor.
-            if (network.chainIdentityAnchorHash != null) {
+            // The chain-identity probe (see Peer) sends getheaders and parses the headers reply,
+            // and so does the ancestor header walk on chains with plain 80-byte headers.
+            if (network.usesPlainBlockHeaders || network.chainIdentityAnchorHash != null) {
                 networkMessageParser.add(HeadersMessageParser(blockHeaderHasher))
                 networkMessageSerializer.add(GetHeadersMessageSerializer())
             }

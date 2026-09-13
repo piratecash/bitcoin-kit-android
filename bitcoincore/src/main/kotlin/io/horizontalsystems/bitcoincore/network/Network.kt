@@ -41,6 +41,11 @@ abstract class Network {
     // contains that block. Used by networks that share P2P magic/port with another chain.
     open val chainIdentityAnchorHash: ByteArray? = null
 
+    // Whether the `headers` payload is the plain 80-byte header. False by default: PoS chains
+    // (Cosanta, PirateCash) append stake fields and Dogecoin carries AuxPoW, so the generic parser
+    // would desynchronize the stream. Opting a chain in is a deliberate act.
+    open val usesPlainBlockHeaders: Boolean = false
+
     open val sigHashForked: Boolean = false
     open val sigHashValue = Sighash.ALL
 

@@ -57,14 +57,24 @@ class Blockchain(
         return addBlockAndNotify(block)
     }
 
-    fun forceAdd(merkleBlock: MerkleBlock, height: Int): Block {
-        val blockInDB = storage.getBlock(merkleBlock.blockHash)
+    fun forceAdd(merkleBlock: MerkleBlock, height: Int): Block =
+        insertOrRefresh(merkleBlock.header, height)
+
+    /**
+     * Stores an ancestor the header walk proved against a block we already hold. Unlike
+     * [insertLastBlock] it repairs an existing row, because the header is known-genuine.
+     */
+    fun insertVerifiedAncestor(header: BlockHeader, height: Int): Block =
+        insertOrRefresh(header, height)
+
+    private fun insertOrRefresh(header: BlockHeader, height: Int): Block {
+        val blockInDB = storage.getBlock(header.hash)
         if (blockInDB != null) {
-            log.d { "Block already exists in DB (forceAdd): hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}" }
-            return refreshFromHeader(blockInDB, merkleBlock.header)
+            log.d { "Block already exists in DB (forceAdd): hash=${header.hash.toHexString()}, height=${blockInDB.height}" }
+            return refreshFromHeader(blockInDB, header)
         }
-        log.d { "Force adding block: hash=${merkleBlock.blockHash.toHexString()}, height=$height" }
-        return addBlockAndNotify(Block(merkleBlock.header, height))
+        log.d { "Force adding block: hash=${header.hash.toHexString()}, height=$height" }
+        return addBlockAndNotify(Block(header, height))
     }
 
     private fun refreshFromHeader(blockInDB: Block, header: BlockHeader): Block {
