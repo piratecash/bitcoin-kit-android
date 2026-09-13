@@ -13,10 +13,13 @@ import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.BlockHashPublicKey
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
+import io.reactivex.Scheduler
 import io.reactivex.Single
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.schedulers.Schedulers
+import java.util.concurrent.TimeUnit
 import java.util.logging.Logger
+import kotlin.random.Random
 
 class BlockchairApiSyncer(
     private val storage: IStorage,
@@ -26,6 +29,7 @@ class BlockchairApiSyncer(
     private val publicKeyManager: IPublicKeyManager,
     private val blockchain: Blockchain,
     private val apiSyncStateManager: ApiSyncStateManager,
+    private val retryScheduler: Scheduler = Schedulers.io(),
 ) : IApiSyncer {
 
     private val logger = Logger.getLogger("BlockchairApiSyncer")
@@ -34,14 +38,14 @@ class BlockchairApiSyncer(
     // The scan body is blocking and terminate() cannot interrupt it, so only the run that still
     // owns this token may notify the listener — a late callback would restart a stopped sync.
     @Volatile
-    private var currentRun: Any? = null
+    private var currentRun: SyncRun? = null
 
     override var listener: IApiSyncerListener? = null
 
     override val willSync: Boolean = true
 
     override fun sync() {
-        val run = Any()
+        val run = SyncRun()
         currentRun = run
 
         scanSingle(run)
@@ -59,13 +63,33 @@ class BlockchairApiSyncer(
         disposables.clear()
     }
 
-    private fun isCurrent(run: Any) = currentRun === run
+    private fun isCurrent(run: SyncRun) = currentRun === run
 
-    private fun listenerOf(run: Any) = listener.takeIf { isCurrent(run) }
+    private fun listenerOf(run: SyncRun) = listener.takeIf { isCurrent(run) }
 
-    private fun handleError(run: Any, error: Throwable) {
+    private fun handleError(run: SyncRun, error: Throwable) {
         logger.severe("Error: ${error.message}")
-        listenerOf(run)?.onSyncFailed(error)
+
+        if (!isCurrent(run)) return
+
+        if (run.attempt >= RETRY_DELAYS_MS.size) {
+            listenerOf(run)?.onSyncFailed(error)
+            return
+        }
+
+        // Jitter keeps the coins apart: one refresh starts every syncer at the same instant and the
+        // shared HTTP/2 connection answers REFUSED_STREAM to the whole burst.
+        val baseDelay = RETRY_DELAYS_MS[run.attempt]
+        val delay = baseDelay + Random.nextLong(baseDelay / 2)
+        run.attempt++
+
+        logger.warning("Retrying sync ${run.attempt}/${RETRY_DELAYS_MS.size} in ${delay}ms")
+
+        disposables.add(
+            Single.timer(delay, TimeUnit.MILLISECONDS, retryScheduler)
+                .flatMap { scanSingle(run) }
+                .subscribe({}, { handleError(run, it) })
+        )
     }
 
     private fun fetchLastBlock() {
@@ -83,10 +107,11 @@ class BlockchairApiSyncer(
         blockchain.insertLastBlock(header, blockHeaderItem.height)
     }
 
-    private fun scanSingle(run: Any): Single<Unit> = Single.create { emitter ->
+    private fun scanSingle(run: SyncRun): Single<Unit> = Single.create { emitter ->
         try {
             val allKeys = storage.getPublicKeys()
-            val stopHeight = storage.downloadedTransactionsBestBlockHeight()
+            val stopHeight = run.stopHeight
+                ?: storage.downloadedTransactionsBestBlockHeight().also { run.stopHeight = it }
             fetchRecursive(run, allKeys, allKeys, stopHeight)
 
             if (isCurrent(run)) {
@@ -111,7 +136,7 @@ class BlockchairApiSyncer(
     }
 
     private fun fetchRecursive(
-        run: Any,
+        run: SyncRun,
         keys: List<PublicKey>,
         allKeys: List<PublicKey>,
         stopHeight: Int
@@ -172,5 +197,21 @@ class BlockchairApiSyncer(
         if (newKeys.isNotEmpty()) {
             fetchRecursive(run, newKeys, _allKeys, stopHeight)
         }
+    }
+
+    // Retry state belongs to the run, not to the syncer: a stale run that terminate() could not
+    // interrupt must never write into the state of the run that replaced it.
+    private class SyncRun {
+        @Volatile
+        var attempt = 0
+
+        // Frozen for the whole run: a retry must not raise the cutoff past the block hashes the
+        // failed attempt itself discovered, or addresses derived later lose their history below it.
+        @Volatile
+        var stopHeight: Int? = null
+    }
+
+    private companion object {
+        val RETRY_DELAYS_MS = longArrayOf(5_000, 20_000, 60_000)
     }
 }

@@ -22,9 +22,9 @@ private val log = Logger.withTag("BlockchairApi")
 
 class BlockchairApi(
     private val chainId: String,
-    private val networkErrorListener: NetworkErrorListenerHolder? = null
+    private val networkErrorListener: NetworkErrorListenerHolder? = null,
+    private val apiManager: ApiManager = ApiManager(DEFAULT_HOST, networkErrorListener),
 ): Api {
-    private val apiManager = ApiManager("https://api.blocksdecoded.com/v1/blockchair", networkErrorListener)
     private val limit = 10000
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
@@ -150,9 +150,6 @@ class BlockchairApi(
         } catch (http404Exception: ApiManagerException.Http404Exception) {
             log.d { "Blockchair API: 404 for addresses ${addresses.joinToString(", ")}" }
             return Pair(emptyList(), emptyList())
-        } catch (http500Exception: ApiManagerException.Http500Exception) {
-            log.e { "Blockchair API: Server error ${http500Exception.responseCode} for addresses ${addresses.joinToString(", ")} - ${http500Exception.message}" }
-            return Pair(emptyList(), emptyList())
         }
     }
 
@@ -193,9 +190,6 @@ class BlockchairApi(
         } catch (http404Exception: ApiManagerException.Http404Exception) {
             log.d { "Blockchair API: 404 for block heights ${heights.joinToString(", ")}" }
             return emptyMap()
-        } catch (http500Exception: ApiManagerException.Http500Exception) {
-            log.e { "Blockchair API: Server error ${http500Exception.responseCode} for block heights ${heights.joinToString(", ")} - ${http500Exception.message}" }
-            return emptyMap()
         }
     }
 
@@ -206,4 +200,7 @@ class BlockchairApi(
         val address: String
     )
 
+    private companion object {
+        const val DEFAULT_HOST = "https://api.blocksdecoded.com/v1/blockchair"
+    }
 }
