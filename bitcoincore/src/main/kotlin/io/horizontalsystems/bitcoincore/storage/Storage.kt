@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincore.storage
 
+import androidx.room.RoomRawQuery
 import androidx.room.concurrent.AtomicInt
-import androidx.sqlite.db.SimpleSQLiteQuery
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
@@ -305,7 +305,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
             query += " LIMIT $limit"
         }
 
-        return getFullTransactionInfo(store.transaction.getTransactionWithBlockBySql(SimpleSQLiteQuery(query)))
+        return getFullTransactionInfo(store.transaction.getTransactionWithBlockBySql(RoomRawQuery(sql = query)))
     }
 
     override fun getFullTransactionInfo(txHash: ByteArray): FullTransactionInfo? {
@@ -364,7 +364,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun addTransaction(transaction: FullTransaction) {
-        store.runInTransaction {
+        store.inTransaction {
             addWithoutTransaction(transaction)
         }
     }
@@ -374,7 +374,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun updateTransaction(transaction: FullTransaction) {
-        store.runInTransaction {
+        store.inTransaction {
             store.transaction.update(transaction.header)
             transaction.inputs.forEach {
                 store.input.update(it)
@@ -438,29 +438,63 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.transaction.getIncomingPendingTxCount() > 0
     }
 
-    override fun deleteRelayedPendingTransactions(transactions: List<Transaction>): List<Transaction> {
+    override fun deleteRelayedPendingTransactions(
+        transactions: List<Transaction>,
+        expectedStatus: Int
+    ): List<Transaction> {
         val deletedTransactions = mutableListOf<Transaction>()
 
-        store.runInTransaction {
+        store.inTransaction {
             transactions.forEach { transaction ->
-                // The transaction may be confirmed while the reconciler is doing network lookup.
+                // The transaction's status may have changed (confirmed or relayed) while the
+                // reconciler was doing its network lookup, so re-check it here.
                 val pendingTransaction = store.transaction.getByHash(transaction.hash)
-                    ?.takeIf { it.blockHash == null && it.status == Transaction.Status.RELAYED }
+                    ?.takeIf { it.blockHash == null && it.status == expectedStatus }
                     ?: return@forEach
 
-                store.sentTransaction.getTransaction(pendingTransaction.hash)?.let {
-                    store.sentTransaction.delete(it)
-                }
-
-                store.input.deleteAll(getTransactionInputs(pendingTransaction))
-                store.output.deleteAll(getTransactionOutputs(pendingTransaction))
-                store.transactionMetadata.delete(pendingTransaction.hash)
-                store.transaction.delete(pendingTransaction)
+                deletePendingTransaction(pendingTransaction)
                 deletedTransactions += pendingTransaction
             }
         }
 
         return deletedTransactions
+    }
+
+    // A NEW transaction is only deleted while it has no SentTransaction record, i.e. its bytes were
+    // never handed to the network. The SentTransaction check happens inside the same DB transaction
+    // as the delete, atomically with the re-read of the transaction's current status: a sender that
+    // records a SentTransaction concurrently (see TransactionSender.recordBroadcastAttempt, called
+    // before bytes reach a peer or the API) always wins the race and blocks the delete.
+    override fun deleteNewExpiredTransactions(transactions: List<Transaction>): List<Transaction> {
+        val deletedTransactions = mutableListOf<Transaction>()
+
+        store.inTransaction {
+            transactions.forEach { transaction ->
+                val pendingTransaction = store.transaction.getByHash(transaction.hash)
+                    ?.takeIf { it.blockHash == null && it.status == Transaction.Status.NEW }
+                    ?: return@forEach
+
+                if (store.sentTransaction.getTransaction(pendingTransaction.hash) != null) {
+                    return@forEach
+                }
+
+                deletePendingTransaction(pendingTransaction)
+                deletedTransactions += pendingTransaction
+            }
+        }
+
+        return deletedTransactions
+    }
+
+    private fun deletePendingTransaction(pendingTransaction: Transaction) {
+        store.sentTransaction.getTransaction(pendingTransaction.hash)?.let {
+            store.sentTransaction.delete(it)
+        }
+
+        store.input.deleteAll(getTransactionInputs(pendingTransaction))
+        store.output.deleteAll(getTransactionOutputs(pendingTransaction))
+        store.transactionMetadata.delete(pendingTransaction.hash)
+        store.transaction.delete(pendingTransaction)
     }
 
     private fun convertToFullTransaction(transaction: Transaction): FullTransaction {
@@ -524,7 +558,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun moveTransactionToInvalidTransactions(invalidTransactions: List<InvalidTransaction>) {
-        store.runInTransaction {
+        store.inTransaction {
             invalidTransactions.forEach { invalidTransaction ->
                 store.invalidTransaction.insert(invalidTransaction)
 
@@ -545,7 +579,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun moveInvalidTransactionToTransactions(invalidTransaction: InvalidTransaction, toTransactions: FullTransaction) {
-        store.runInTransaction {
+        store.inTransaction {
             addWithoutTransaction(toTransactions)
             store.invalidTransaction.delete(invalidTransaction.uid)
         }
@@ -665,6 +699,23 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
 
     override fun deleteSentTransaction(transaction: SentTransaction) {
         store.sentTransaction.delete(transaction)
+    }
+
+    override fun recordBroadcastAttemptIfPending(transaction: SentTransaction): Boolean {
+        var recorded = false
+
+        store.inTransaction {
+            val isPending = store.transaction.getByHash(transaction.hash)
+                ?.let { it.blockHash == null && it.status == Transaction.Status.NEW }
+                ?: false
+
+            if (isPending) {
+                store.sentTransaction.insert(transaction)
+                recorded = true
+            }
+        }
+
+        return recorded
     }
 
     override fun getChainWork(block: Block): BigInteger {

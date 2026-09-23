@@ -51,12 +51,23 @@ class NetworkMessageParser(private val magic: Long) {
             throw BitcoinException("Checksum failed.")
         }
 
+        // Translation stays here rather than inside parsePayload: v1 has always surfaced a payload
+        // parser failure as RuntimeException(cause), and the v2 transport needs the raw exception so
+        // it can classify it as recoverable. Moving the wrapping down would change v1 behaviour.
         try {
-            BitcoinInputMarkable(payload).use {
-                return messageParsers[command]?.parseMessage(it) ?: UnknownMessage(command)
-            }
+            return parsePayload(command, payload)
         } catch (e: Exception) {
             throw RuntimeException(e)
+        }
+    }
+
+    /**
+     * Dispatches an already-unwrapped payload to its registered parser, propagating whatever that
+     * parser throws. Shared by both transports — only the envelope differs between v1 and v2.
+     */
+    fun parsePayload(command: String, payload: ByteArray): IMessage {
+        BitcoinInputMarkable(payload).use {
+            return messageParsers[command]?.parseMessage(it) ?: UnknownMessage(command)
         }
     }
 
@@ -64,21 +75,7 @@ class NetworkMessageParser(private val magic: Long) {
         messageParsers[messageParser.command] = messageParser
     }
 
-    private fun getCommandFrom(cmd: ByteArray): String {
-        var n = cmd.size - 1
-        while (n >= 0) {
-            if (cmd[n].toInt() == 0) {
-                n--
-            } else {
-                break
-            }
-        }
-        if (n <= 0) {
-            throw BitcoinException("Bad command bytes.")
-        }
-        val b = cmd.copyOfRange(0, n + 1)
-        return String(b, StandardCharsets.UTF_8)
-    }
+    private fun getCommandFrom(cmd: ByteArray): String = MessageCommand.decodeV1Legacy(cmd)
 
     private fun getCheckSum(payload: ByteArray): ByteArray {
         val hash = HashUtils.doubleSha256(payload)
@@ -90,44 +87,37 @@ class NetworkMessageSerializer(private val magic: Long) {
     private var messageSerializers = mutableListOf<IMessageSerializer>()
 
     fun serialize(msg: IMessage): ByteArray {
-        var payload: ByteArray? = null
-        var serializer: IMessageSerializer? = null
+        val (command, payload) = serializePayload(msg)
 
+        return BitcoinOutput()
+                .writeInt32(magic)                  // magic
+                .write(getCommandBytes(command))    // command: char[12]
+                .writeInt(payload.size)             // length: uint32_t
+                .write(getCheckSum(payload))        // checksum: uint32_t
+                .write(payload)                     // payload:
+                .toByteArray()
+    }
+
+    /**
+     * Resolves a message to its command name and serialized payload, without any envelope.
+     * Shared by both transports.
+     */
+    fun serializePayload(msg: IMessage): Pair<String, ByteArray> {
         for (item in messageSerializers) {
-            payload = item.serialize(msg)
-
+            val payload = item.serialize(msg)
             if (payload != null) {
-                serializer = item
-                break
+                return item.command to payload
             }
         }
 
-        if (payload == null || serializer == null) {
-            throw NoSerializer(msg)
-        }
-
-        return BitcoinOutput()
-                .writeInt32(magic)                          // magic
-                .write(getCommandBytes(serializer.command)) // command: char[12]
-                .writeInt(payload.size)         // length: uint32_t
-                .write(getCheckSum(payload))    // checksum: uint32_t
-                .write(payload)                 // payload:
-                .toByteArray()
+        throw NoSerializer(msg)
     }
 
     fun add(messageSerializer: IMessageSerializer) {
         messageSerializers.add(messageSerializer)
     }
 
-    private fun getCommandBytes(cmd: String): ByteArray {
-        val cmdBytes = cmd.toByteArray()
-        if (cmdBytes.isEmpty() || cmdBytes.size > 12) {
-            throw IllegalArgumentException("Bad command: $cmd")
-        }
-        val buffer = ByteArray(12)
-        System.arraycopy(cmdBytes, 0, buffer, 0, cmdBytes.size)
-        return buffer
-    }
+    private fun getCommandBytes(cmd: String): ByteArray = MessageCommand.encode(cmd)
 
     private fun getCheckSum(payload: ByteArray): ByteArray {
         val hash = HashUtils.doubleSha256(payload)

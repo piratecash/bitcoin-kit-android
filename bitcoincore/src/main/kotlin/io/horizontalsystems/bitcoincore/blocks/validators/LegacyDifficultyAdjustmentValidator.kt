@@ -18,9 +18,9 @@ class LegacyDifficultyAdjustmentValidator(
     }
 
     override fun validate(block: Block, previousBlock: Block) {
-        val lastCheckPointBlock = checkNotNull(validatorHelper.getPrevious(block, heightInterval.toInt())) {
-            BlockValidatorException.NoCheckpointBlock()
-        }
+        val stepBack = heightInterval.toInt()
+        val lastCheckPointBlock = validatorHelper.getPrevious(block, stepBack)
+            ?: throw BlockValidatorException.NoCheckpointBlock(block.height - stepBack)
 
         //  Limit the adjustment step
         var timespan = previousBlock.timestamp - lastCheckPointBlock.timestamp

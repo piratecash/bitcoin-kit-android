@@ -1,6 +1,6 @@
 package io.horizontalsystems.bitcoincore.network.peer.task
 
-import com.nhaarman.mockitokotlin2.*
+import org.mockito.kotlin.*
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.network.messages.GetDataMessage

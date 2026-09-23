@@ -1,6 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
-import android.content.Context
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.litecoinkit.LitecoinKit
@@ -10,7 +10,7 @@ import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClientFactory
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonConfig
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonStatus
-import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdAndroidDaemonClientFactory
+import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdKmpDaemonClientFactory
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebRestoreCheckpointProvider
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebDatabase
 import io.horizontalsystems.litecoinkit.mweb.storage.MwebRoomStorage
@@ -24,20 +24,21 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.util.concurrent.CopyOnWriteArraySet
 
 private const val MWEB_ENGINE_LOG_TAG = "MwebEngine"
+private val log = Logger.withTag(MWEB_ENGINE_LOG_TAG)
 
 internal class LitecoinMwebEngine(
-    context: Context,
+    dataDir: String,
+    mwebDataDir: String,
     seed: ByteArray,
     walletId: String,
     private val dispatcherProvider: MwebDispatcherProvider,
     private val networkType: LitecoinKit.NetworkType = LitecoinKit.NetworkType.MainNet,
     private val restorePoint: MwebRestorePoint = MwebRestorePoint.Activation,
     private val peerAddress: String? = null,
-    private val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
+    private val daemonClientFactory: MwebDaemonClientFactory = MwebdKmpDaemonClientFactory,
     private val spentPollIntervalMillis: Long = SPENT_POLL_INTERVAL_MILLIS,
     private val statusPollIntervalMillis: Long = STATUS_POLL_INTERVAL_MILLIS,
     private val replayCompleteTimeoutMillis: Long = MwebUtxoSynchronizer.DEFAULT_REPLAY_COMPLETE_TIMEOUT_MILLIS,
@@ -48,6 +49,7 @@ internal class LitecoinMwebEngine(
         MwebExplorerCanonicalTransactionHashProvider.create(networkType),
     private val restoreCheckpointProvider: (LitecoinKit.NetworkType, Int) -> String? =
         MwebRestoreCheckpointProvider::encodedCheckpoint,
+    databaseKey: ByteArray? = null,
 ) {
     interface Listener {
         fun onMwebBalanceUpdate(balance: MwebBalance) = Unit
@@ -69,13 +71,12 @@ internal class LitecoinMwebEngine(
     )
         private set
 
-    private val appContext = context.applicationContext
     private val accountKeys = MwebKeyManager(seed).accountKeys()
     private val restoreHeight = MwebRestorePolicy(MwebNetworkPolicy.network(networkType)).resolve(restorePoint)
-    private val daemonDataDir = MwebFiles.daemonDataDir(appContext, networkType, walletId)
+    private val daemonDataDir = MwebFiles.daemonDataDir(mwebDataDir, networkType, walletId)
     private val addressCodec = MwebAddressCodec(networkType)
     private val storage = MwebRoomStorage(
-        MwebDatabase.getInstance(appContext, MwebFiles.databaseName(networkType, walletId))
+        MwebDatabase.getInstance(dataDir, MwebFiles.databaseName(networkType, walletId), databaseKey)
     )
     private val coroutineScope = CoroutineScope(SupervisorJob() + dispatcherProvider.io)
     private val stateMutex = Mutex()
@@ -203,11 +204,7 @@ internal class LitecoinMwebEngine(
             refreshJob = coroutineScope.launch {
                 stateMutex.withLock {
                     val client = daemonClient?.takeIf { started } ?: return@withLock
-                    val status = MwebDaemonErrorMapper.mapSuspend {
-                        client.status(MwebDaemonClient.DEFAULT_STATUS_TIMEOUT_MILLIS)
-                    }
-                    utxoSynchronizer.refresh(client)
-                    applyStatus(status)
+                    utxoSynchronizer.refresh(client, recoverFailure = true)
                 }
             }
         }
@@ -397,7 +394,7 @@ internal class LitecoinMwebEngine(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                Timber.tag(MWEB_ENGINE_LOG_TAG).d(error, "Failed to sync public MWEB transactions")
+                log.d(error) { "Failed to sync public MWEB transactions" }
             }
         }
     }
@@ -715,7 +712,7 @@ internal class LitecoinMwebEngine(
     ) {
         if (transaction == null) return
         val bridge = publicTransactionBridge ?: run {
-            Timber.tag(MWEB_ENGINE_LOG_TAG).d("Skipping public MWEB transaction processing: bridge is missing")
+            log.d { "Skipping public MWEB transaction processing: bridge is missing" }
             return
         }
 
@@ -726,10 +723,9 @@ internal class LitecoinMwebEngine(
         } catch (error: Exception) {
             // The daemon broadcast and MWEB storage update already succeeded, so this
             // secondary public-side enqueue failure must not leave Send spinning.
-            Timber.tag(MWEB_ENGINE_LOG_TAG).d(
-                error,
-                "Failed to enqueue public MWEB transaction after daemon broadcast",
-            )
+            log.d(error) {
+                "Failed to enqueue public MWEB transaction after daemon broadcast"
+            }
         }
     }
 
@@ -776,8 +772,8 @@ internal class LitecoinMwebEngine(
         private const val STATUS_POLL_INTERVAL_MILLIS = 5_000L
         private const val LOCAL_TRANSACTION_TTL_MILLIS = 24 * 60 * 60 * 1_000L
 
-        fun clear(context: Context, networkType: LitecoinKit.NetworkType, walletId: String) {
-            MwebFiles.clear(context.applicationContext, networkType, walletId)
+        fun clear(dataDir: String, mwebDataDir: String, networkType: LitecoinKit.NetworkType, walletId: String) {
+            MwebFiles.clear(dataDir, mwebDataDir, networkType, walletId)
         }
     }
 }

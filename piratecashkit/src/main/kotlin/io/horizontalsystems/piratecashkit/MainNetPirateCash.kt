@@ -28,4 +28,11 @@ class MainNetPirateCash : Network() {
     )
 
     override val logTag = "PirateCash"
+
+    override val supportsV2Transport = true
+    override val usesDashV2ShortIds = true
+
+    // Matches this node family's MAX_PROTOCOL_MESSAGE_LENGTH (src/net.h), which is 3 MiB rather
+    // than Bitcoin's 4 MB.
+    override val maxProtocolMessageLength = 3 * 1024 * 1024
 }
