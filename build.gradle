@@ -48,7 +48,7 @@ allprojects {
 def libraryModules = [
     'bitcoincore', 'bitcoinkit', 'bitcoincashkit', 'litecoinkit',
     'dashkit', 'dashlib', 'dogecoinkit', 'cosantakit', 'piratecashkit',
-    'ecashkit', 'hodler'
+    'ecashkit', 'hodler', 'sqlcipher-room'
 ]
 
 // Published with the same coordinates, but deliberately outside libraryModules:

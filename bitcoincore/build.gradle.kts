@@ -35,6 +35,7 @@ kotlin {
                 implementation("com.squareup.okhttp3:okhttp:4.5.0")
                 api(libs.hd.wallet.kit)
                 api(libs.kermit)
+                api(project(":sqlcipher-room"))
             }
         }
         val androidMain by getting {
@@ -44,7 +45,6 @@ kotlin {
             dependencies {
                 implementation("androidx.annotation:annotation:1.1.0")
                 implementation(libs.androidx.startup)
-                implementation(libs.sqlcipher.android)
             }
         }
         val jvmMain by getting {
@@ -53,11 +53,13 @@ kotlin {
             // Android opens databases through Room's SupportSQLite compat path; the JVM has none.
             dependencies {
                 implementation(libs.sqlite.bundled)
-                implementation(project(":sqlcipher-driver"))
             }
         }
         val jvmTest by getting {
-            dependencies { implementation(libs.junit) }
+            dependencies {
+                implementation(libs.junit)
+                implementation(project(":sqlcipher-driver"))
+            }
         }
     }
 }

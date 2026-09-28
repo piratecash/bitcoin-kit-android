@@ -1,76 +1,40 @@
 package io.horizontalsystems.bitcoincore.storage
 
-import java.io.File
+import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
+import io.horizontalsystems.sqlcipher.room.SqlCipherDatabases
 
-abstract class DatabaseEncryptionException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+typealias DatabaseMigrationResult = io.horizontalsystems.sqlcipher.room.DatabaseMigrationResult
+typealias DatabaseEncryptionException = io.horizontalsystems.sqlcipher.room.DatabaseEncryptionException
+typealias DatabaseMigrationRequiredException = io.horizontalsystems.sqlcipher.room.DatabaseMigrationRequiredException
+typealias DatabaseKeyRequiredException = io.horizontalsystems.sqlcipher.room.DatabaseKeyRequiredException
+typealias DatabaseKeyMismatchException = io.horizontalsystems.sqlcipher.room.DatabaseKeyMismatchException
+typealias DatabaseMigrationInProgressException = io.horizontalsystems.sqlcipher.room.DatabaseMigrationInProgressException
+typealias DatabaseMigrationConflictException = io.horizontalsystems.sqlcipher.room.DatabaseMigrationConflictException
+typealias InsufficientDatabaseMigrationSpaceException =
+    io.horizontalsystems.sqlcipher.room.InsufficientDatabaseMigrationSpaceException
 
-class DatabaseMigrationRequiredException(val databasePath: String) : DatabaseEncryptionException(
-    "Database must be migrated before it can be opened with encryption: $databasePath",
-)
+@PublishedApi
+internal val bitcoinKitDatabases = SqlCipherDatabases("bitcoin-kit")
 
-class DatabaseKeyRequiredException(val databasePath: String) : DatabaseEncryptionException(
-    "Encrypted database requires a key: $databasePath",
-)
+object DatabaseEncryption {
+    fun supportedSyncModes(): List<SyncMode> = listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())
 
-class DatabaseKeyMismatchException(val databasePath: String, cause: Throwable) : DatabaseEncryptionException(
-    "Database key is invalid for: $databasePath",
-    cause,
-)
+    suspend fun migrateDatabases(
+        dataDir: String,
+        databaseNames: Collection<String>,
+        migrationId: String,
+        databaseKey: ByteArray,
+    ): DatabaseMigrationResult = bitcoinKitDatabases.migrateDatabases(dataDir, databaseNames, migrationId, databaseKey)
 
-internal const val DATABASE_KEY_SIZE = 32
-
-internal fun validatedDatabaseKey(rawKey: ByteArray): ByteArray {
-    val key = rawKey.copyOf()
-    if (key.size == DATABASE_KEY_SIZE) return key
-    key.fill(0)
-    throw IllegalArgumentException("Database key must contain exactly $DATABASE_KEY_SIZE bytes")
-}
-
-internal fun existingEncryptedDatabaseKeyOrNull(path: String, rawKey: ByteArray): ByteArray? {
-    verifyNoPendingDatabaseMigration(path)
-    val key = validatedDatabaseKey(rawKey)
-    try {
-        val file = File(path)
-        if (!file.exists()) {
-            key.fill(0)
-            return null
-        }
-        if (isPlaintextDatabase(file)) throw DatabaseMigrationRequiredException(path)
-        return key
-    } catch (error: Throwable) {
-        key.fill(0)
-        throw error
+    fun clearDatabases(
+        dataDir: String,
+        databaseNames: Collection<String>,
+        migrationId: String,
+    ) {
+        bitcoinKitDatabases.clearDatabases(dataDir, databaseNames, migrationId)
     }
 }
 
-@PublishedApi
-internal fun verifyPlaintextDatabaseAccess(path: String) {
-    verifyNoPendingDatabaseMigration(path)
-    val file = File(path)
-    if (file.exists() && !isPlaintextDatabase(file)) throw DatabaseKeyRequiredException(path)
+fun deleteDatabaseFiles(dataDir: String, dbName: String) {
+    bitcoinKitDatabases.deleteDatabaseFiles(dataDir, dbName)
 }
-
-@PublishedApi
-internal fun databaseKeyLiteral(rawKey: ByteArray): ByteArray {
-    val key = validatedDatabaseKey(rawKey)
-    val hex = "0123456789abcdef".encodeToByteArray()
-    return ByteArray(67).also { literal ->
-        literal[0] = 'x'.code.toByte()
-        literal[1] = '\''.code.toByte()
-        key.forEachIndexed { index, byte ->
-            val value = byte.toInt() and 0xff
-            literal[2 + index * 2] = hex[value ushr 4]
-            literal[3 + index * 2] = hex[value and 0x0f]
-        }
-        literal[66] = '\''.code.toByte()
-        key.fill(0)
-    }
-}
-
-internal fun isPlaintextDatabase(file: File): Boolean {
-    if (!file.isFile || file.length() < SQLITE_HEADER.size) return false
-    val header = file.inputStream().use { input -> ByteArray(SQLITE_HEADER.size).also { input.read(it) } }
-    return header.contentEquals(SQLITE_HEADER)
-}
-
-private val SQLITE_HEADER = "SQLite format 3\u0000".encodeToByteArray()

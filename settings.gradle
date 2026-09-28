@@ -18,6 +18,7 @@ include ':app',             // Demo app
         ':dashlib',         // Dash library
         ':dashlib-native',  // Desktop dashjbls natives + loader
         ':sqlcipher-driver', // Desktop SQLCipher SQLiteDriver + natives
+        ':sqlcipher-room',  // Room SQLCipher encryption and plaintext migration shared by kits
         ':dashkit',         // Dash kit
         ':cosantakit',      // Cosanta kit
         ':piratecashkit',   // Piratecash kit

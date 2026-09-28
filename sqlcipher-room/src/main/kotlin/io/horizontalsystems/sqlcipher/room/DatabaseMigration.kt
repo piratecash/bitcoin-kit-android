@@ -1,6 +1,5 @@
-package io.horizontalsystems.bitcoincore.storage
+package io.horizontalsystems.sqlcipher.room
 
-import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -30,36 +29,13 @@ class DatabaseMigrationConflictException(message: String, cause: Throwable? = nu
 class InsufficientDatabaseMigrationSpaceException(val requiredBytes: Long, val availableBytes: Long) :
     DatabaseEncryptionException("Database migration needs $requiredBytes bytes, but only $availableBytes bytes are available")
 
-object DatabaseEncryption {
-    fun supportedSyncModes(): List<SyncMode> = listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())
-
-    /**
-     * Atomically replaces every existing plaintext database in one wallet group with SQLCipher files.
-     * [databaseKey] is a raw 32-byte key. The operation is idempotent and must finish before a kit opens
-     * any database from the group.
-     */
-    suspend fun migrateDatabases(
-        dataDir: String,
-        databaseNames: Collection<String>,
-        migrationId: String,
-        databaseKey: ByteArray,
-    ): DatabaseMigrationResult = DatabaseMigrationCoordinator().migrate(
-        dataDir = File(dataDir),
-        databaseNames = databaseNames,
-        migrationId = migrationId,
-        databaseKey = databaseKey,
-    )
-
-    fun clearDatabases(
-        dataDir: String,
-        databaseNames: Collection<String>,
-        migrationId: String,
-    ) {
-        clearDatabaseGroup(File(dataDir), databaseNames, migrationId)
-    }
+internal class MigrationFileNames(namespace: String) {
+    val manifestPrefix = ".$namespace-sqlcipher-"
+    val lockFileName = ".$namespace-sqlcipher.lock"
 }
 
 internal class DatabaseMigrationCoordinator(
+    private val fileNames: MigrationFileNames,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     suspend fun migrate(
@@ -70,8 +46,8 @@ internal class DatabaseMigrationCoordinator(
     ): DatabaseMigrationResult = withContext(ioDispatcher) {
         val key = validatedDatabaseKey(databaseKey)
         try {
-            withDatabaseMigrationLock(dataDir) {
-                recoverPendingMigrations(dataDir, databaseNames)
+            withDatabaseMigrationLock(dataDir, fileNames) {
+                recoverPendingMigrations(dataDir, databaseNames, fileNames)
                 migrateLocked(dataDir, databaseNames, migrationId, key)
             }
         } finally {
@@ -110,7 +86,7 @@ internal class DatabaseMigrationCoordinator(
         plaintext: List<File>,
         databaseKey: ByteArray,
     ): DatabaseMigrationResult {
-        val manifestFile = manifestFile(dataDir, migrationId)
+        val manifestFile = manifestFile(dataDir, migrationId, fileNames)
         var manifest = MigrationManifest(phase = MigrationPhase.PREPARING, entries = plaintext.map(::migrationEntry))
         writeManifest(manifestFile, manifest)
         var committed = false
@@ -152,16 +128,16 @@ internal class DatabaseMigrationCoordinator(
     }
 }
 
-internal fun verifyNoPendingDatabaseMigration(databasePath: String) {
+internal fun verifyNoPendingDatabaseMigration(databasePath: String, fileNames: MigrationFileNames) {
     val directory = File(databasePath).absoluteFile.parentFile ?: return
-    val manifest = directory.listFiles { file -> file.name.startsWith(MANIFEST_PREFIX) && file.name.endsWith(MANIFEST_SUFFIX) }
+    val manifest = directory.listFiles { file -> file.name.startsWith(fileNames.manifestPrefix) && file.name.endsWith(MANIFEST_SUFFIX) }
         ?.firstOrNull()
     if (manifest != null) throw DatabaseMigrationInProgressException(manifest.absolutePath)
 }
 
-internal inline fun <T> withDatabaseMigrationLock(dataDir: File, block: () -> T): T {
+internal inline fun <T> withDatabaseMigrationLock(dataDir: File, fileNames: MigrationFileNames, block: () -> T): T {
     require(dataDir.isDirectory || dataDir.mkdirs()) { "Database directory is unavailable: ${dataDir.path}" }
-    val lockFile = File(dataDir, LOCK_FILE_NAME)
+    val lockFile = File(dataDir, fileNames.lockFileName)
     return FileOutputStream(lockFile, true).channel.use { channel ->
         val lock = try {
             channel.tryLock()
@@ -241,10 +217,10 @@ private fun finishCommittedMigration(manifestFile: File, manifest: MigrationMani
     forceDirectory(manifestFile.parentFile)
 }
 
-private fun recoverPendingMigrations(dataDir: File, databaseNames: Collection<String>) {
+private fun recoverPendingMigrations(dataDir: File, databaseNames: Collection<String>, fileNames: MigrationFileNames) {
     val ownEntries = resolveDatabasePaths(dataDir, databaseNames).map(::migrationEntry)
     val manifests = dataDir.listFiles { file ->
-        file.name.startsWith(MANIFEST_PREFIX) && file.name.endsWith(MANIFEST_SUFFIX)
+        file.name.startsWith(fileNames.manifestPrefix) && file.name.endsWith(MANIFEST_SUFFIX)
     } ?: return
     val unreadable = manifests.filterNot { file -> recoverFromManifest(dataDir, file) }
     // Another wallet may have discarded this group's unreadable manifest, so repair own residue unconditionally.
@@ -270,9 +246,14 @@ private fun recoverFromManifest(dataDir: File, manifestFile: File): Boolean {
     return true
 }
 
-private fun clearDatabaseGroup(dataDir: File, databaseNames: Collection<String>, migrationId: String) {
-    withDatabaseMigrationLock(dataDir) {
-        val manifestFile = manifestFile(dataDir, migrationId)
+internal fun clearDatabaseGroup(
+    dataDir: File,
+    databaseNames: Collection<String>,
+    migrationId: String,
+    fileNames: MigrationFileNames,
+) {
+    withDatabaseMigrationLock(dataDir, fileNames) {
+        val manifestFile = manifestFile(dataDir, migrationId, fileNames)
         val databasePaths = resolveDatabasePaths(dataDir, databaseNames)
         val pendingPaths = readPendingDatabasePaths(dataDir, manifestFile)
         val manifest = MigrationManifest(
@@ -332,7 +313,7 @@ private fun readManifest(dataDir: File, file: File): MigrationManifest {
     }
 }
 
-private fun manifestFile(dataDir: File, migrationId: String): File {
+private fun manifestFile(dataDir: File, migrationId: String, fileNames: MigrationFileNames): File {
     val digest = MessageDigest.getInstance("SHA-256").digest(migrationId.encodeToByteArray())
     val id = buildString(16) {
         digest.take(8).forEach { byte ->
@@ -341,7 +322,7 @@ private fun manifestFile(dataDir: File, migrationId: String): File {
             append(HEX_CHARS[value and 0x0f])
         }
     }
-    return File(dataDir, "$MANIFEST_PREFIX$id$MANIFEST_SUFFIX")
+    return File(dataDir, "${fileNames.manifestPrefix}$id$MANIFEST_SUFFIX")
 }
 
 private fun backupFile(file: File): File = File("${file.path}$BACKUP_SUFFIX")
@@ -398,9 +379,7 @@ internal enum class MigrationPhase { PREPARING, STAGED, COMMITTED, CLEARING }
 
 private val JSON = Json { ignoreUnknownKeys = false }
 private const val MANIFEST_VERSION = 1
-private const val MANIFEST_PREFIX = ".bitcoin-kit-sqlcipher-"
 private const val MANIFEST_SUFFIX = ".json"
-private const val LOCK_FILE_NAME = ".bitcoin-kit-sqlcipher.lock"
 private const val STAGING_SUFFIX = ".sqlcipher-migrating"
 private const val BACKUP_SUFFIX = ".plaintext-backup"
 private const val MINIMUM_SPACE_MARGIN = 1024L * 1024L

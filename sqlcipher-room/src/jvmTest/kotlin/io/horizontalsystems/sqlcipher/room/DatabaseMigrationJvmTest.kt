@@ -1,4 +1,4 @@
-package io.horizontalsystems.bitcoincore.storage
+package io.horizontalsystems.sqlcipher.room
 
 import androidx.sqlite.execSQL
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
@@ -17,6 +17,7 @@ import java.nio.file.StandardCopyOption
 
 class DatabaseMigrationJvmTest {
     private val key = ByteArray(32) { it.toByte() }
+    private val databases = SqlCipherDatabases("bitcoin-kit")
 
     @Test
     fun migrateDatabases_plaintextGroup_encryptsEveryDatabaseAndPreservesData() = runBlocking {
@@ -24,7 +25,7 @@ class DatabaseMigrationJvmTest {
         createPlaintextDatabase(directory.resolve("core.db"), "core")
         createPlaintextDatabase(directory.resolve("coin.db"), "coin")
 
-        val result = DatabaseEncryption.migrateDatabases(
+        val result = databases.migrateDatabases(
             dataDir = directory.toString(),
             databaseNames = listOf("core.db", "coin.db"),
             migrationId = "wallet",
@@ -42,7 +43,7 @@ class DatabaseMigrationJvmTest {
         val directory = Files.createTempDirectory("database-migration-encrypted")
         createEncryptedDatabase(directory.resolve("core.db"), "core")
 
-        val result = DatabaseEncryption.migrateDatabases(
+        val result = databases.migrateDatabases(
             dataDir = directory.toString(),
             databaseNames = listOf("core.db", "missing.db"),
             migrationId = "wallet",
@@ -63,7 +64,7 @@ class DatabaseMigrationJvmTest {
 
         assertThrows(DatabaseMigrationConflictException::class.java) {
             runBlocking {
-                DatabaseEncryption.migrateDatabases(
+                databases.migrateDatabases(
                     dataDir = directory.toString(),
                     databaseNames = listOf("plain.db", "encrypted.db"),
                     migrationId = "wallet",
@@ -123,7 +124,7 @@ class DatabaseMigrationJvmTest {
         installStagedDatabase(entries.first())
         writeManifest(directory, MigrationPhase.STAGED, entries)
 
-        DatabaseEncryption.clearDatabases(
+        databases.clearDatabases(
             dataDir = directory.toString(),
             databaseNames = listOf("core.db", "coin.db"),
             migrationId = "wallet",
@@ -159,7 +160,7 @@ class DatabaseMigrationJvmTest {
 
         assertThrows(DatabaseKeyMismatchException::class.java) {
             runBlocking {
-                DatabaseEncryption.migrateDatabases(
+                databases.migrateDatabases(
                     dataDir = directory.toString(),
                     databaseNames = listOf("core.db"),
                     migrationId = "wallet",
@@ -310,7 +311,7 @@ class DatabaseMigrationJvmTest {
     }
 
     private suspend fun migrate(directory: Path, databaseNames: List<String>): DatabaseMigrationResult =
-        DatabaseEncryption.migrateDatabases(
+        databases.migrateDatabases(
             dataDir = directory.toString(),
             databaseNames = databaseNames,
             migrationId = "wallet",

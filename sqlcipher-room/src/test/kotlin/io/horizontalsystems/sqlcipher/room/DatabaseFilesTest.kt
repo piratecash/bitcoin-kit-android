@@ -1,4 +1,4 @@
-package io.horizontalsystems.bitcoincore.storage
+package io.horizontalsystems.sqlcipher.room
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,6 +13,8 @@ class DatabaseFilesTest {
     @get:Rule
     val folder = TemporaryFolder()
 
+    private val databases = SqlCipherDatabases("bitcoin-kit")
+
     @Test
     fun deleteDatabaseFiles_databaseWithSidecars_deletesMainFileAndAllSidecars() {
         val dataDir = folder.newFolder().absolutePath
@@ -26,7 +28,7 @@ class DatabaseFilesTest {
             createFile(path, "leftover")
         }
 
-        deleteDatabaseFiles(dataDir, DB_NAME)
+        databases.deleteDatabaseFiles(dataDir, DB_NAME)
 
         assertFalse(main.exists())
         assertFalse(journal.exists())
@@ -43,7 +45,7 @@ class DatabaseFilesTest {
         val neighbour = createFile(dataDir, "Bitcoin-MainNet-w2-Api-BIP84")
         val neighbourJournal = createFile(dataDir, "Bitcoin-MainNet-w2-Api-BIP84-journal")
 
-        deleteDatabaseFiles(dataDir, DB_NAME)
+        databases.deleteDatabaseFiles(dataDir, DB_NAME)
 
         assertTrue(neighbour.exists())
         assertTrue(neighbourJournal.exists())
@@ -51,7 +53,7 @@ class DatabaseFilesTest {
 
     @Test
     fun deleteDatabaseFiles_missingDatabase_doesNotThrow() {
-        deleteDatabaseFiles(folder.newFolder().absolutePath, DB_NAME)
+        databases.deleteDatabaseFiles(folder.newFolder().absolutePath, DB_NAME)
     }
 
     @Test
@@ -60,10 +62,10 @@ class DatabaseFilesTest {
         val database = createFile(dataDir.path, DB_NAME)
         val failure = AtomicReference<Throwable?>()
 
-        withDatabaseMigrationLock(dataDir) {
+        withDatabaseMigrationLock(dataDir, databases.fileNames) {
             val deleteThread = Thread {
                 try {
-                    deleteDatabaseFiles(dataDir.path, DB_NAME)
+                    databases.deleteDatabaseFiles(dataDir.path, DB_NAME)
                 } catch (error: Throwable) {
                     failure.set(error)
                 }

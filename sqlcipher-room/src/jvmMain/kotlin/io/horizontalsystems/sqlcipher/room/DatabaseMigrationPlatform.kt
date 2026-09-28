@@ -1,5 +1,6 @@
-package io.horizontalsystems.bitcoincore.storage
+package io.horizontalsystems.sqlcipher.room
 
+import androidx.room.RoomDatabase
 import io.horizontalsystems.sqlcipher.SqlCipherDriver
 import io.horizontalsystems.sqlcipher.SqlCipherFileSystem
 import io.horizontalsystems.sqlcipher.SqlCipherMigration
@@ -28,3 +29,21 @@ internal fun platformAtomicMove(source: File, target: File, replace: Boolean) {
 internal fun platformForceDirectory(directory: File) {
     SqlCipherFileSystem.forceDirectory(directory.absolutePath)
 }
+
+internal fun verifyEncryptedDatabaseAccess(path: String, databaseKey: ByteArray, fileNames: MigrationFileNames) {
+    val key = existingEncryptedDatabaseKeyOrNull(path, databaseKey, fileNames) ?: return
+    try {
+        SqlCipherDriver(key).use { driver ->
+            driver.open(path).use { connection ->
+                connection.prepare("SELECT count(*) FROM sqlite_schema").use { statement -> statement.step() }
+            }
+        }
+    } catch (error: RuntimeException) {
+        throw DatabaseKeyMismatchException(path, error)
+    } finally {
+        key.fill(0)
+    }
+}
+
+internal fun <T : RoomDatabase> applySqlCipher(builder: RoomDatabase.Builder<T>, databaseKey: ByteArray): RoomDatabase.Builder<T> =
+    builder.setDriver(SqlCipherDriver(databaseKey))

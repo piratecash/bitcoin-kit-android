@@ -1,14 +1,14 @@
-package io.horizontalsystems.bitcoincore.storage
+package io.horizontalsystems.sqlcipher.room
 
 import java.io.File
 
 // Mirrors SQLiteDatabase.deleteDatabase: the main file plus its -journal/-shm/-wal/-wipecheck
 // siblings and any -mj* master-journal leftovers.
-fun deleteDatabaseFiles(dataDir: String, dbName: String) {
+internal fun deleteDatabaseFiles(dataDir: String, dbName: String, fileNames: MigrationFileNames) {
     val directory = File(dataDir)
-    withDatabaseMigrationLock(directory) {
+    withDatabaseMigrationLock(directory, fileNames) {
         val file = File(directory, dbName)
-        verifyNoPendingDatabaseMigration(file.path)
+        verifyNoPendingDatabaseMigration(file.path, fileNames)
         sqliteDatabaseFiles(file).forEach(File::deleteRecursively)
     }
 }

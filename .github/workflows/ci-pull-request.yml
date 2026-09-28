@@ -51,6 +51,7 @@ jobs:
           :hodler:testDebugUnitTest
           :dashlib:testDebugUnitTest
           :dashkit:testDebugUnitTest
+          :sqlcipher-room:testDebugUnitTest
           :bitcoincore:jvmTest
           :litecoinkit:jvmTest
           :bitcoinkit:jvmTest
@@ -62,3 +63,4 @@ jobs:
           :dashkit:jvmTest
           :cosantakit:jvmTest
           :piratecashkit:jvmTest
+          :sqlcipher-room:jvmTest
