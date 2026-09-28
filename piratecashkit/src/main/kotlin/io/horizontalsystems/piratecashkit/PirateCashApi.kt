@@ -1,12 +1,16 @@
 package io.horizontalsystems.piratecashkit
 
+import co.touchlab.kermit.Logger
 import com.eclipsesource.json.JsonValue
+import io.horizontalsystems.bitcoincore.apisync.loadUntilConsecutiveEmpty
+import io.horizontalsystems.bitcoincore.apisync.mapApiRequests
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.FullApiTransaction
 import io.horizontalsystems.bitcoincore.apisync.model.BlockHeaderItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.piratecashkit.data.network.dto.AddressTxDto
 import io.horizontalsystems.piratecashkit.data.network.dto.BlockDto
 import io.horizontalsystems.piratecashkit.data.network.dto.PirateTransactionResponse
@@ -14,16 +18,16 @@ import io.horizontalsystems.piratecashkit.data.network.dto.TransactionItemDto
 import io.horizontalsystems.piratecashkit.data.network.dto.toBlockHeaderItem
 import io.horizontalsystems.piratecashkit.data.network.dto.toFullApiTransaction
 import io.horizontalsystems.piratecashkit.data.network.dto.toTransactionItem
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import timber.log.Timber
 
-class PirateCashApi : IApiTransactionProvider, Api {
+private val log = Logger.withTag("PirateCash")
+
+class PirateCashApi(
+    networkErrorListener: NetworkErrorListenerHolder? = null
+) : IApiTransactionProvider, Api {
     private companion object {
         const val HOST = "https://piratecash.info"
         const val GAP_LIMIT = 20
@@ -31,35 +35,35 @@ class PirateCashApi : IApiTransactionProvider, Api {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val apiManager = ApiManager(HOST)
-    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val apiManager = ApiManager(HOST, networkErrorListener)
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {
-        Timber.tag("PirateCash").d("Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]")
+        log.d { "Request transactions for ${addresses.size} addresses: [${addresses.first()}, ...]" }
 
-        return runBlocking {
-            val allTransactions = mutableListOf<TransactionItem>()
-            var leftGaps = GAP_LIMIT
-            val results = addresses.map { address ->
-                coroutineScope.async {
-                    fetchTransactions(address, 0, 50)
-                }
+        return runBlocking(Dispatchers.IO) {
+            val hashes = loadUntilConsecutiveEmpty(addresses, GAP_LIMIT) {
+                fetchTransactionHashes(it, 0, 50)
             }
-
-            for (txs in results.awaitAll()) {
-                if (txs.isEmpty()) {
-                    leftGaps--
-                    if (leftGaps <= 0) {
-                        Timber.tag("PirateCash").d("Gaps limit reached")
-                        break
-                    }
-                } else {
-                    leftGaps = GAP_LIMIT
-                }
-                allTransactions.addAll(txs)
-            }
-            allTransactions
+            mapApiRequests(hashes) {
+                fetchTransactionInfo(it)
+            }.filterNotNull()
         }
+    }
+
+    private fun fetchTransactionHashes(
+        address: String,
+        from: Int,
+        to: Int
+    ): List<String> = try {
+        log.d { "fetchTransactionHashes for address: $address" }
+        val rawJson = apiManager.doOkHttpGetAsString("ext/getaddresstxs/$address/$from/$to")
+            ?: return emptyList()
+        json.decodeFromString<List<AddressTxDto>>(rawJson).map {
+            it.txid
+        }
+    } catch (ex: Exception) {
+        ex.printStackTrace()
+        emptyList()
     }
 
     override fun blockHashes(heights: List<Int>): Map<Int, String> = heights.mapNotNull { height ->
@@ -88,17 +92,15 @@ class PirateCashApi : IApiTransactionProvider, Api {
     }
 
     override fun broadcastTransaction(rawTransactionHex: String): JsonValue {
-        Timber.tag("PirateCash").d("Calling empty broadcastTransaction")
+        log.d { "Calling empty broadcastTransaction" }
         return com.eclipsesource.json.Json.value("")
     }
 
     override suspend fun getTransactions(hashes: List<String>): List<FullApiTransaction> {
-        return runBlocking {
-            hashes.map { hash ->
-                coroutineScope.async {
-                    fetchTransaction(hash)
-                }
-            }.awaitAll().filterNotNull()
+        return withContext(Dispatchers.IO) {
+            mapApiRequests(hashes) {
+                fetchTransaction(it)
+            }.filterNotNull()
         }
     }
 
@@ -110,26 +112,8 @@ class PirateCashApi : IApiTransactionProvider, Api {
         null
     }
 
-    private suspend fun fetchTransactions(
-        addr: String,
-        from: Int,
-        to: Int
-    ): List<TransactionItem> = try {
-        Timber.tag("PirateCash").d("fetchTransactions for address: $addr")
-        val rawJson = apiManager.doOkHttpGetAsString("ext/getaddresstxs/$addr/$from/$to")!!
-        val results = json.decodeFromString<List<AddressTxDto>>(rawJson).map {
-            coroutineScope.async {
-                fetchTransactionInfo(it.txid)
-            }
-        }
-        results.awaitAll().filterNotNull()
-    } catch (ex: Exception) {
-        ex.printStackTrace()
-        emptyList()
-    }
-
     private fun fetchTransactionInfo(transactionHash: String): TransactionItem? = try {
-        Timber.tag("PirateCash").d("fetchTransactionInfo for transactionHash: $transactionHash")
+        log.d { "fetchTransactionInfo for transactionHash: $transactionHash" }
         val rawJson = apiManager.doOkHttpGetAsString("ext/gettx/$transactionHash")!!
         json.decodeFromString<TransactionItemDto>(rawJson).toTransactionItem()
     } catch (ex: Exception) {

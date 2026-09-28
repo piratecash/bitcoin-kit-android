@@ -1,8 +1,9 @@
 package io.horizontalsystems.bitcoincore.storage.migrations
 
-import android.database.Cursor
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.room.util.getColumnIndexOrThrow
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 import io.horizontalsystems.bitcoincore.models.ScriptTypeConverter
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
@@ -20,24 +21,24 @@ object Migration_12_13 : Migration(12, 13) {
     private val __witnessConverter = WitnessConverter()
     private val __scriptTypeConverter = ScriptTypeConverter()
 
-    override fun migrate(database: SupportSQLiteDatabase) {
-        createTableTransactionMetadata(database)
-        createMetadataForExistingTransactions(database)
-        deleteInvalidTransactions(database)
+    override fun migrate(connection: SQLiteConnection) {
+        createTableTransactionMetadata(connection)
+        createMetadataForExistingTransactions(connection)
+        deleteInvalidTransactions(connection)
     }
 
-    private fun deleteInvalidTransactions(database: SupportSQLiteDatabase) {
-        database.execSQL("DELETE FROM `InvalidTransaction`")
+    private fun deleteInvalidTransactions(connection: SQLiteConnection) {
+        connection.execSQL("DELETE FROM `InvalidTransaction`")
     }
 
-    private fun createTableTransactionMetadata(database: SupportSQLiteDatabase) {
-        database.execSQL("CREATE TABLE IF NOT EXISTS `TransactionMetadata` (`amount` INTEGER NOT NULL, `type` INTEGER NOT NULL, `fee` INTEGER, `transactionHash` BLOB NOT NULL, PRIMARY KEY(`transactionHash`))")
+    private fun createTableTransactionMetadata(connection: SQLiteConnection) {
+        connection.execSQL("CREATE TABLE IF NOT EXISTS `TransactionMetadata` (`amount` INTEGER NOT NULL, `type` INTEGER NOT NULL, `fee` INTEGER, `transactionHash` BLOB NOT NULL, PRIMARY KEY(`transactionHash`))")
     }
 
-    private fun createMetadataForExistingTransactions(database: SupportSQLiteDatabase) {
-        val transactions = getTransactions(database)
-        val inputs = getTransactionInputs(database)
-        val outputs = getTransactionOutputs(database)
+    private fun createMetadataForExistingTransactions(connection: SQLiteConnection) {
+        val transactions = getTransactions(connection)
+        val inputs = getTransactionInputs(connection)
+        val outputs = getTransactionOutputs(connection)
 
         val myOutputsCache = MyOutputsCache().apply {
             add(outputs)
@@ -68,167 +69,138 @@ object Migration_12_13 : Migration(12, 13) {
                 )
             metadataExtractor.extract(fullTransaction)
 
-            insertTransactionMetadata(database, fullTransaction.metadata)
+            insertTransactionMetadata(connection, fullTransaction.metadata)
         }
     }
 
     private fun insertTransactionMetadata(
-        database: SupportSQLiteDatabase,
+        connection: SQLiteConnection,
         metadata: TransactionMetadata
     ) {
-        database.execSQL(
-            "INSERT OR REPLACE INTO `TransactionMetadata` (transactionHash,amount,type,fee) VALUES(?, ?, ?, ?)",
-            arrayOf(metadata.transactionHash, metadata.amount, metadata.type.value, metadata.fee)
-        )
+        connection.prepare(
+            "INSERT OR REPLACE INTO `TransactionMetadata` (transactionHash,amount,type,fee) VALUES(?, ?, ?, ?)"
+        ).use { st ->
+            st.bindBlob(1, metadata.transactionHash)
+            st.bindLong(2, metadata.amount)
+            st.bindLong(3, metadata.type.value.toLong())
+            val fee = metadata.fee
+            if (fee == null) {
+                st.bindNull(4)
+            } else {
+                st.bindLong(4, fee)
+            }
+            st.step()
+        }
     }
 
-    private fun getTransactionOutputs(database: SupportSQLiteDatabase): List<TransactionOutput> {
-        val _cursor = database.query("SELECT * FROM TransactionOutput ORDER BY rowId")
-        return try {
-            val _cursorIndexOfValue = getColumnIndexOrThrow(_cursor, "value")
-            val _cursorIndexOfLockingScript =
-                getColumnIndexOrThrow(_cursor, "lockingScript")
-            val _cursorIndexOfRedeemScript =
-                getColumnIndexOrThrow(_cursor, "redeemScript")
-            val _cursorIndexOfIndex = getColumnIndexOrThrow(_cursor, "index")
-            val _cursorIndexOfTransactionHash =
-                getColumnIndexOrThrow(_cursor, "transactionHash")
-            val _cursorIndexOfPublicKeyPath =
-                getColumnIndexOrThrow(_cursor, "publicKeyPath")
-            val _cursorIndexOfChangeOutput =
-                getColumnIndexOrThrow(_cursor, "changeOutput")
-            val _cursorIndexOfScriptType = getColumnIndexOrThrow(_cursor, "scriptType")
-            val _cursorIndexOfKeyHash = getColumnIndexOrThrow(_cursor, "keyHash")
-            val _cursorIndexOfAddress = getColumnIndexOrThrow(_cursor, "address")
-            val _cursorIndexOfFailedToSpend =
-                getColumnIndexOrThrow(_cursor, "failedToSpend")
-            val _cursorIndexOfPluginId = getColumnIndexOrThrow(_cursor, "pluginId")
-            val _cursorIndexOfPluginData = getColumnIndexOrThrow(_cursor, "pluginData")
-            val _result: MutableList<TransactionOutput> = ArrayList(_cursor.count)
-            while (_cursor.moveToNext()) {
-                val _item: TransactionOutput
-                _item = TransactionOutput()
-                _item.value = _cursor.getLong(_cursorIndexOfValue)
-                _item.lockingScript = _cursor.getBlob(_cursorIndexOfLockingScript)
-                _item.redeemScript = _cursor.getBlob(_cursorIndexOfRedeemScript)
-                _item.index = _cursor.getInt(_cursorIndexOfIndex)
-                _item.transactionHash = _cursor.getBlob(_cursorIndexOfTransactionHash)
-                _item.publicKeyPath = _cursor.getString(_cursorIndexOfPublicKeyPath)
-                _item.changeOutput = _cursor.getInt(_cursorIndexOfChangeOutput) != 0
-                val _tmp_1 = if (_cursor.isNull(_cursorIndexOfScriptType)) {
+    private fun getTransactionOutputs(connection: SQLiteConnection): List<TransactionOutput> {
+        connection.prepare("SELECT * FROM TransactionOutput ORDER BY rowId").use { st ->
+            val _cursorIndexOfValue = getColumnIndexOrThrow(st, "value")
+            val _cursorIndexOfLockingScript = getColumnIndexOrThrow(st, "lockingScript")
+            val _cursorIndexOfRedeemScript = getColumnIndexOrThrow(st, "redeemScript")
+            val _cursorIndexOfIndex = getColumnIndexOrThrow(st, "index")
+            val _cursorIndexOfTransactionHash = getColumnIndexOrThrow(st, "transactionHash")
+            val _cursorIndexOfPublicKeyPath = getColumnIndexOrThrow(st, "publicKeyPath")
+            val _cursorIndexOfChangeOutput = getColumnIndexOrThrow(st, "changeOutput")
+            val _cursorIndexOfScriptType = getColumnIndexOrThrow(st, "scriptType")
+            val _cursorIndexOfKeyHash = getColumnIndexOrThrow(st, "keyHash")
+            val _cursorIndexOfAddress = getColumnIndexOrThrow(st, "address")
+            val _cursorIndexOfFailedToSpend = getColumnIndexOrThrow(st, "failedToSpend")
+            val _cursorIndexOfPluginId = getColumnIndexOrThrow(st, "pluginId")
+            val _cursorIndexOfPluginData = getColumnIndexOrThrow(st, "pluginData")
+            val _result = mutableListOf<TransactionOutput>()
+            while (st.step()) {
+                val _item = TransactionOutput()
+                _item.value = st.getLong(_cursorIndexOfValue)
+                _item.lockingScript = st.getBlob(_cursorIndexOfLockingScript)
+                _item.redeemScript = if (st.isNull(_cursorIndexOfRedeemScript)) null else st.getBlob(_cursorIndexOfRedeemScript)
+                _item.index = st.getInt(_cursorIndexOfIndex)
+                _item.transactionHash = st.getBlob(_cursorIndexOfTransactionHash)
+                _item.publicKeyPath = if (st.isNull(_cursorIndexOfPublicKeyPath)) null else st.getText(_cursorIndexOfPublicKeyPath)
+                _item.changeOutput = st.getBoolean(_cursorIndexOfChangeOutput)
+                val _tmp_1 = if (st.isNull(_cursorIndexOfScriptType)) {
                     null
                 } else {
-                    _cursor.getInt(_cursorIndexOfScriptType)
+                    st.getInt(_cursorIndexOfScriptType)
                 }
                 __scriptTypeConverter.fromInt(_tmp_1)?.let {
                     _item.scriptType = it
                 }
-                _item.lockingScriptPayload = _cursor.getBlob(_cursorIndexOfKeyHash)
-                _item.address = _cursor.getString(_cursorIndexOfAddress)
-                _item.failedToSpend = _cursor.getInt(_cursorIndexOfFailedToSpend) != 0
-                _item.pluginId = if (_cursor.isNull(_cursorIndexOfPluginId)) {
-                    null
-                } else {
-                    _cursor.getShort(_cursorIndexOfPluginId).toByte()
-                }
-                _item.pluginData = _cursor.getString(_cursorIndexOfPluginData)
+                _item.lockingScriptPayload = if (st.isNull(_cursorIndexOfKeyHash)) null else st.getBlob(_cursorIndexOfKeyHash)
+                _item.address = if (st.isNull(_cursorIndexOfAddress)) null else st.getText(_cursorIndexOfAddress)
+                _item.failedToSpend = st.getBoolean(_cursorIndexOfFailedToSpend)
+                _item.pluginId = if (st.isNull(_cursorIndexOfPluginId)) null else st.getLong(_cursorIndexOfPluginId).toByte()
+                _item.pluginData = if (st.isNull(_cursorIndexOfPluginData)) null else st.getText(_cursorIndexOfPluginData)
                 _result.add(_item)
             }
-            _result
-        } finally {
-            _cursor.close()
+            return _result
         }
     }
 
-    private fun getTransactionInputs(database: SupportSQLiteDatabase): List<TransactionInput> {
-        val _cursor = database.query("SELECT * FROM TransactionInput")
-        return try {
-            val _cursorIndexOfTransactionHash =
-                getColumnIndexOrThrow(_cursor, "transactionHash")
-            val _cursorIndexOfKeyHash = getColumnIndexOrThrow(_cursor, "keyHash")
-            val _cursorIndexOfAddress = getColumnIndexOrThrow(_cursor, "address")
-            val _cursorIndexOfWitness = getColumnIndexOrThrow(_cursor, "witness")
-            val _cursorIndexOfPreviousOutputTxHash =
-                getColumnIndexOrThrow(_cursor, "previousOutputTxHash")
-            val _cursorIndexOfPreviousOutputIndex =
-                getColumnIndexOrThrow(_cursor, "previousOutputIndex")
-            val _cursorIndexOfSigScript = getColumnIndexOrThrow(_cursor, "sigScript")
-            val _cursorIndexOfSequence = getColumnIndexOrThrow(_cursor, "sequence")
-            val _result: MutableList<TransactionInput> = ArrayList(_cursor.count)
-            while (_cursor.moveToNext()) {
-                val _item: TransactionInput
-                _item = TransactionInput(
-                    _cursor.getBlob(_cursorIndexOfPreviousOutputTxHash),
-                    _cursor.getLong(_cursorIndexOfPreviousOutputIndex),
-                    _cursor.getBlob(_cursorIndexOfSigScript),
-                    _cursor.getLong(_cursorIndexOfSequence)
+    private fun getTransactionInputs(connection: SQLiteConnection): List<TransactionInput> {
+        connection.prepare("SELECT * FROM TransactionInput").use { st ->
+            val _cursorIndexOfTransactionHash = getColumnIndexOrThrow(st, "transactionHash")
+            val _cursorIndexOfKeyHash = getColumnIndexOrThrow(st, "keyHash")
+            val _cursorIndexOfAddress = getColumnIndexOrThrow(st, "address")
+            val _cursorIndexOfWitness = getColumnIndexOrThrow(st, "witness")
+            val _cursorIndexOfPreviousOutputTxHash = getColumnIndexOrThrow(st, "previousOutputTxHash")
+            val _cursorIndexOfPreviousOutputIndex = getColumnIndexOrThrow(st, "previousOutputIndex")
+            val _cursorIndexOfSigScript = getColumnIndexOrThrow(st, "sigScript")
+            val _cursorIndexOfSequence = getColumnIndexOrThrow(st, "sequence")
+            val _result = mutableListOf<TransactionInput>()
+            while (st.step()) {
+                val _item = TransactionInput(
+                    st.getBlob(_cursorIndexOfPreviousOutputTxHash),
+                    st.getLong(_cursorIndexOfPreviousOutputIndex),
+                    st.getBlob(_cursorIndexOfSigScript),
+                    st.getLong(_cursorIndexOfSequence)
                 )
-                _item.transactionHash = _cursor.getBlob(_cursorIndexOfTransactionHash)
-                _item.lockingScriptPayload = _cursor.getBlob(_cursorIndexOfKeyHash)
-                _item.address = _cursor.getString(_cursorIndexOfAddress)
-                _item.witness =
-                    __witnessConverter.toWitness(_cursor.getString(_cursorIndexOfWitness))
+                _item.transactionHash = st.getBlob(_cursorIndexOfTransactionHash)
+                _item.lockingScriptPayload = if (st.isNull(_cursorIndexOfKeyHash)) null else st.getBlob(_cursorIndexOfKeyHash)
+                _item.address = if (st.isNull(_cursorIndexOfAddress)) null else st.getText(_cursorIndexOfAddress)
+                _item.witness = __witnessConverter.toWitness(st.getText(_cursorIndexOfWitness))
                 _result.add(_item)
             }
-            _result
-        } finally {
-            _cursor.close()
+            return _result
         }
     }
 
-    private fun getTransactions(database: SupportSQLiteDatabase): List<Transaction> {
-        val _cursor = database.query("SELECT * FROM `Transaction`")
-        return try {
-            val _cursorIndexOfUid = getColumnIndexOrThrow(_cursor, "uid")
-            val _cursorIndexOfHash = getColumnIndexOrThrow(_cursor, "hash")
-            val _cursorIndexOfBlockHash = getColumnIndexOrThrow(_cursor, "blockHash")
-            val _cursorIndexOfVersion = getColumnIndexOrThrow(_cursor, "version")
-            val _cursorIndexOfLockTime = getColumnIndexOrThrow(_cursor, "lockTime")
-            val _cursorIndexOfTimestamp = getColumnIndexOrThrow(_cursor, "timestamp")
-            val _cursorIndexOfOrder = getColumnIndexOrThrow(_cursor, "order")
-            val _cursorIndexOfIsMine = getColumnIndexOrThrow(_cursor, "isMine")
-            val _cursorIndexOfIsOutgoing = getColumnIndexOrThrow(_cursor, "isOutgoing")
-            val _cursorIndexOfSegwit = getColumnIndexOrThrow(_cursor, "segwit")
-            val _cursorIndexOfStatus = getColumnIndexOrThrow(_cursor, "status")
-            val _cursorIndexOfSerializedTxInfo =
-                getColumnIndexOrThrow(_cursor, "serializedTxInfo")
-            val _cursorIndexOfConflictingTxHash =
-                getColumnIndexOrThrow(_cursor, "conflictingTxHash")
-            val _cursorIndexOfRawTransaction =
-                getColumnIndexOrThrow(_cursor, "rawTransaction")
-            val _result: MutableList<Transaction> = ArrayList(_cursor.count)
-            while (_cursor.moveToNext()) {
-                val _item: Transaction
-                _item = Transaction()
-                _item.uid = _cursor.getString(_cursorIndexOfUid)
-                _item.hash = _cursor.getBlob(_cursorIndexOfHash)
-                _item.blockHash = _cursor.getBlob(_cursorIndexOfBlockHash)
-                _item.version = _cursor.getInt(_cursorIndexOfVersion)
-                _item.lockTime = _cursor.getLong(_cursorIndexOfLockTime)
-                _item.timestamp = _cursor.getLong(_cursorIndexOfTimestamp)
-                _item.order = _cursor.getInt(_cursorIndexOfOrder)
-                _item.isMine = _cursor.getInt(_cursorIndexOfIsMine) != 0
-                _item.isOutgoing = _cursor.getInt(_cursorIndexOfIsOutgoing) != 0
-                _item.segwit = _cursor.getInt(_cursorIndexOfSegwit) != 0
-                _item.status = _cursor.getInt(_cursorIndexOfStatus)
-                _item.serializedTxInfo = _cursor.getString(_cursorIndexOfSerializedTxInfo)
-                _item.conflictingTxHash = _cursor.getBlob(_cursorIndexOfConflictingTxHash)
-                _item.rawTransaction = _cursor.getString(_cursorIndexOfRawTransaction)
+    private fun getTransactions(connection: SQLiteConnection): List<Transaction> {
+        connection.prepare("SELECT * FROM `Transaction`").use { st ->
+            val _cursorIndexOfUid = getColumnIndexOrThrow(st, "uid")
+            val _cursorIndexOfHash = getColumnIndexOrThrow(st, "hash")
+            val _cursorIndexOfBlockHash = getColumnIndexOrThrow(st, "blockHash")
+            val _cursorIndexOfVersion = getColumnIndexOrThrow(st, "version")
+            val _cursorIndexOfLockTime = getColumnIndexOrThrow(st, "lockTime")
+            val _cursorIndexOfTimestamp = getColumnIndexOrThrow(st, "timestamp")
+            val _cursorIndexOfOrder = getColumnIndexOrThrow(st, "order")
+            val _cursorIndexOfIsMine = getColumnIndexOrThrow(st, "isMine")
+            val _cursorIndexOfIsOutgoing = getColumnIndexOrThrow(st, "isOutgoing")
+            val _cursorIndexOfSegwit = getColumnIndexOrThrow(st, "segwit")
+            val _cursorIndexOfStatus = getColumnIndexOrThrow(st, "status")
+            val _cursorIndexOfSerializedTxInfo = getColumnIndexOrThrow(st, "serializedTxInfo")
+            val _cursorIndexOfConflictingTxHash = getColumnIndexOrThrow(st, "conflictingTxHash")
+            val _cursorIndexOfRawTransaction = getColumnIndexOrThrow(st, "rawTransaction")
+            val _result = mutableListOf<Transaction>()
+            while (st.step()) {
+                val _item = Transaction()
+                _item.uid = st.getText(_cursorIndexOfUid)
+                _item.hash = st.getBlob(_cursorIndexOfHash)
+                _item.blockHash = if (st.isNull(_cursorIndexOfBlockHash)) null else st.getBlob(_cursorIndexOfBlockHash)
+                _item.version = st.getInt(_cursorIndexOfVersion)
+                _item.lockTime = st.getLong(_cursorIndexOfLockTime)
+                _item.timestamp = st.getLong(_cursorIndexOfTimestamp)
+                _item.order = st.getInt(_cursorIndexOfOrder)
+                _item.isMine = st.getBoolean(_cursorIndexOfIsMine)
+                _item.isOutgoing = st.getBoolean(_cursorIndexOfIsOutgoing)
+                _item.segwit = st.getBoolean(_cursorIndexOfSegwit)
+                _item.status = st.getInt(_cursorIndexOfStatus)
+                _item.serializedTxInfo = st.getText(_cursorIndexOfSerializedTxInfo)
+                _item.conflictingTxHash = if (st.isNull(_cursorIndexOfConflictingTxHash)) null else st.getBlob(_cursorIndexOfConflictingTxHash)
+                _item.rawTransaction = if (st.isNull(_cursorIndexOfRawTransaction)) null else st.getText(_cursorIndexOfRawTransaction)
                 _result.add(_item)
             }
-            _result
-        } finally {
-            _cursor.close()
+            return _result
         }
     }
-
-    private fun getColumnIndexOrThrow(c: Cursor, name: String): Int {
-        val index = c.getColumnIndex(name)
-        return when {
-            index >= 0 -> index
-            else -> c.getColumnIndexOrThrow("`$name`")
-        }
-    }
-
-
 }

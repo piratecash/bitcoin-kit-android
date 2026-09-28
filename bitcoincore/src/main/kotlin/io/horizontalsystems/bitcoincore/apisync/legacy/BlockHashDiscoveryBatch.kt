@@ -3,6 +3,8 @@ package io.horizontalsystems.bitcoincore.apisync.legacy
 import io.horizontalsystems.bitcoincore.models.BlockHash
 import io.horizontalsystems.bitcoincore.models.PublicKey
 import io.reactivex.Single
+import io.reactivex.SingleEmitter
+import java.util.concurrent.CancellationException
 
 class BlockHashDiscoveryBatch(
     private val blockHashScanner: BlockHashScanner,
@@ -13,7 +15,7 @@ class BlockHashDiscoveryBatch(
     fun discoverBlockHashes(): Single<Pair<List<PublicKey>, List<BlockHash>>> {
         return Single.create { emitter ->
             try {
-                val result = fetchRecursive()
+                val result = fetchRecursive(emitter)
                 if (!emitter.isDisposed) {
                     emitter.onSuccess(result)
                 }
@@ -26,6 +28,7 @@ class BlockHashDiscoveryBatch(
     }
 
     private fun fetchRecursive(
+        emitter: SingleEmitter<*>,
         blockHashes: List<BlockHash> = listOf(),
         externalBatchInfo: KeyBlockHashBatchInfo = KeyBlockHashBatchInfo(),
         internalBatchInfo: KeyBlockHashBatchInfo = KeyBlockHashBatchInfo()
@@ -40,7 +43,13 @@ class BlockHashDiscoveryBatch(
         val externalPublicKeys = externalBatchInfo.publicKeys + externalNewKeys
         val internalPublicKeys = internalBatchInfo.publicKeys + internalNewKeys
 
+        // Key derivation above is slow and the scan below is blocking, so those are the only two
+        // points a disposal can land on. Throwing rather than returning what was collected: a
+        // partial result would be stored as a completed restore.
+        emitter.throwIfDisposed()
         val fetchResponse = blockHashScanner.getBlockHashes(externalNewKeys, internalNewKeys)
+        emitter.throwIfDisposed()
+
         val resultBlockHashes = blockHashes + fetchResponse.blockHashes.filter { it.height <= maxHeight }
 
         return when {
@@ -62,9 +71,13 @@ class BlockHashDiscoveryBatch(
                     fetchResponse.internalLastUsedIndex,
                     internalBatchInfo.startIndex + internalCount
                 )
-                fetchRecursive(resultBlockHashes, externalBatch, internalBatch)
+                fetchRecursive(emitter, resultBlockHashes, externalBatch, internalBatch)
             }
         }
+    }
+
+    private fun SingleEmitter<*>.throwIfDisposed() {
+        if (isDisposed) throw CancellationException("block hash discovery terminated")
     }
 
     private data class KeyBlockHashBatchInfo(

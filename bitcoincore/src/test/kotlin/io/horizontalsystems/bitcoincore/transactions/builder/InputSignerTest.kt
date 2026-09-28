@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincore.transactions.builder
 
-import com.nhaarman.mockitokotlin2.any
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.any
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.models.PublicKey

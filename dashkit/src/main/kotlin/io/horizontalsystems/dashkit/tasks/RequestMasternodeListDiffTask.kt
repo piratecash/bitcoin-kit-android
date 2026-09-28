@@ -1,10 +1,10 @@
 package io.horizontalsystems.dashkit.tasks
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.dashkit.messages.GetMasternodeListDiffMessage
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessage
-import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
 class RequestMasternodeListDiffTask(
@@ -12,6 +12,7 @@ class RequestMasternodeListDiffTask(
     val blockHash: ByteArray,
     private val logTag: String
 ) : PeerTask() {
+    private val log = Logger.withTag(logTag)
 
     var masternodeListDiffMessage: MasternodeListDiffMessage? = null
 
@@ -20,7 +21,7 @@ class RequestMasternodeListDiffTask(
     }
 
     override fun handleTimeout() {
-        Timber.tag(logTag).d("RequestMasternodeListDiffTask: timeout")
+        log.d { "RequestMasternodeListDiffTask: timeout" }
         listener?.onTaskCompleted(this)
     }
 

@@ -1,0 +1,180 @@
+import javax.inject.Inject
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.process.ExecOperations
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    id 'java-library'
+    id 'org.jetbrains.kotlin.jvm'
+    id 'maven-publish'
+}
+
+// No toolchain on purpose: this module must build on any JDK 17+ (JitPack image, matrix
+// runners, developer machines) without adding a requirement of its own.
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+kotlin {
+    compilerOptions { jvmTarget = JvmTarget.JVM_17 }
+}
+
+sourceSets {
+    test {
+        // The shared BLS is a plain JVM class; compiling it here checks it against the
+        // native this module just built, on every matrix platform.
+        kotlin.srcDir '../dashlib/src/main/kotlin'
+    }
+}
+
+// The root build.gradle hands out groupId/artifactId/version and the repository; it does
+// not create publications, and no plugin creates one for a plain java-library.
+publishing {
+    publications {
+        release(MavenPublication) {
+            from components.java
+        }
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation files("$rootDir/dashlib/libs/dashj-bls-0.15.3.jar")
+    // The bindings jar calls Preconditions from its own methods but does not ship Guava.
+    testImplementation libs.guava
+}
+
+// Project.exec and Task.project are both removed in a coming Gradle; inject the services.
+interface NativeBuildOps {
+    @Inject ExecOperations getExecOps()
+
+    @Inject FileSystemOperations getFs()
+}
+
+// Explicit host -> target pairs, not "target equals host tag": the rule would admit
+// windows-x64 on a Windows host (MSVC, which has no pthreads) and linux-arm64, neither
+// of which is shipped or proven.
+ext.supportedBuildPairs = [
+        'macos-arm64': ['macos-arm64'],
+        'linux-x64'  : ['linux-x64', 'windows-x64'],
+]
+
+ext.nativesAssetPrefix = 'dashjbls'
+ext.nativesFileNames = [
+        'macos-arm64': 'libdashjbls.dylib',
+        'linux-x64'  : 'libdashjbls.so',
+        'windows-x64': 'dashjbls.dll',
+]
+// The shipped set, as a constant rather than as "whatever is on disk": derived, it would let
+// a swapped platform agree with itself.
+ext.nativesExpectedFiles = ext.nativesFileNames.collect { target, name -> "$target/$name".toString() }
+// Everything the binaries are attested against: native sources and the bls-signatures gitlink,
+// the loader, the shared BLS with its bindings, and the consensus smoke with its vectors.
+ext.nativesAttestedPaths = [
+        'dashlib/cpp',
+        'dashlib/libs',
+        'dashlib/src/main/kotlin',
+        'dashlib-native/build.gradle',
+        'dashlib-native/src/main/kotlin',
+        'dashlib-native/src/test',
+        'gradle/natives.gradle',
+]
+
+apply from: "$rootDir/gradle/natives.gradle"
+
+tasks.register('buildNative') {
+    group = 'build'
+    description = 'Builds dashjbls for -PnativeTarget=<os>-<arch> (default: host) into prebuilt/natives'
+
+    def ops = objects.newInstance(NativeBuildOps)
+    def supportedPairs = supportedBuildPairs
+    def host = nativeHostTag
+    def fileNames = nativesFileNames
+    def target = (findProperty('nativeTarget') ?: host).toString()
+    def cppDir = file("$rootDir/dashlib/cpp")
+    def srcDir = layout.buildDirectory.dir('native-src').get().asFile
+    def nativeBuildDir = layout.buildDirectory.dir("native-build/$target").get().asFile
+    def outDir = file("prebuilt/natives/$target")
+    def jniHeaderDir = (findProperty('jniHeaderDir') ?: "${System.getProperty('java.home')}/include").toString()
+
+    doLast {
+        def allowed = supportedPairs.getOrDefault(host, [])
+        if (!allowed.contains(target)) {
+            def pairs = supportedPairs.collectMany { h, ts -> ts.collect { "$h -> $it" } }.join(', ')
+            throw new GradleException("unsupported build pair '$host -> $target'; supported: $pairs")
+        }
+
+        ops.fs.delete { delete srcDir }
+        ops.fs.copy { from cppDir; into srcDir }
+
+        // Modern toolchains reject the aligned typedefs; patch the copy, never the submodule.
+        def blake2 = new File(srcDir, 'dashj-bls/bls-signatures/contrib/relic/src/md/blake2.h')
+        blake2.text = blake2.text.replace('ALIGNME( 64 ) typedef struct', 'typedef struct')
+
+        // A binary left by the previous run would pass the "expected file produced" check.
+        def expected = fileNames[target]
+        if (nativeBuildDir.exists()) {
+            nativeBuildDir.eachFileRecurse { if (it.file && it.name.contains('dashjbls')) it.delete() }
+        }
+
+        def configure = ['cmake', '-S', srcDir.absolutePath, '-B', nativeBuildDir.absolutePath,
+                         '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+                         "-DJNI_HEADER_DIR=$jniHeaderDir"]
+        if (target.startsWith('macos')) {
+            // Otherwise the minimum macOS version silently follows the runner's SDK.
+            configure << '-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0'
+        }
+        if (target == 'windows-x64') {
+            configure += ['-DCMAKE_SYSTEM_NAME=Windows',
+                          '-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc',
+                          '-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++']
+        }
+
+        ops.execOps.exec { commandLine configure }
+        ops.execOps.exec {
+            commandLine 'cmake', '--build', nativeBuildDir.absolutePath, '--target', 'dashjbls', '--parallel'
+        }
+
+        def produced = []
+        nativeBuildDir.eachFileRecurse { if (it.file && it.name == expected) produced << it }
+        if (produced.isEmpty()) {
+            throw new GradleException("native build produced no '$expected' under $nativeBuildDir")
+        }
+
+        // Replace only after the result is proven: a failed run must leave the tree untouched.
+        ops.fs.delete { delete outDir }
+        ops.fs.copy { from produced.first(); into outDir }
+        logger.lifecycle("dashjbls for $target -> ${new File(outDir, expected)}")
+    }
+}
+
+jar {
+    def upstream = "$rootDir/dashlib/cpp/dashj-bls/bls-signatures"
+    def licences = [
+            'bls-signatures': [dir: upstream, files: ['LICENSE', 'NOTICE']],
+            'relic'         : [dir: "$upstream/contrib/relic", files: ['LICENSE', 'LICENSE.Apache-2.0']],
+            'winpthreads'   : [dir: "$projectDir/licenses", files: ['winpthreads-COPYING.txt']],
+    ]
+
+    licences.each { component, spec ->
+        from(spec.dir) {
+            includes = spec.files
+            into "META-INF/licenses/$component"
+        }
+    }
+
+    // An uninitialised bls-signatures submodule leaves those sources empty, and a `from`
+    // spec over an empty directory ships a jar silently missing the licences it must carry.
+    doFirst {
+        licences.each { component, spec ->
+            spec.files.each { name ->
+                def licence = new File(spec.dir as String, name as String)
+                if (!licence.isFile()) {
+                    throw new GradleException("licence $component/$name is missing at $licence; " +
+                            "restore it, or run `git submodule update --init --recursive` if it comes from one")
+                }
+            }
+        }
+    }
+}

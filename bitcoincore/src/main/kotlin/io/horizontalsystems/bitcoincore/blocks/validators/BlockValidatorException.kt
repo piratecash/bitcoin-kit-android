@@ -5,7 +5,12 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 
 open class BlockValidatorException(msg: String) : RuntimeException(msg) {
     class NoHeader : BlockValidatorException("No Header")
-    class NoCheckpointBlock : BlockValidatorException("No Checkpoint Block")
+    class NoCheckpointBlock(val height: Int? = null) :
+        BlockValidatorException("No Checkpoint Block" + (height?.let { " at height $it" } ?: ""))
+
+    class AncestorDownloadQueued(val height: Int) :
+        BlockValidatorException("Missing ancestor at height $height queued for download")
+
     class OrphanBlock(block: ByteArray? = null) :
         BlockValidatorException("Orphan Block: ${block?.toHexString()}")
     class NoPreviousBlock(block: ByteArray? = null) :

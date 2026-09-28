@@ -1,10 +1,10 @@
 package io.horizontalsystems.bitcoincore.transactions
 
-import com.nhaarman.mockitokotlin2.any
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.never
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import com.eclipsesource.json.Json
 import com.eclipsesource.json.JsonValue
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
@@ -43,10 +43,11 @@ class PendingTransactionReconcilerTest {
         storage = storage,
         statusProvider = statusProvider,
         dataListener = dataListener,
-        invalidateOutgoing = invalidatedTransactions::add,
+        outgoingInvalidator = invalidatedTransactions::add,
         logTag = "test",
         coroutineDispatcher = Dispatchers.Unconfined,
-        minimumPendingAgeSeconds = MINIMUM_PENDING_AGE_SECONDS
+        minimumPendingAgeSeconds = MINIMUM_PENDING_AGE_SECONDS,
+        minimumNewPendingAgeSeconds = MINIMUM_NEW_PENDING_AGE_SECONDS,
     )
 
     @Test
@@ -73,7 +74,7 @@ class PendingTransactionReconcilerTest {
         reconcile(nowSeconds = 1_000)
 
         assertEquals(listOf(transaction), invalidatedTransactions)
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -118,7 +119,7 @@ class PendingTransactionReconcilerTest {
 
         reconcile(nowSeconds = 1_000)
 
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -142,7 +143,7 @@ class PendingTransactionReconcilerTest {
 
         reconcile(nowSeconds = 1_000)
 
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -154,7 +155,7 @@ class PendingTransactionReconcilerTest {
 
         reconcile(nowSeconds = 1_000)
 
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -167,7 +168,7 @@ class PendingTransactionReconcilerTest {
         assertFailsWith<CancellationException> {
             reconcile(nowSeconds = 1_000)
         }
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -183,7 +184,7 @@ class PendingTransactionReconcilerTest {
         reconcile(nowSeconds = 1_000)
 
         verify(storage).addBlockHashes(listOf(blockHash))
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
         assertEquals(listOf(Unit), confirmedBlocksFound)
     }
@@ -198,7 +199,7 @@ class PendingTransactionReconcilerTest {
         reconcile(nowSeconds = 1_000)
 
         verify(storage).addBlockHashes(listOf(blockHash))
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -231,12 +232,69 @@ class PendingTransactionReconcilerTest {
     }
 
     @Test
+    fun reconcile_staleNewOutgoingTransaction_deletesWithoutInvalidating() {
+        val transaction = transaction(hashByte = 1, timestamp = 600, isOutgoing = true, status = Transaction.Status.NEW)
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.NEW)).thenReturn(listOf(transaction))
+        whenever(storage.deleteNewExpiredTransactions(listOf(transaction))).thenReturn(listOf(transaction))
+
+        reconcile(nowSeconds = 1_000)
+
+        verify(storage).deleteNewExpiredTransactions(listOf(transaction))
+        verify(dataListener).onTransactionsDelete(listOf(transaction.hash.toReversedHex()))
+        assertEquals(emptyList(), invalidatedTransactions)
+    }
+
+    @Test
+    fun reconcile_freshNewOutgoingTransaction_keepsTransaction() {
+        val transaction = transaction(hashByte = 1, timestamp = 800, isOutgoing = true, status = Transaction.Status.NEW)
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.NEW)).thenReturn(listOf(transaction))
+
+        reconcile(nowSeconds = 1_000)
+
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
+        verify(dataListener, never()).onTransactionsDelete(any())
+        assertEquals(emptyList(), invalidatedTransactions)
+    }
+
+    @Test
+    fun reconcile_malformedNewOutgoingTransactionWithoutInputs_isNotFastDeleted() {
+        val transaction = transaction(hashByte = 1, timestamp = 600, isOutgoing = true, status = Transaction.Status.NEW)
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.NEW)).thenReturn(listOf(transaction))
+        whenever(storage.getTransactionInputs(transaction)).thenReturn(emptyList())
+        whenever(storage.deleteNewExpiredTransactions(listOf(transaction))).thenReturn(listOf(transaction))
+
+        reconcile(nowSeconds = 1_000)
+
+        // Reaching the status-provider lookup (instead of an instant delete) proves the malformed
+        // fast-delete path is restricted to RELAYED transactions.
+        assertEquals(listOf(listOf(transaction.hash.toReversedHex())), statusProvider.requests)
+        verify(storage).deleteNewExpiredTransactions(listOf(transaction))
+    }
+
+    @Test
+    fun reconcile_staleNewAndRelayedOutgoingTransactions_deletesNewAndInvalidatesRelayed() {
+        val newTransaction = transaction(hashByte = 1, timestamp = 600, isOutgoing = true, status = Transaction.Status.NEW)
+        val relayedTransaction = transaction(hashByte = 2, timestamp = 100, isOutgoing = true, status = Transaction.Status.RELAYED)
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.RELAYED)).thenReturn(listOf(relayedTransaction))
+        whenever(storage.getRelayedPendingTransactions(Transaction.Status.NEW)).thenReturn(listOf(newTransaction))
+        whenever(storage.getTransactionInputs(relayedTransaction)).thenReturn(listOf(input()))
+        whenever(storage.deleteNewExpiredTransactions(listOf(newTransaction))).thenReturn(listOf(newTransaction))
+
+        reconcile(nowSeconds = 1_000)
+
+        verify(storage).deleteNewExpiredTransactions(listOf(newTransaction))
+        verify(dataListener).onTransactionsDelete(listOf(newTransaction.hash.toReversedHex()))
+        assertEquals(listOf(relayedTransaction), invalidatedTransactions)
+        verify(storage, never()).deleteRelayedPendingTransactions(listOf(relayedTransaction), Transaction.Status.RELAYED)
+    }
+
+    @Test
     fun reconcile_noStatusProvider_keepsTransactionsUntouched() {
         val reconciler = PendingTransactionReconciler(
             storage = storage,
             statusProvider = null,
             dataListener = dataListener,
-            invalidateOutgoing = invalidatedTransactions::add,
+            outgoingInvalidator = invalidatedTransactions::add,
             logTag = "test",
             coroutineDispatcher = Dispatchers.Unconfined,
             minimumPendingAgeSeconds = MINIMUM_PENDING_AGE_SECONDS
@@ -245,7 +303,7 @@ class PendingTransactionReconcilerTest {
         runBlocking { reconciler.reconcile(nowSeconds = 1_000) }
 
         verify(storage, never()).getRelayedPendingTransactions(any())
-        verify(storage, never()).deleteRelayedPendingTransactions(any())
+        verify(storage, never()).deleteRelayedPendingTransactions(any(), any())
         verify(dataListener, never()).onTransactionsDelete(any())
     }
 
@@ -361,22 +419,28 @@ class PendingTransactionReconcilerTest {
         reconciler.reconcile(nowSeconds)
     }
 
-    private fun transaction(hashByte: Byte, timestamp: Long, isOutgoing: Boolean = false): Transaction {
+    private fun transaction(
+        hashByte: Byte,
+        timestamp: Long,
+        isOutgoing: Boolean = false,
+        status: Int = Transaction.Status.RELAYED
+    ): Transaction {
         return Transaction().apply {
             hash = byteArrayOf(hashByte)
             this.timestamp = timestamp
             isMine = true
             this.isOutgoing = isOutgoing
-            status = Transaction.Status.RELAYED
+            this.status = status
         }
     }
 
     private fun transaction(
         hashByte: Int,
         timestamp: Long,
-        isOutgoing: Boolean = false
+        isOutgoing: Boolean = false,
+        status: Int = Transaction.Status.RELAYED
     ): Transaction {
-        return transaction(hashByte.toByte(), timestamp, isOutgoing)
+        return transaction(hashByte.toByte(), timestamp, isOutgoing, status)
     }
 
     private fun input(): TransactionInput {
@@ -450,6 +514,7 @@ class PendingTransactionReconcilerTest {
 
     private companion object {
         const val MINIMUM_PENDING_AGE_SECONDS = 600L
+        const val MINIMUM_NEW_PENDING_AGE_SECONDS = 300L
         const val BLOCK_HASH = "000000000000000000000000000000000000000000000000000000000000007b"
         const val BLOCK_HASH_DISPATCHER_THREAD = "block-hash-dispatcher"
     }

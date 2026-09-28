@@ -1,0 +1,11 @@
+# Upstream Chia bls-signatures vectors, submodule 5401869ae1a6f0235094fdfc93c51208c80d3000.
+# src/test.cpp, TEST_CASE("Test vectors") / SECTION("Test vectors 1"), except:
+#   msgHash - single SHA-256 of msg (upstream Util::Hash256 is single, not double)
+#   pk      - python-impl of the same commit: PrivateKey.from_seed(...).get_public_key().serialize()
+seed=0102030405
+sk=022fb42c08c12de3a6af053880199806532e79515f94e83461612101f9412f9e
+pkFingerprint=26d53247
+pk=02a8d2aaa6a5e2e08d4b8d406aaf0121a2fc2088ed12431e6b0663028da9ac5922c9ea91cde7dd74b7d795580acc7a61
+msg=070809
+msgHash=66a6757151f8ee55db127716c7e3dce0be8074b64e20eda542e5c1e46ca9c41e
+sig=93eb2e1cb5efcfb31f2c08b235e8203a67265bc6a13d9f0ab77727293b74a357ff0459ac210dc851fcb8a60cb7d393a419915cfcf83908ddbeac32039aaa3e8fea82efcb3ba4f740f20c76df5e97109b57370ae32d9b70d256a98942e5806065

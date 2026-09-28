@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.transactions
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.core.IInitialDownload
@@ -21,11 +22,12 @@ import io.horizontalsystems.bitcoincore.network.peer.task.SendTransactionTask
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 class TransactionSender(
@@ -41,7 +43,9 @@ class TransactionSender(
     private val allowBroadcastFromUnsyncedPeers: Boolean,
     private val minConnectedPeerSize: Int = DEFAULT_MIN_CONNECTED_PEER_SIZE,
     private val logTag: String = "BitcoinCore",
+    private val coroutineDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : IPeerTaskHandler, TransactionSendTimer.Listener, PeerGroup.Listener {
+    private val log = Logger.withTag(logTag)
 
     private data class BroadcastDiagnostics(
         val requestedByPeer: Boolean = false,
@@ -55,10 +59,34 @@ class TransactionSender(
         val external: Boolean = false,
     )
 
-    private val coroutineScope = CoroutineScope(Dispatchers.IO)
+    private val coroutineScope = CoroutineScope(coroutineDispatcher)
     private val broadcastDiagnostics = ConcurrentHashMap<String, BroadcastDiagnostics>()
 
+    @Volatile
+    private var networkPaused = false
+
+    /**
+     * Stops the automatic retry loop. An explicit [broadcastRawTransaction] stays allowed:
+     * only the kit's own background broadcasts are suspended.
+     */
+    fun pauseNetwork() {
+        networkPaused = true
+        timer.stop()
+        coroutineScope.coroutineContext.cancelChildren()
+    }
+
+    fun resumeNetwork() {
+        if (!networkPaused) return
+
+        networkPaused = false
+        // pauseNetwork() stopped the retry timer, and the peers-synced callback that would
+        // normally restart it may never come. The first tick stops itself if nothing is queued.
+        timer.startIfNotRunning()
+    }
+
     fun sendPendingTransactions() {
+        if (networkPaused) return
+
         try {
             val transactions = pendingBroadcastTransactions()
             if (transactions.isEmpty()) {
@@ -100,6 +128,8 @@ class TransactionSender(
         when (sendType) {
             BitcoinCore.SendType.P2P -> {
                 if (!sendViaP2P(listOf(broadcastTransaction))) {
+                    // No peer attempted the transaction, so this must not consume the P2P retry budget.
+                    recordBroadcastAttempt(broadcastTransaction)
                     queueBroadcastRetry(broadcastTransaction)
                     RawTransactionBroadcastStatus.Queued
                 } else {
@@ -129,7 +159,7 @@ class TransactionSender(
             storage.getSentTransaction(transaction.header.hash)?.let { sentTransaction ->
                 storage.deleteSentTransaction(sentTransaction)
             }
-            Timber.tag(logTag).i("Transaction ${transaction.header.hash.toReversedHex()} observed from peer mempool and marked relayed.")
+            log.i { "Transaction ${transaction.header.hash.toReversedHex()} observed from peer mempool and marked relayed." }
         }
     }
 
@@ -166,6 +196,10 @@ class TransactionSender(
     }
 
     private fun send(transactions: List<BroadcastTransaction>) {
+        // The retry callback gets here after storage reads, so pauseNetwork() can land in between;
+        // sendViaP2P() would restart the timer the pause had just stopped.
+        if (networkPaused) return
+
         when (sendType) {
             BitcoinCore.SendType.P2P -> {
                 sendViaP2P(transactions)
@@ -179,8 +213,12 @@ class TransactionSender(
 
     private fun sendViaAPI(transactions: List<BroadcastTransaction>, blockchairApi: BlockchairApi) = coroutineScope.launch {
         transactions.forEach { transaction ->
+            // The API call blocks uninterruptibly, so cancellation can only land between steps:
+            // recheck before starting another broadcast and before falling back to peers.
+            if (networkPaused) return@launch
+
             broadcastViaAPI(transaction, blockchairApi) {
-                sendViaP2P(listOf(transaction))
+                !networkPaused && sendViaP2P(listOf(transaction))
             }
         }
     }
@@ -191,16 +229,27 @@ class TransactionSender(
         fallback: () -> Boolean
     ): RawTransactionBroadcastStatus {
         val txHash = transaction.transaction.header.hash.toReversedHex()
+
+        if (!transaction.external && recordBroadcastAttemptIfPending(transaction) == null) {
+            // The pending check and the SentTransaction insert happened atomically in storage, so a
+            // concurrent NEW-expiry delete (PendingTransactionReconciler.deleteNewExpiredTransactions)
+            // and this record can never both "win": if the delete already committed, no SentTransaction
+            // was written here and the transaction's bytes must not be sent. External transactions
+            // already have a SentTransaction from queueExternalBroadcast and are not expiry-deleted.
+            log.d { "Skipping API broadcast for tx=$txHash: transaction no longer pending." }
+            return RawTransactionBroadcastStatus.AlreadyKnown
+        }
+
         try {
             blockchairApi.broadcastTransaction(rawHex(transaction))
 
-            Timber.tag(logTag).i("Transaction $txHash accepted by API broadcast.")
+            log.i { "Transaction $txHash accepted by API broadcast." }
             markBroadcastAccepted(transaction)
             return RawTransactionBroadcastStatus.Submitted
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Throwable) {
-            Timber.tag(logTag).w(error, "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast.")
+            log.w(error) { "API broadcast failed for tx=$txHash. Falling back to peer-to-peer broadcast." }
             val sent = fallback()
             if (!sent) {
                 queueBroadcastRetry(transaction)
@@ -213,20 +262,22 @@ class TransactionSender(
     private fun sendViaP2P(transactions: List<BroadcastTransaction>): Boolean {
         val peers = getPeersToSend()
         if (peers.isEmpty()) {
-            Timber.tag(logTag).d(
+            log.d {
                 "Skipping peer-to-peer broadcast. connected=${peerManager.peersCount}, " +
-                    "synced=${initialBlockDownload.syncedPeers.size}, ready=${peerManager.readyPears().size}"
-            )
+                "synced=${initialBlockDownload.syncedPeers.size}, ready=${peerManager.readyPears().size}"
+            }
             return false
         }
 
         timer.startIfNotRunning()
 
         transactions.forEach { transaction ->
-            transactionSendStart(transaction, peers)
+            if (!transactionSendStart(transaction, peers)) {
+                return@forEach
+            }
 
             peers.forEach { peer ->
-                val task = SendTransactionTask(transaction.transaction)
+                val task = SendTransactionTask(transaction.transaction, storage, transaction.external)
                 task.owner = this@TransactionSender
                 peer.addTask(task)
             }
@@ -253,7 +304,7 @@ class TransactionSender(
                     external = true,
                 )
             } catch (error: Throwable) {
-                Timber.tag(logTag).w(error, "Dropping invalid external transaction from broadcast queue.")
+                log.w(error) { "Dropping invalid external transaction from broadcast queue." }
                 storage.deleteSentTransaction(sentTransaction)
                 null
             }
@@ -262,31 +313,48 @@ class TransactionSender(
         return ownTransactions + externalTransactions
     }
 
-    private fun transactionSendStart(transaction: BroadcastTransaction, peers: List<Peer>) {
+    // Returns false when an own transaction is no longer pending (deleted or mined concurrently),
+    // in which case the caller must not queue a getdata task for it. External transactions are not
+    // expiry-deleted, so they always record successfully.
+    private fun transactionSendStart(transaction: BroadcastTransaction, peers: List<Peer>): Boolean {
         val txHash = transaction.transaction.header.hash.toReversedHex()
-        val sentTransaction = recordBroadcastAttempt(transaction)
+        val sentTransaction = if (transaction.external) {
+            recordBroadcastAttempt(transaction)
+        } else {
+            recordBroadcastAttemptIfPending(transaction) ?: run {
+                log.d { "Skipping P2P broadcast for tx=$txHash: transaction no longer pending." }
+                return false
+            }
+        }
         ensureDiagnostics(transaction.transaction.header.hash)
 
-        Timber.tag(logTag).d(
+        log.d {
             "Broadcast attempt for tx=$txHash sendType=P2P retry=${sentTransaction.retriesCount + 1} peers=${peers.joinToString { it.host }}"
-        )
+        }
+        return true
     }
 
     private fun queueBroadcastRetry(transaction: BroadcastTransaction) {
         val txHash = transaction.transaction.header.hash.toReversedHex()
-        // No peer attempted the transaction, so this must not consume the P2P retry budget.
-        recordBroadcastAttempt(transaction)
         ensureDiagnostics(transaction.transaction.header.hash)
-        timer.startIfNotRunning()
-        Timber.tag(logTag).w("API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry.")
+        // While paused the timer would tick without sending anything; resumeNetwork() restarts it.
+        if (!networkPaused) {
+            timer.startIfNotRunning()
+        }
+        log.w { "API fallback could not broadcast tx=$txHash because no eligible peers were available. Queued for retry." }
     }
 
-    private fun recordBroadcastAttempt(transaction: BroadcastTransaction): SentTransaction {
-        val storedTransaction = storage.getSentTransaction(transaction.transaction.header.hash)
+    private fun buildBroadcastAttempt(transaction: BroadcastTransaction, storedTransaction: SentTransaction?): SentTransaction {
         val sentTransaction = storedTransaction ?: sentTransaction(transaction)
         sentTransaction.lastSendTime = System.currentTimeMillis()
         sentTransaction.sendSuccess = false
         updateExternalState(sentTransaction, transaction)
+        return sentTransaction
+    }
+
+    private fun recordBroadcastAttempt(transaction: BroadcastTransaction): SentTransaction {
+        val storedTransaction = storage.getSentTransaction(transaction.transaction.header.hash)
+        val sentTransaction = buildBroadcastAttempt(transaction, storedTransaction)
 
         if (storedTransaction == null) {
             storage.addSentTransaction(sentTransaction)
@@ -295,6 +363,17 @@ class TransactionSender(
         }
 
         return sentTransaction
+    }
+
+    // Own-transaction-only atomic variant of recordBroadcastAttempt: the pending re-check and the
+    // SentTransaction insert happen in one DB transaction (see IStorage.recordBroadcastAttemptIfPending),
+    // so it can never write a SentTransaction for a transaction that a concurrent NEW-expiry delete
+    // already removed. Returns null when the transaction is no longer pending; callers must not send
+    // its bytes in that case.
+    private fun recordBroadcastAttemptIfPending(transaction: BroadcastTransaction): SentTransaction? {
+        val storedTransaction = storage.getSentTransaction(transaction.transaction.header.hash)
+        val sentTransaction = buildBroadcastAttempt(transaction, storedTransaction)
+        return sentTransaction.takeIf { storage.recordBroadcastAttemptIfPending(it) }
     }
 
     private fun queueExternalBroadcast(transaction: BroadcastTransaction) {
@@ -334,13 +413,22 @@ class TransactionSender(
     }
 
     private fun markBroadcastAccepted(transaction: BroadcastTransaction) {
-        if (transaction.external) {
-            clearDiagnostics(transaction.transaction.header.hash)
-            storage.getSentTransaction(transaction.transaction.header.hash)?.let { sentTransaction ->
-                storage.deleteSentTransaction(sentTransaction)
-            }
-        } else {
+        clearDiagnostics(transaction.transaction.header.hash)
+
+        // For an own transaction, the status must move to RELAYED before its SentTransaction guard
+        // row is removed. While status is still NEW, deleteNewExpiredTransactions is only blocked by
+        // that row; deleting it first (or failing here before it runs) would leave a window where an
+        // already-accepted transaction is NEW with no guard and could be expiry-deleted. Once
+        // RELAYED, deleteNewExpiredTransactions (which requires status == NEW) skips it regardless of
+        // the row's presence, so there is no unsafe window.
+        if (!transaction.external) {
             transactionSyncer.handleRelayed(listOf(transaction.transaction))
+        }
+
+        // The pre-accept SentTransaction row (own or external) must not linger: it would otherwise
+        // keep showing up in getTransactionsInSendQueue for a transaction that is no longer pending.
+        storage.getSentTransaction(transaction.transaction.header.hash)?.let { sentTransaction ->
+            storage.deleteSentTransaction(sentTransaction)
         }
     }
 
@@ -359,11 +447,11 @@ class TransactionSender(
         when (task.completionReason) {
             SendTransactionTask.CompletionReason.REQUESTED_BY_PEER -> {
                 markRequestedByPeer(transaction.header.hash)
-                Timber.tag(logTag).i("Peer ${peer.host} requested tx=$txHash.")
+                log.i { "Peer ${peer.host} requested tx=$txHash." }
             }
 
             SendTransactionTask.CompletionReason.TIMEOUT, null -> {
-                Timber.tag(logTag).d("Peer ${peer.host} did not request tx=$txHash before timeout.")
+                log.d { "Peer ${peer.host} did not request tx=$txHash before timeout." }
             }
         }
 
@@ -372,11 +460,11 @@ class TransactionSender(
 
         if (sentTransaction.retriesCount >= maxRetriesCount) {
             val state = clearDiagnostics(transaction.header.hash)
-            Timber.tag(logTag).w(
+            log.w {
                 "Broadcast attempts exhausted for tx=$txHash retries=${sentTransaction.retriesCount} " +
-                    "requestedByPeer=${state?.requestedByPeer == true} rejectedByPeer=${state?.rejectedByPeer == true} " +
-                    "lastReject=${state?.lastRejectDescription ?: "<none>"}"
-            )
+                "requestedByPeer=${state?.requestedByPeer == true} rejectedByPeer=${state?.rejectedByPeer == true} " +
+                "lastReject=${state?.lastRejectDescription ?: "<none>"}"
+            }
             if (!sentTransaction.external) {
                 transactionSyncer.handleInvalid(transaction)
             }
@@ -418,9 +506,9 @@ class TransactionSender(
             description = "${rejectMessage.rejectCodeName}: ${rejectMessage.reason.ifBlank { "<empty>" }}",
         )
 
-        Timber.tag(logTag).w(
+        log.w {
             "Peer ${peer.host} rejected tx=${rejectedHash.toReversedHex()} code=${rejectMessage.rejectCodeName} reason=${rejectMessage.reason.ifBlank { "<empty>" }}"
-        )
+        }
     }
 
     // TransactionSendTimer.Listener

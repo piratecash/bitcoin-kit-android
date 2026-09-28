@@ -59,6 +59,7 @@ import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.TransactionCreator
 import io.horizontalsystems.bitcoincore.transactions.TransactionFeeCalculator
+import io.horizontalsystems.bitcoincore.transactions.TransactionSender
 import io.horizontalsystems.bitcoincore.transactions.TransactionSyncer
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
@@ -112,7 +113,11 @@ class BitcoinCore(
     lateinit var unspentOutputSelector: UnspentOutputSelectorChain
     lateinit var watchedTransactionManager: WatchedTransactionManager
     lateinit var bloomFilterManager: BloomFilterManager
+    var transactionSender: TransactionSender? = null
     var isShared = false
+
+    @Volatile
+    private var networkPaused = false
 
     private val registeredPeerGroupListeners = java.util.concurrent.CopyOnWriteArrayList<PeerGroup.Listener>()
     private val registeredBloomFilterProviders = java.util.concurrent.CopyOnWriteArrayList<IBloomFilterProvider>()
@@ -180,6 +185,9 @@ class BitcoinCore(
     val watchAccount: Boolean
         get() = transactionCreator == null
 
+    val isNetworkPaused: Boolean
+        get() = networkPaused
+
     fun getUnspentOutputs(filters: UtxoFilters): List<UnspentOutputInfo> {
         return unspentOutputSelector.getAllSpendable(filters).map {
             UnspentOutputInfo.fromUnspentOutput(it)
@@ -194,12 +202,27 @@ class BitcoinCore(
     // API methods
     //
     fun start() {
+        networkPaused = false
+        addressExtractor.start()
+        transactionSender?.resumeNetwork()
         syncManager.start()
+    }
+
+    /**
+     * Stops every network activity but keeps the kit usable for local reads:
+     * unlike [stop] it does not unregister from the shared peer group.
+     * Resume with [start].
+     */
+    fun pauseNetwork() {
+        networkPaused = true
+        addressExtractor.stop()
+        // The sender runs its own retry timer, which syncManager.stop() does not reach.
+        transactionSender?.pauseNetwork()
+        syncManager.stop()
     }
 
     fun stop() {
         addressExtractor.stop()
-        dataProvider.clear()
         syncManager.stop()
 
         // Snapshot the kit's listeners BEFORE detaching them so we still know
@@ -218,8 +241,13 @@ class BitcoinCore(
         closePeerScopedResources(peerScopedListeners)
     }
 
+    /**
+     * Final teardown. [dataProvider] is cleared only here: its balance subscription cannot be
+     * recreated, so clearing it in [stop] would leave the balance frozen after a restart.
+     */
     fun dispose() {
         stop()
+        dataProvider.clear()
     }
 
     @Synchronized
@@ -254,6 +282,9 @@ class BitcoinCore(
     }
 
     private fun updateInputAddressesIfNeed(transactions: List<TransactionInfo>) {
+        // AddressExtractor raises its own scope, so a paused kit would still reach the API from here.
+        if (networkPaused) return
+
         addressExtractor.requestInputsByHash(transactions.map { it.transactionHash.hexToByteArray().reversedArray() })
     }
 

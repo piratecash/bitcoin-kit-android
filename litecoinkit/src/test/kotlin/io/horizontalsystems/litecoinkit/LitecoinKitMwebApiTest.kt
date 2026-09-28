@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
+import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.blocks.BlockDownload
 import io.horizontalsystems.bitcoincore.blocks.InitialBlockDownload
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
@@ -25,9 +26,12 @@ import org.robolectric.annotation.Config
 import java.util.concurrent.Executors
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [28], shadows = [ShadowLinuxWithDirectoryOpen::class])
 class LitecoinKitMwebApiTest {
-    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val context = testAppContext()
+    private val dataDir = context.testDataDir
+    private val mwebDataDir = context.testMwebDataDir
+    private val connectionManager = ConnectionManager.getInstance(context)
     private val walletIds = mutableListOf<String>()
     private val kits = mutableListOf<LitecoinKit>()
     private val ioDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
@@ -37,7 +41,7 @@ class LitecoinKitMwebApiTest {
     fun tearDown() {
         kits.forEach { kit -> kit.dispose() }
         walletIds.forEach { walletId ->
-            LitecoinKit.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+            LitecoinKit.clear(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
         }
         ioDispatcher.close()
     }
@@ -71,7 +75,7 @@ class LitecoinKitMwebApiTest {
         litecoinKit(walletId = walletId, mwebConfig = mwebConfig())
 
         assertThrows(IllegalStateException::class.java) {
-            LitecoinKit.clear(context, LitecoinKit.NetworkType.MainNet, walletId)
+            LitecoinKit.clear(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
         }
     }
 
@@ -80,7 +84,7 @@ class LitecoinKitMwebApiTest {
         val walletId = walletId()
         litecoinKit(walletId = walletId)
 
-        LitecoinKit.clearMweb(context, LitecoinKit.NetworkType.MainNet, walletId)
+        LitecoinKit.clearMweb(dataDir, mwebDataDir, LitecoinKit.NetworkType.MainNet, walletId)
     }
 
     @Test
@@ -148,7 +152,9 @@ class LitecoinKitMwebApiTest {
         mwebConfig: MwebConfig? = null,
     ): LitecoinKit {
         val kit = LitecoinKit(
-            context = context,
+            dataDir = dataDir,
+            mwebDataDir = mwebDataDir,
+            connectionManager = connectionManager,
             seed = ByteArray(32),
             walletId = walletId,
             syncMode = syncMode,

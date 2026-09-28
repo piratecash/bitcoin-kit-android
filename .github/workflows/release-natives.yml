@@ -1,0 +1,179 @@
+name: Release natives
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Two runs on one tag would otherwise overwrite each other's uploads through --clobber.
+concurrency:
+  group: release-natives-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dashjbls:
+    uses: ./.github/workflows/build-natives.yml
+
+  sqlcipher:
+    uses: ./.github/workflows/sqlcipher-natives.yml
+
+  publish:
+    needs: [dashjbls, sqlcipher]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      # permissions alone does not hand gh a session; it reads GH_TOKEN.
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      # Full history and submodules: the source attestation reads the git index.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-native-*'
+          path: artifacts
+
+      - name: Pack one archive per target
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          for dir in artifacts/*-native-*; do
+            name="$(basename "$dir")"
+            module="${name%%-native-*}"
+            target="${name##*-native-}"
+            staging="$(mktemp -d)"
+            mkdir -p "$staging/natives/$target"
+            cp -R "$dir"/. "$staging/natives/$target/"
+            tar -czf "release/$module-$target.tar.gz" -C "$staging" natives
+          done
+
+      - name: Refuse to publish an incomplete set
+        run: |
+          set -euo pipefail
+          sort > expected.txt <<'EOF'
+          dashjbls-linux-x64.tar.gz:natives/linux-x64/libdashjbls.so
+          dashjbls-macos-arm64.tar.gz:natives/macos-arm64/libdashjbls.dylib
+          dashjbls-windows-x64.tar.gz:natives/windows-x64/dashjbls.dll
+          sqlcipher-linux-x64.tar.gz:natives/linux-x64/libsqlcipher_jni.so
+          sqlcipher-linux-x64.tar.gz:natives/linux-x64/libsqlcipher_jni.so.sha256
+          sqlcipher-macos-arm64.tar.gz:natives/macos-arm64/libsqlcipher_jni.dylib
+          sqlcipher-macos-arm64.tar.gz:natives/macos-arm64/libsqlcipher_jni.dylib.sha256
+          sqlcipher-windows-x64.tar.gz:natives/windows-x64/sqlcipher_jni.dll
+          sqlcipher-windows-x64.tar.gz:natives/windows-x64/sqlcipher_jni.dll.sha256
+          EOF
+
+          # Each archive is unpacked on its own, so a file landing in the wrong archive or
+          # at the wrong path inside it cannot be covered up by another archive.
+          : > actual.txt
+          for archive in $(cut -d: -f1 expected.txt | sort -u); do
+            [ -f "release/$archive" ] || { echo "$archive was not produced"; exit 1; }
+            root="$RUNNER_TEMP/unpack/$archive"
+            mkdir -p "$root"
+            tar -xzf "release/$archive" -C "$root"
+            (cd "$root" && find . -type f) | sed "s|^\./|$archive:|" >> actual.txt
+          done
+          sort -o actual.txt actual.txt
+          diff -u expected.txt actual.txt
+
+          unpacked() { echo "$RUNNER_TEMP/unpack/${1%%:*}/${1#*:}"; }
+
+          while read -r entry; do
+            [ -s "$(unpacked "$entry")" ] || { echo "$entry is empty"; exit 1; }
+          done < expected.txt
+
+          # An empty file is not the only way to ship the wrong thing: a cell that silently
+          # built for its own host would produce a plausible binary for another platform.
+          check() {
+            local entry="$1"; shift
+            local described
+            case "$1" in
+              elf) described="$(readelf -h "$(unpacked "$entry")" | sed -n 's/^ *Machine: *//p')"; shift ;;
+              *) described="$(file -b "$(unpacked "$entry")")" ;;
+            esac
+            for want in "$@"; do
+              case "$described" in
+                *"$want"*) ;;
+                *) echo "$entry is '$described', which is not $want"; exit 1 ;;
+              esac
+            done
+          }
+          check dashjbls-macos-arm64.tar.gz:natives/macos-arm64/libdashjbls.dylib 'Mach-O' 'arm64'
+          check dashjbls-linux-x64.tar.gz:natives/linux-x64/libdashjbls.so elf 'X86-64'
+          check dashjbls-windows-x64.tar.gz:natives/windows-x64/dashjbls.dll 'PE32+' 'x86-64'
+          check sqlcipher-macos-arm64.tar.gz:natives/macos-arm64/libsqlcipher_jni.dylib 'Mach-O' 'arm64'
+          check sqlcipher-linux-x64.tar.gz:natives/linux-x64/libsqlcipher_jni.so elf 'X86-64'
+          check sqlcipher-windows-x64.tar.gz:natives/windows-x64/sqlcipher_jni.dll 'PE32+' 'x86-64'
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Create local.properties
+        run: echo 'words=""' > local.properties
+
+      - name: Write the source attestation
+        run: |
+          set -euo pipefail
+          ./gradlew :dashlib-native:writeSourceHash :sqlcipher-driver:writeSourceHash
+          cat dashlib-native/build/natives/source-hash.txt \
+              sqlcipher-driver/build/natives/source-hash.txt > release/SOURCE.sha256
+          cat release/SOURCE.sha256
+
+      # After SOURCE.sha256 exists: the manifest covers it too, and nothing else covers it.
+      - name: Write the release manifest
+        working-directory: release
+        run: |
+          set -euo pipefail
+          sha256sum dashjbls-*.tar.gz sqlcipher-*.tar.gz SOURCE.sha256 > natives.sha256
+          cat natives.sha256
+
+      - name: Publish the natives to the tag
+        working-directory: release
+        run: |
+          set -euo pipefail
+          assets=(dashjbls-*.tar.gz sqlcipher-*.tar.gz SOURCE.sha256 natives.sha256)
+
+          local_digests() {
+            for asset in "${assets[@]}"; do
+              printf '%s sha256:%s\n' "$asset" "$(sha256sum "$asset" | cut -d' ' -f1)"
+            done | sort
+          }
+          remote_digests() {
+            gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.digest)"' | sort
+          }
+
+          state="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo absent)"
+
+          if [ "$state" = 'false' ]; then
+            # Already public: a consumer may have resolved these bytes, so they are final.
+            # Re-running after a success is a no-op; anything else is a new patch tag.
+            if diff -u <(local_digests) <(remote_digests); then
+              echo "$TAG already carries exactly this set"
+              exit 0
+            fi
+            echo "$TAG is already published with a different set of natives; cut the next patch tag"
+            exit 1
+          fi
+
+          # A draft first: JitPack must not see the tag while the files are still uploading.
+          if [ "$state" = 'absent' ]; then
+            gh release create "$TAG" --draft --title "$TAG" --notes 'Prebuilt natives for this version.'
+          fi
+          # --clobber so a rerun after a failed upload finishes the job instead of refusing.
+          gh release upload "$TAG" --clobber "${assets[@]}"
+          diff -u <(local_digests) <(remote_digests)
+          gh release edit "$TAG" --draft=false
+
+      # First in the queue, now that the assets are public - rather than some consumer
+      # triggering the build of this tag halfway through the matrix.
+      - name: Ask JitPack to build the tag
+        run: |
+          curl -sSL -o /dev/null "https://jitpack.io/com/github/piratecash/bitcoin-kit-android/$TAG/build.log" || true

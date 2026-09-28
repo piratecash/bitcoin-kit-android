@@ -9,6 +9,7 @@ import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.bitcoincore.network.peer.PeerManager
 import io.horizontalsystems.bitcoincore.network.peer.PeerScopedExecutor
 import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHashesTask
+import io.horizontalsystems.bitcoincore.network.peer.task.GetBlockHeadersTask
 import io.horizontalsystems.bitcoincore.network.peer.task.GetMerkleBlocksTask
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import java.util.concurrent.ConcurrentHashMap
@@ -33,6 +34,8 @@ class InitialBlockDownload(
     override var syncPeer: Peer? = null
     @Volatile
     private var selectNewPeer = false
+    @Volatile
+    private var headerTaskPending = false
     private val peersQueue = PeerScopedExecutor()
     private val logger = Logger.getLogger("IBD")
 
@@ -79,6 +82,12 @@ class InitialBlockDownload(
                 true
             }
 
+            is GetBlockHeadersTask -> {
+                headerTaskPending = false
+                handleAncestorHeaders(peer, task)
+                true
+            }
+
             is GetMerkleBlocksTask -> {
                 blockSyncer.downloadIterationCompleted()
                 true
@@ -95,6 +104,7 @@ class InitialBlockDownload(
 
     override fun onStart() {
         peersQueue.start()
+        headerTaskPending = false
         blockSyncer.prepareForDownload()
     }
 
@@ -147,6 +157,7 @@ class InitialBlockDownload(
 
         if (peer == syncPeer) {
             syncPeer = null
+            headerTaskPending = false
             blockSyncer.downloadFailed()
             assignNextSyncPeer()
         }
@@ -211,6 +222,8 @@ class InitialBlockDownload(
                 peer.addTask(task)
             }
 
+            requestAncestorHeaders(peer)
+
             if (state.synced) {
                 syncedPeers.add(peer)
 
@@ -228,6 +241,29 @@ class InitialBlockDownload(
                     listener?.onBlockSyncFinished()
                 }
             }
+        }
+    }
+
+    private fun requestAncestorHeaders(peer: Peer) {
+        if (headerTaskPending) return
+
+        val locator = blockSyncer.pendingHeaderLocator() ?: return
+        val task = GetBlockHeadersTask(locator)
+        task.owner = this
+        headerTaskPending = true
+        peer.addTask(task)
+    }
+
+    /**
+     * Peer.onTaskCompleted removes the task before dispatching, so an exception escaping here
+     * would skip onReady and leave the peer selected with nothing left to time out.
+     */
+    private fun handleAncestorHeaders(peer: Peer, task: GetBlockHeadersTask) {
+        try {
+            blockSyncer.handleBlockHeaders(task.blockHeaders)
+        } catch (e: Exception) {
+            logger.warning("$logTag: Failed to store recovered ancestors: ${e.message}")
+            peer.close(e)
         }
     }
 }

@@ -37,4 +37,6 @@ class MainNetBitcoinCash(coinType: CoinType = CoinType.Type145) : Network() {
     }
 
     override val logTag = "BCASH"
+
+    override val usesPlainBlockHeaders = true
 }

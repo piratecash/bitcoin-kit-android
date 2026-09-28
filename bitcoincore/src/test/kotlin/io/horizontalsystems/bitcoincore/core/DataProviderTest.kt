@@ -1,6 +1,6 @@
 package io.horizontalsystems.bitcoincore.core
 
-import com.nhaarman.mockitokotlin2.*
+import org.mockito.kotlin.*
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputProvider
 import io.horizontalsystems.bitcoincore.models.Transaction
 import org.spekframework.spek2.Spek
