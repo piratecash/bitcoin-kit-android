@@ -28,6 +28,11 @@ class SqlCipherDriver(key: ByteArray) : SQLiteDriver, AutoCloseable {
             closed = true
         }
     }
+
+    companion object {
+        /** Directory holding the platform's `sqlcipher_jni` library; unset loads the copy bundled in this jar. */
+        const val NATIVE_DIR_PROPERTY = "sqlcipher.native.dir"
+    }
 }
 
 object SqlCipherMigration {
@@ -149,7 +154,7 @@ private class SqlCipherStatement(private var handle: Long) : SQLiteStatement {
 
 private object SqlCipherNative {
     init {
-        SqlCipherNativeLibrary.load()
+        SqlCipherNativeLibrary.load(System.getProperty(SqlCipherDriver.NATIVE_DIR_PROPERTY))
     }
 
     external fun open(path: ByteArray, key: ByteArray): Long
@@ -178,10 +183,21 @@ private object SqlCipherNative {
     external fun closeStatement(handle: Long)
 }
 
-private object SqlCipherNativeLibrary {
+internal object SqlCipherNativeLibrary {
     private const val NAME = "sqlcipher_jni"
 
-    fun load() {
+    fun load(nativeDir: String?) {
+        if (nativeDir == null) loadFromJar() else loadFromDir(nativeDir)
+    }
+
+    // The file belongs to the installed, OS-signed app, which may re-sign it: no checksum here.
+    private fun loadFromDir(nativeDir: String) {
+        val library = Path.of(nativeDir).resolve(System.mapLibraryName(NAME))
+        require(Files.isRegularFile(library)) { "SQLCipher native is missing: $library" }
+        System.load(library.toAbsolutePath().toString())
+    }
+
+    private fun loadFromJar() {
         val fileName = System.mapLibraryName(NAME)
         val resourcePath = "/natives/${platformTag()}/$fileName"
         val bytes = resource(resourcePath).use(InputStream::readBytes)

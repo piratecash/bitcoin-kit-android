@@ -53,6 +53,21 @@ ext.nativesAttestedPaths = [
 
 apply from: "$rootDir/gradle/natives.gradle"
 
+// Without the jar copy of the natives on the classpath, only the directory override can load them.
+def testNativeDir = tasks.register('testNativeDir', Test) {
+    group = 'verification'
+    description = 'Runs the tests with the native loaded from sqlcipher.native.dir'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath - files(sourceSets.main.output.resourcesDir)
+    def nativeDir = file("prebuilt/natives/$nativeHostTag")
+    inputs.dir(nativeDir).withPropertyName('sqlcipherNativeDir').withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty 'sqlcipher.native.dir', nativeDir.absolutePath
+    // `test` is what fetches or builds the host native on a fresh checkout.
+    dependsOn 'test'
+    mustRunAfter 'fetchNatives', 'buildNative'
+}
+tasks.named('check') { dependsOn testNativeDir }
+
 interface SqlCipherNativeBuildOps {
     @Inject ExecOperations getExecOps()
     @Inject FileSystemOperations getFs()
