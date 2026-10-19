@@ -1,8 +1,8 @@
 package io.horizontalsystems.bitcoincore.network.peer.task
 
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.verifyNoMoreInteractions
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoMoreInteractions
 import io.horizontalsystems.bitcoincore.blocks.BlockMessageExtractor
 import io.horizontalsystems.bitcoincore.blocks.MerkleBlockExtractor
 import io.horizontalsystems.bitcoincore.message.BlockMessageTestData

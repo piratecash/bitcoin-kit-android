@@ -1,10 +1,10 @@
 package io.horizontalsystems.bitcoincore.transactions.builder
 
 import io.horizontalsystems.bitcoincore.core.ITransactionDataSorterFactory
-import io.horizontalsystems.bitcoincore.io.BitcoinOutput
 import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.transactions.scripts.OP_RETURN
+import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
 class OutputSetter(private val transactionDataSorterFactory: ITransactionDataSorterFactory) {
@@ -32,10 +32,7 @@ class OutputSetter(private val transactionDataSorterFactory: ITransactionDataSor
         val sorted = transactionDataSorterFactory.sorter(sortType).sortOutputs(list).toMutableList()
 
         transaction.memo?.let { memo ->
-            val data = BitcoinOutput()
-                .writeByte(OP_RETURN)
-                .writeString(memo)
-                .toByteArray()
+            val data = OpCodes.nullData(memo.toByteArray(Charsets.UTF_8))
 
             sorted.add(TransactionOutput(0, 0, data, ScriptType.NULL_DATA))
         }

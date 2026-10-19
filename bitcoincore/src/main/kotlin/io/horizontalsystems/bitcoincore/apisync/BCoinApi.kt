@@ -6,10 +6,14 @@ import io.horizontalsystems.bitcoincore.apisync.model.AddressItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import java.util.logging.Logger
 
-class BCoinApi(host: String) : IApiTransactionProvider {
-    private val apiManager = ApiManager(host)
+class BCoinApi(
+    host: String,
+    networkErrorListener: NetworkErrorListenerHolder? = null
+) : IApiTransactionProvider {
+    private val apiManager = ApiManager(host, networkErrorListener)
     private val logger = Logger.getLogger("BCoinApi")
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {

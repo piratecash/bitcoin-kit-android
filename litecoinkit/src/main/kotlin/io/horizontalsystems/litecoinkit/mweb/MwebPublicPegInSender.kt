@@ -1,6 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
-import android.content.Context
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -13,10 +13,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import java.security.SecureRandom
 
 private const val MWEB_PUBLIC_PEGIN_LOG_TAG = "MwebPublicPegIn"
+private val log = Logger.withTag(MWEB_PUBLIC_PEGIN_LOG_TAG)
 
 /**
  * Send-only MWEB peg-in helper for public Litecoin wallets.
@@ -26,14 +26,13 @@ private const val MWEB_PUBLIC_PEGIN_LOG_TAG = "MwebPublicPegIn"
  * prove local ownership of the MWEB address.
  */
 internal class MwebPublicPegInSender(
-    context: Context,
+    mwebDataDir: String,
     private val walletId: String,
     private val networkType: LitecoinKit.NetworkType,
     private val addressCodec: MwebAddressCodec,
     private val config: MwebPublicSendConfig,
 ) {
-    private val context = context.applicationContext
-    private val dataDir = MwebFiles.publicSendDaemonDataDir(this.context, networkType, walletId)
+    private val dataDir = MwebFiles.publicSendDaemonDataDir(mwebDataDir, networkType, walletId)
     private val random = SecureRandom()
     private val lock = Any()
     private val operationMutex = Mutex()
@@ -73,13 +72,14 @@ internal class MwebPublicPegInSender(
                     publicOptions = publicOptions,
                     publicTransactionBridge = publicTransactionBridge,
                 )
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon broadcast started")
+                log.d { "Public peg-in daemon broadcast started" }
                 val broadcastHash = MwebDaemonErrorMapper.mapSuspend {
                     client.broadcast(signedTransaction.rawTransaction)
                 }
                 signedTransaction.setPublicTransactionHash(broadcastHash)
-                Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG)
-                    .d("Public peg-in daemon broadcast finished: tx=$broadcastHash")
+                log.d {
+                    "Public peg-in daemon broadcast finished: tx=$broadcastHash"
+                }
                 signedTransaction.publicTransaction?.let(publicTransactionBridge::processCreated)
                 MwebSendResult(
                     canonicalTransactionHash = broadcastHash,
@@ -164,7 +164,7 @@ internal class MwebPublicPegInSender(
         publicOptions: MwebPublicSendOptions,
         publicTransactionBridge: MwebPublicTransactionBridge,
     ): Pair<MwebDaemonClient, CreatedMwebTransaction> {
-        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in create/sign started: feeRate=${request.feeRate}")
+        log.d { "Public peg-in create/sign started: feeRate=${request.feeRate}" }
         val clientProvider = lazyClientProvider()
         val prepared = prepareTransaction(
             request = request,
@@ -172,30 +172,30 @@ internal class MwebPublicPegInSender(
             publicTransactionBridge = publicTransactionBridge,
             clientProvider = clientProvider,
         )
-        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+        log.d {
             "Public peg-in prepared: selectedPublicUtxos=${prepared.selectedPublicUtxos.size}, " +
-                "normalFee=${prepared.normalFee}, mwebFee=${prepared.mwebFee}, rawTemplateBytes=${prepared.rawTemplate.size}"
-        )
+            "normalFee=${prepared.normalFee}, mwebFee=${prepared.mwebFee}, rawTemplateBytes=${prepared.rawTemplate.size}"
+        }
         val activeClient = clientProvider()
-        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d("Public peg-in daemon create started")
+        log.d { "Public peg-in daemon create started" }
         val createResult = MwebDaemonErrorMapper.mapSuspend {
             activeClient.create(prepared.rawTemplate, request.feeRate, dryRun = false)
         }
-        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+        log.d {
             "Public peg-in daemon create finished: rawBytes=${createResult.rawTransaction.size}, " +
-                "outputIds=${createResult.outputIds.size}"
-        )
+            "outputIds=${createResult.outputIds.size}"
+        }
         val rawTransaction = prepared.rawTransactionWithPublicChange(createResult.rawTransaction)
         val signedPublicTransaction = publicTransactionBridge.signPublicInputs(
             rawTransaction = rawTransaction,
             selectedPublicUtxos = prepared.selectedPublicUtxos,
         )
-        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+        log.d {
             "Public peg-in signed: tx=${signedPublicTransaction.publicTransaction?.header?.hash?.toReversedHex()}, " +
-                "inputs=${signedPublicTransaction.publicTransaction?.inputs?.size}, " +
-                "outputs=${signedPublicTransaction.publicTransaction?.outputs?.size}, " +
-                "rawBytes=${signedPublicTransaction.rawTransaction.size}"
-        )
+            "inputs=${signedPublicTransaction.publicTransaction?.inputs?.size}, " +
+            "outputs=${signedPublicTransaction.publicTransaction?.outputs?.size}, " +
+            "rawBytes=${signedPublicTransaction.rawTransaction.size}"
+        }
         return activeClient to CreatedMwebTransaction(
             prepared = prepared,
             createResult = createResult,
@@ -358,10 +358,10 @@ internal suspend fun MwebPublicTransactionBridge.signPublicInputs(
     }
     val signedTransaction = sign(rawTransaction, selectedPublicUtxos)
     if (signedTransaction.inputs.isEmpty()) {
-        Timber.tag(MWEB_PUBLIC_PEGIN_LOG_TAG).d(
+        log.d {
             "Public peg-in signing produced transaction without inputs: " +
-                "selectedPublicUtxos=${selectedPublicUtxos.size}, outputs=${signedTransaction.outputs.size}"
-        )
+            "selectedPublicUtxos=${selectedPublicUtxos.size}, outputs=${signedTransaction.outputs.size}"
+        }
         throw MwebError.SyncFailure(
             IllegalStateException("MWEB public peg-in transaction has no public inputs after signing")
         )

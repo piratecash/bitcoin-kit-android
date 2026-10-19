@@ -1,9 +1,9 @@
 package io.horizontalsystems.hodler
 
-import com.nhaarman.mockitokotlin2.doReturn
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.blocks.BlockMedianTimeHelper
 import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.core.IStorage
@@ -76,7 +76,7 @@ class HodlerPluginTest {
 
         whenever(mutableTransaction.recipientAddress).thenReturn(recipientAddress)
         whenever(recipientAddress.scriptType).thenReturn(ScriptType.P2PKH)
-        whenever(recipientAddress.hash).thenReturn(pubkeyHash)
+        whenever(recipientAddress.lockingScriptPayload).thenReturn(pubkeyHash)
         whenever(addressConverter.convert(redeemScriptHash, ScriptType.P2SH)).thenReturn(shAddress)
 
         hodlerPlugin.processOutputs(mutableTransaction, pluginData, false)
@@ -108,17 +108,15 @@ class HodlerPluginTest {
         val originalAddressString = "originalAddress"
         val publicKey = mock<PublicKey>()
         val redeemScript = "03070040b27576a9148c005bb22d520f6a108b108242efcbe5c19315f588ac".hexToByteArray()
-        val transaction = mock<Transaction>()
 
         whenever(chunkLockTimeInterval.data).thenReturn("0700".hexToByteArray())
         whenever(chunkPubkeyHash.data).thenReturn(pubkeyHash)
         whenever(fullTransaction.outputs).thenReturn(listOf(recipientOutput))
         whenever(recipientOutput.lockingScriptPayload).thenReturn(redeemScriptHash)
         whenever(addressConverter.convert(pubkeyHash, ScriptType.P2PKH)).thenReturn(originalAddress)
-        whenever(originalAddress.string).thenReturn(originalAddressString)
+        whenever(originalAddress.stringValue).thenReturn(originalAddressString)
         whenever(storage.getPublicKeyByKeyOrKeyHash(pubkeyHash)).thenReturn(publicKey)
         whenever(publicKey.path).thenReturn("publicKey.path")
-        whenever(fullTransaction.header).thenReturn(transaction)
 
         hodlerPlugin.processTransactionWithNullData(fullTransaction, nullDataChunks)
 
@@ -128,7 +126,8 @@ class HodlerPluginTest {
         verify(storage).getPublicKeyByKeyOrKeyHash(pubkeyHash)
         verify(recipientOutput).redeemScript = redeemScript
         verify(recipientOutput).setPublicKey(publicKey)
-        verify(transaction).isMine = true
+        // The transaction is no longer marked isMine here: commit 38014c81 moved that to
+        // TransactionMetadataExtractor. This test kept asserting the removed behaviour.
     }
 
     @Test
@@ -191,7 +190,7 @@ class HodlerPluginTest {
 
         val addresses = List(4) { index ->
             mock<Address> {
-                on { string } doReturn "address${index}"
+                on { stringValue } doReturn "address${index}"
             }
         }
 

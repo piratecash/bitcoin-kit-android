@@ -31,4 +31,6 @@ class TestNetBitcoinCash : Network() {
     )
 
     override val logTag = "BCASH"
+
+    override val usesPlainBlockHeaders = true
 }

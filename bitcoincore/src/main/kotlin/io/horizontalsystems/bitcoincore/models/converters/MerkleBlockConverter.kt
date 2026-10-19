@@ -1,9 +1,11 @@
 package io.horizontalsystems.bitcoincore.models.converters
 
 import androidx.room.TypeConverter
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import kotlinx.serialization.json.Json
-import timber.log.Timber
+
+private val log = Logger.withTag("MerkleBlockConverter")
 
 class MerkleBlockConverter {
     private val json = Json { allowStructuredMapKeys = true }
@@ -15,7 +17,7 @@ class MerkleBlockConverter {
                 json.encodeToString(MerkleBlock.serializer(), it)
             } catch (e: Exception) {
                 val keys = it.associatedTransactionHashes.keys.take(5).map { key -> "${key::class.simpleName}(${key.bytes.contentToString()})" }
-                Timber.e(e, "Failed to serialize MerkleBlock: hash=${it.blockHash.contentToString()}, txCount=${it.associatedTransactionHashes.size}, keys=$keys")
+                log.e(e) { "Failed to serialize MerkleBlock: hash=${it.blockHash.contentToString()}, txCount=${it.associatedTransactionHashes.size}, keys=$keys" }
                 null
             }
         }
@@ -27,7 +29,7 @@ class MerkleBlockConverter {
             try {
                 json.decodeFromString(MerkleBlock.serializer(), it)
             } catch (e: Exception) {
-                Timber.e(e, "Failed to deserialize MerkleBlock from: ${it.take(200)}")
+                log.e(e) { "Failed to deserialize MerkleBlock from: ${it.take(200)}" }
                 null
             }
         }

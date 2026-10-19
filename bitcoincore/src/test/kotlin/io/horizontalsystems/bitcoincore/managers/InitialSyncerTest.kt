@@ -1,6 +1,6 @@
 //package io.horizontalsystems.bitcoincore.managers
 //
-//import com.nhaarman.mockitokotlin2.*
+//import org.mockito.kotlin.*
 //import io.horizontalsystems.bitcoincore.RxTestRule
 //import io.horizontalsystems.bitcoincore.core.ErrorStorage
 //import io.horizontalsystems.bitcoincore.core.IStorage

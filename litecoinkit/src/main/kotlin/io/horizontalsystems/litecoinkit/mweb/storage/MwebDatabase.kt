@@ -1,12 +1,13 @@
 package io.horizontalsystems.litecoinkit.mweb.storage
 
-import android.content.Context
 import androidx.room.Database
-import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
+import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import java.io.File
 
 @Database(
     entities = [
@@ -31,8 +32,8 @@ abstract class MwebDatabase : RoomDatabase() {
 
     companion object {
         private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `MwebOutgoingTransaction` (
                         `uid` TEXT NOT NULL,
@@ -53,8 +54,8 @@ abstract class MwebDatabase : RoomDatabase() {
         }
 
         private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `MwebOutgoingTransactionV3` (
                         `uid` TEXT NOT NULL,
@@ -71,7 +72,7 @@ abstract class MwebDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL(
+                connection.execSQL(
                     """
                     INSERT INTO `MwebOutgoingTransactionV3` (
                         `uid`,
@@ -99,16 +100,16 @@ abstract class MwebDatabase : RoomDatabase() {
                     FROM `MwebOutgoingTransaction`
                     """.trimIndent()
                 )
-                database.execSQL("DROP TABLE `MwebOutgoingTransaction`")
-                database.execSQL("ALTER TABLE `MwebOutgoingTransactionV3` RENAME TO `MwebOutgoingTransaction`")
+                connection.execSQL("DROP TABLE `MwebOutgoingTransaction`")
+                connection.execSQL("ALTER TABLE `MwebOutgoingTransactionV3` RENAME TO `MwebOutgoingTransaction`")
             }
         }
 
         private val MIGRATION_3_4 = object : Migration(3, 4) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedHeight` INTEGER")
-                database.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedTimestamp` INTEGER")
-                database.execSQL(
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedHeight` INTEGER")
+                connection.execSQL("ALTER TABLE `MwebOutgoingTransaction` ADD COLUMN `confirmedTimestamp` INTEGER")
+                connection.execSQL(
                     """
                     UPDATE `MwebOutgoingTransaction`
                     SET
@@ -125,8 +126,8 @@ abstract class MwebDatabase : RoomDatabase() {
         }
 
         private val MIGRATION_4_5 = object : Migration(4, 5) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `MwebDeliveryCursor` (
                         `id` INTEGER NOT NULL,
@@ -135,7 +136,7 @@ abstract class MwebDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL(
+                connection.execSQL(
                     """
                     INSERT INTO `MwebDeliveryCursor` (`id`, `utxoDeliveryHeight`)
                     SELECT 0, CASE
@@ -150,8 +151,17 @@ abstract class MwebDatabase : RoomDatabase() {
         internal val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         private const val MIGRATION_4_5_REPLAY_BLOCKS = 2_880
 
-        fun getInstance(context: Context, dbName: String): MwebDatabase {
-            return Room.databaseBuilder(context, MwebDatabase::class.java, dbName)
+        fun getInstance(dataDir: String, dbName: String): MwebDatabase {
+            return buildDatabase(dataDir, dbName)
+        }
+
+        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): MwebDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey)
+        }
+
+        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): MwebDatabase {
+            val path = File(dataDir, dbName).path
+            return databaseBuilder<MwebDatabase>(path, databaseKey)
                 .addMigrations(*MIGRATIONS)
                 .build()
         }

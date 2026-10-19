@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincash.blocks.validators
 
-import com.nhaarman.mockito_kotlin.mock
-import com.nhaarman.mockito_kotlin.whenever
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.blocks.validators.IBlockValidator
 import io.horizontalsystems.bitcoincore.models.Block

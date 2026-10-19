@@ -1,4 +1,5 @@
 [versions]
+androidxStartup = "1.1.1"
 annotation = "1.1.0"
 appcompat = "1.6.1"
 bcprovJdk15to18 = "1.80"
@@ -6,7 +7,7 @@ constraintlayout = "2.1.4"
 core = "1.5.0"
 espressoCore = "3.2.0"
 guava = "33.5.0-android"
-hdWalletKitAndroid = "46a441d"
+hdWalletKit = "1.0.1"
 junit = "4.13.2"
 junitVersion = "1.1.1"
 kotlinxCoroutinesCore = "1.10.1"
@@ -15,16 +16,27 @@ leakcanaryAndroid = "2.10"
 lifecycleViewmodelKtx = "2.7.0"
 lyra2 = "1.3"
 material = "1.10.0"
-mwebdAndroid = "v0.1.19-pcash.9"
-robolectric = "4.12.1"
+mockito = "5.18.0"
+mockitoKotlin = "5.4.0"
+mwebd = "1.0.2"
+robolectric = "4.16"
 room = "2.7.1"
+# SQLCipher Android 4.17.0 requires the SupportSQLite API from this line.
+androidxSqlite = "2.6.2"
+sqlcipher = "4.17.0"
 kotlinStdlibJdk7 = "2.0.21"
 rxandroid = "2.1.1"
 rxjava = "2.2.19"
 saphirHashJca = "3.0.6"
-timber = "5.0.1"
+secp256k1 = "0.24.0"
+kermit = "2.1.0"
+composeMultiplatform = "1.10.1"
+composeMaterial3 = "1.10.0-alpha05"
+activityCompose = "1.13.0"
+lifecycleViewmodelCompose = "2.10.0"
 
 [libraries]
+androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidxStartup" }
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 bcprov-jdk15to18 = { module = "org.bouncycastle:bcprov-jdk15to18", version.ref = "bcprovJdk15to18" }
@@ -33,26 +45,40 @@ core = { module = "androidx.test:core", version.ref = "core" }
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espressoCore" }
 ext-junit = { module = "androidx.test.ext:junit", version.ref = "junitVersion" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
-hd-wallet-kit-android = { module = "com.github.piratecash:hd-wallet-kit-android", version.ref = "hdWalletKitAndroid" }
+hd-wallet-kit = { module = "com.github.piratecash.hd-wallet-kit-android:hd-wallet-kit-kmp", version.ref = "hdWalletKit" }
 junit = { module = "junit:junit", version.ref = "junit" }
 kotlin-stdlib-jdk7 = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk7", version.ref = "kotlinStdlibJdk7" }
 
 kotlin-stdlib-jdk8 = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlinStdlibJdk7" }
-kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesCore" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutinesCore" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutinesCore" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanaryAndroid" }
 lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodelKtx" }
 lyra2 = { module = "com.github.all3fox:lyra2", version.ref = "lyra2" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
-mwebd-android = { module = "com.github.piratecash:mwebd-android", version.ref = "mwebdAndroid" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "mockitoKotlin" }
+mwebd-kmp = { module = "com.github.piratecash.mwebd-android:mwebd-kmp", version.ref = "mwebd" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
-room-rxjava2 = { module = "androidx.room:room-rxjava2", version.ref = "room" }
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "androidxSqlite" }
+sqlcipher-android = { group = "net.zetetic", name = "sqlcipher-android", version.ref = "sqlcipher" }
 rxandroid = { module = "io.reactivex.rxjava2:rxandroid", version.ref = "rxandroid" }
 rxjava = { module = "io.reactivex.rxjava2:rxjava", version.ref = "rxjava" }
 saphir-hash-jca = { module = "de.sfuhrm:saphir-hash-jca", version.ref = "saphirHashJca" }
-timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
+secp256k1-jni-jvm = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm", version.ref = "secp256k1" }
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinxCoroutinesCore" }
+compose-multiplatform-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
+compose-multiplatform-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
+compose-multiplatform-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMaterial3" }
+compose-multiplatform-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
+compose-multiplatform-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
+compose-multiplatform-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "composeMultiplatform" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
 
 [plugins]

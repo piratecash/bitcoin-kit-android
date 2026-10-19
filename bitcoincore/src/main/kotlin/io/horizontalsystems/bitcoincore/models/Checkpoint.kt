@@ -52,6 +52,14 @@ class Checkpoint(fileName: String) {
     }
 
     companion object {
+        /**
+         * Upper bound for the API block-hash scan. It must meet where P2P actually resumes: after a
+         * checkpoint bump the stored tip sits above the new checkpoint, and cutting the scan at the
+         * checkpoint height would drop every transaction in between.
+         */
+        fun apiDiscoveryCeiling(checkpoint: Checkpoint, storage: IStorage): Int =
+            storage.lastBlock()?.height ?: checkpoint.block.height
+
         fun resolveCheckpoint(syncMode: BitcoinCore.SyncMode, network: Network, storage: IStorage): Checkpoint {
             val lastBlock = storage.lastBlock()
 

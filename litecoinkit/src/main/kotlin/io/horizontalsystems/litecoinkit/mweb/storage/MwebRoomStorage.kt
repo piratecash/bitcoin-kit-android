@@ -1,5 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb.storage
 
+import io.horizontalsystems.bitcoincore.storage.inTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebPendingTransaction
 import io.horizontalsystems.litecoinkit.mweb.MwebDeliveryState
 import io.horizontalsystems.litecoinkit.mweb.MwebTransaction
@@ -113,7 +114,7 @@ class MwebRoomStorage(
         val confirmedUids = confirmedTransactions.map { it.uid }
         if (confirmedUids.isEmpty()) return
 
-        database.runInTransaction {
+        database.inTransaction {
             database.outgoingTransactionDao.confirm(confirmedUids, height, timestamp)
             confirmedTransactions.forEach { transaction ->
                 confirmCreated(transaction, height, timestamp)
@@ -131,7 +132,7 @@ class MwebRoomStorage(
             }
         if (transactions.isEmpty()) return
 
-        database.runInTransaction {
+        database.inTransaction {
             transactions.forEach { transaction ->
                 val height = transaction.confirmedHeight?.takeIf { it > 0 } ?: return@forEach
                 confirmCreated(transaction, height, transaction.confirmedTimestamp)
@@ -151,7 +152,7 @@ class MwebRoomStorage(
         if (validHashes.isEmpty()) return false
 
         var updated = false
-        database.runInTransaction {
+        database.inTransaction {
             validHashes.forEach { (height, hash) ->
                 updated = database.outgoingTransactionDao.updateCanonicalHash(
                     kind = MwebTransactionKind.MwebToPublic.name,
@@ -169,7 +170,7 @@ class MwebRoomStorage(
         spentOutputIds: List<String>,
         createdUtxos: List<MwebUtxo> = emptyList(),
     ) {
-        database.runInTransaction {
+        database.inTransaction {
             database.pendingTransactionDao.save(pendingTransaction.toEntity())
             localTransaction?.let { database.outgoingTransactionDao.save(it.toOutgoingEntity()) }
             if (createdUtxos.isNotEmpty()) {

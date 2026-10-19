@@ -1,18 +1,18 @@
 package io.horizontalsystems.dashkit.storage
 
-import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Room
 import androidx.room.RoomDatabase
+import io.horizontalsystems.bitcoincore.core.databaseBuilder
 import io.horizontalsystems.dashkit.models.InstantTransactionHash
 import io.horizontalsystems.dashkit.models.InstantTransactionInput
 import io.horizontalsystems.dashkit.models.Masternode
 import io.horizontalsystems.dashkit.models.MasternodeListState
 import io.horizontalsystems.dashkit.models.Quorum
+import java.io.File
 
 @Database(version = 6, exportSchema = false, entities = [
     Masternode::class,
@@ -30,21 +30,18 @@ abstract class DashKitDatabase : RoomDatabase() {
     abstract val instantTransactionInputDao: InstantTransactionInputDao
 
     companion object {
-
-        @Volatile
-        private var instance: DashKitDatabase? = null
-
-        @Synchronized
-        fun getInstance(context: Context, dbName: String): DashKitDatabase {
-            return instance ?: buildDatabase(context, dbName).also { instance = it }
+        fun getInstance(dataDir: String, dbName: String): DashKitDatabase {
+            return buildDatabase(dataDir, dbName)
         }
 
-        private fun buildDatabase(context: Context, dbName: String): DashKitDatabase {
-            return Room.databaseBuilder(context, DashKitDatabase::class.java, dbName)
-                    .fallbackToDestructiveMigration()
-                    .allowMainThreadQueries()
-                    .build()
+        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): DashKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey)
         }
+
+        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): DashKitDatabase =
+            databaseBuilder<DashKitDatabase>(File(dataDir, dbName).path, databaseKey, allowMainThreadQueries = true)
+                .fallbackToDestructiveMigration(dropAllTables = false)
+                .build()
     }
 }
 
