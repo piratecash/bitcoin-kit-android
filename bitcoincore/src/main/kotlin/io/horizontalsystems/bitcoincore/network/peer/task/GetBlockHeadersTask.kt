@@ -4,10 +4,18 @@ import io.horizontalsystems.bitcoincore.network.messages.GetHeadersMessage
 import io.horizontalsystems.bitcoincore.network.messages.HeadersMessage
 import io.horizontalsystems.bitcoincore.network.messages.IMessage
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
+import java.util.concurrent.TimeUnit
 
 class GetBlockHeadersTask(private val blockLocatorHashes: List<ByteArray>) : PeerTask() {
 
     var blockHeaders = arrayOf<BlockHeader>()
+
+    init {
+        allowedIdleTime = TimeUnit.SECONDS.toMillis(10)
+    }
+
+    override val state: String
+        get() = "allowedIdleTime: $allowedIdleTime"
 
     override fun start() {
         requester?.let { it.send(GetHeadersMessage(it.protocolVersion, blockLocatorHashes, ByteArray(32))) }
@@ -26,6 +34,8 @@ class GetBlockHeadersTask(private val blockLocatorHashes: List<ByteArray>) : Pee
     }
 
     override fun handleTimeout() {
-        listener?.onTaskCompleted(this)
+        listener?.onTaskFailed(this, HeadersNotReceived())
     }
+
+    class HeadersNotReceived : Exception("Block headers are not received")
 }

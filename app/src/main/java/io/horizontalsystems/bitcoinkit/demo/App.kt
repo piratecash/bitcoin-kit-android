@@ -1,7 +1,9 @@
 package io.horizontalsystems.bitcoinkit.demo
 
 import android.app.Application
-import timber.log.Timber
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.platformLogWriter
 
 class App : Application() {
 
@@ -9,7 +11,10 @@ class App : Application() {
         super.onCreate()
 
         if (BuildConfig.DEBUG) {
-            Timber.plant(Timber.DebugTree())
+            Logger.setLogWriters(platformLogWriter())
+            Logger.setMinSeverity(Severity.Debug)
+        } else {
+            Logger.setLogWriters(emptyList())
         }
 
         instance = this

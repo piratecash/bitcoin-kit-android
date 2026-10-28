@@ -1,0 +1,141 @@
+name: Build natives
+
+on:
+  # GitHub Actions does not expand YAML anchors, so the input set is spelled twice.
+  pull_request:
+    paths:
+      - 'dashlib/cpp/**'
+      - 'dashlib-native/**'
+      - 'dashlib/src/main/kotlin/**'
+      - 'dashlib/libs/**'
+      - 'gradle/natives.gradle'
+      - '.gitmodules'
+      - '.github/workflows/build-natives.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'dashlib/cpp/**'
+      - 'dashlib-native/**'
+      - 'dashlib/src/main/kotlin/**'
+      - 'dashlib/libs/**'
+      - 'gradle/natives.gradle'
+      - '.gitmodules'
+      - '.github/workflows/build-natives.yml'
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  NATIVES_DIR: dashlib-native/prebuilt/natives
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: linux-x64
+            runner: ubuntu-22.04
+          # Cross-built with MinGW: MSVC has no pthreads, which bls-signatures requires.
+          - target: windows-x64
+            runner: ubuntu-22.04
+    runs-on: ${{ matrix.runner }}
+    env:
+      WIN_JDK_URL: https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip
+      WIN_JDK_SHA256: 9ba963ee2371874a74185d18bc7bb2ab9407df7683300855ed7606e0662321d0
+    steps:
+      # The default ref is the merge commit, which is in no branch: the binaries would then
+      # be attested against a tree that never existed on the head branch.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Install MinGW-w64
+        if: matrix.target == 'windows-x64'
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      # A Linux JDK keeps jni_md.h in include/linux; the WIN32 target needs include/win32.
+      - name: Fetch Windows JDK headers
+        if: matrix.target == 'windows-x64'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o win-jdk.zip "$WIN_JDK_URL"
+          echo "$WIN_JDK_SHA256  win-jdk.zip" | sha256sum -c -
+          unzip -q win-jdk.zip -d win-jdk
+          # CMake resolves a relative -DJNI_HEADER_DIR against its own working directory, not this one.
+          echo "JNI_HEADER_DIR=$(echo "$GITHUB_WORKSPACE"/win-jdk/*/include)" >> "$GITHUB_ENV"
+
+      - name: Create local.properties
+        run: echo 'words=""' > local.properties
+
+      - name: Build dashjbls for ${{ matrix.target }}
+        run: >-
+          ./gradlew :dashlib-native:buildNative
+          -PnativeTarget=${{ matrix.target }}
+          ${JNI_HEADER_DIR:+-PjniHeaderDir=$JNI_HEADER_DIR}
+
+      # The DLL cannot run on the Linux host that cross-built it; smoke-windows covers it.
+      # A separate invocation, so `test` sees the binary this step just produced.
+      - name: Run the consensus smoke
+        if: matrix.target != 'windows-x64'
+        run: ./gradlew :dashlib-native:test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashjbls-native-${{ matrix.target }}
+          path: ${{ env.NATIVES_DIR }}/${{ matrix.target }}/
+          if-no-files-found: error
+
+  smoke-windows:
+    needs: build
+    runs-on: windows-latest
+    defaults:
+      run:
+        # The default shell is PowerShell, where `rm -rf` is not a valid Remove-Item call.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dashjbls-native-windows-x64
+          path: ${{ env.NATIVES_DIR }}/windows-x64
+
+      - name: Check the downloaded set
+        run: |
+          set -eo pipefail
+          # Globs, not `find`: on Windows that name can resolve to System32\find.exe.
+          shopt -s globstar nullglob dotglob
+          entries=("$NATIVES_DIR"/windows-x64/**/*)
+          if [ "${#entries[@]}" -ne 1 ] || [ "${entries[0]}" != "$NATIVES_DIR/windows-x64/dashjbls.dll" ]; then
+            echo "unexpected artifact layout: ${entries[*]}"
+            exit 1
+          fi
+
+      - name: Create local.properties
+        run: echo 'words=""' > local.properties
+
+      - name: Run the consensus smoke
+        run: ./gradlew :dashlib-native:test

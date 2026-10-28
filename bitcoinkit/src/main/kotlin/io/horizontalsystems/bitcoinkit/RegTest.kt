@@ -30,4 +30,6 @@ class RegTest : Network() {
     )
 
     override val logTag = "TST"
+
+    override val supportsV2Transport = true
 }

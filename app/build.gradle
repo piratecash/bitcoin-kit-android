@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
 }
 
 configurations.all {
@@ -13,27 +14,26 @@ configurations.all {
     }
 }
 
-def localProperties = new Properties()
-localProperties.load(new FileInputStream(rootProject.file("local.properties")))
-
 android {
     namespace 'io.horizontalsystems.bitcoinkit.demo'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "io.horizontalsystems.bitcoinkit.demo"
         minSdkVersion 24
-        targetSdkVersion 34
+        targetSdkVersion 36
         versionCode 1
         versionName "0.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "WORDS", "${localProperties['words']}"
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+    buildFeatures {
+        compose true
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -50,15 +50,14 @@ android {
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
-    implementation libs.appcompat
-    implementation libs.constraintlayout
-    implementation libs.material
+    implementation project(':demo-shared')
 
-    implementation libs.rxjava
-    implementation libs.rxandroid
-
-    // ViewModel and LiveData
-    implementation libs.lifecycle.viewmodel.ktx
+    implementation libs.androidx.activity.compose
+    implementation libs.androidx.lifecycle.viewmodel.compose
+    implementation libs.compose.multiplatform.material3
+    implementation libs.compose.multiplatform.ui
+    implementation libs.compose.multiplatform.ui.tooling.preview
+    debugImplementation libs.compose.multiplatform.ui.tooling
 
     //LeakCanary
     debugImplementation libs.leakcanary.android
@@ -66,13 +65,4 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
-
-    implementation project(':bitcoinkit')
-    implementation project(':dashkit')
-    implementation project(':bitcoincashkit')
-    implementation project(':litecoinkit')
-    implementation project(':ecashkit')
-    implementation project(':dogecoinkit')
-    implementation project(':cosantakit')
-    implementation project(':piratecashkit')
 }

@@ -2,7 +2,7 @@ package io.horizontalsystems.litecoinkit.mweb
 
 import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClientFactory
-import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdAndroidDaemonClientFactory
+import io.horizontalsystems.litecoinkit.mweb.daemon.MwebdKmpDaemonClientFactory
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
@@ -110,7 +110,7 @@ data class MwebConfig(
     val peerAddress: String? = null,
 
     /** Factory for the native daemon binding; override in tests only. */
-    val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
+    val daemonClientFactory: MwebDaemonClientFactory = MwebdKmpDaemonClientFactory,
 )
 
 /**
@@ -134,7 +134,7 @@ data class MwebPublicSendConfig(
     val peerAddress: String? = null,
 
     /** Factory for the native daemon binding; override in tests only. */
-    val daemonClientFactory: MwebDaemonClientFactory = MwebdAndroidDaemonClientFactory,
+    val daemonClientFactory: MwebDaemonClientFactory = MwebdKmpDaemonClientFactory,
 )
 
 /** Fee/selection preview returned before creating and broadcasting a send. */

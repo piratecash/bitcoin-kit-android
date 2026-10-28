@@ -3,7 +3,6 @@ package io.horizontalsystems.bitcoincore.core
 import io.horizontalsystems.bitcoincore.crypto.Bech32Segwit
 import io.horizontalsystems.bitcoincore.exceptions.AddressFormatException
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
-import io.horizontalsystems.bitcoincore.io.BitcoinInput
 import io.horizontalsystems.bitcoincore.models.InvalidTransaction
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
@@ -15,8 +14,9 @@ import io.horizontalsystems.bitcoincore.models.TransactionStatus
 import io.horizontalsystems.bitcoincore.models.rbfEnabled
 import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 import io.horizontalsystems.bitcoincore.storage.InputWithPreviousOutput
+import io.horizontalsystems.bitcoincore.transactions.scripts.OP_RETURN
+import io.horizontalsystems.bitcoincore.transactions.scripts.Script
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
-import java.io.ByteArrayInputStream
 
 class BaseTransactionInfoConverter(private val pluginManager: PluginManager) {
 
@@ -81,15 +81,10 @@ class BaseTransactionInfoConverter(private val pluginManager: PluginManager) {
     private fun parseMemo(output: TransactionOutput): String? {
         if (output.scriptType != ScriptType.NULL_DATA) return null
         val payload = output.lockingScriptPayload ?: return null
-        if (payload.isEmpty()) return null
+        val chunks = Script(payload).chunks
+        if (chunks.size != 2 || chunks[0].opcode != OP_RETURN) return null
 
-        return try {
-            val input = BitcoinInput(ByteArrayInputStream(payload))
-            input.readByte() // op_return
-            input.readString()
-        } catch (e: Throwable) {
-            null
-        }
+        return chunks[1].data?.let { String(it, Charsets.UTF_8) }
     }
 
     private fun InputWithPreviousOutput.walletAddress(): String? {

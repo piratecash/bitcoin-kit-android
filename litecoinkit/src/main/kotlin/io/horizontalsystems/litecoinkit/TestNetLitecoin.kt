@@ -27,4 +27,6 @@ class TestNetLitecoin : Network() {
     )
 
     override val logTag = "LTC"
+
+    override val usesPlainBlockHeaders = true
 }

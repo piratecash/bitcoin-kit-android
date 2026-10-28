@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincash.blocks
 
-import com.nhaarman.mockito_kotlin.mock
-import com.nhaarman.mockito_kotlin.whenever
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.Fixtures
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.models.Block

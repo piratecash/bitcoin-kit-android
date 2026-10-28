@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.core
 
+import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.models.TransactionMetadata
@@ -8,6 +9,7 @@ import io.horizontalsystems.bitcoincore.models.TransactionType
 import io.horizontalsystems.bitcoincore.serializers.BaseTransactionSerializer
 import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 import io.horizontalsystems.bitcoincore.storage.InputWithPreviousOutput
+import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -97,9 +99,54 @@ class BaseTransactionInfoConverterTest {
         assertEquals(CASH_ADDRESS, info.inputs.single().address)
     }
 
+    @Test
+    fun transactionInfo_pushedMemo_returnsMemo() {
+        val memos = listOf(1, 75, 76, 80, 220).map { "a".repeat(it) } + "П".repeat(40) + "\uD83D\uDE00".repeat(20)
+
+        memos.forEach { memo ->
+            val script = OpCodes.nullData(memo.toByteArray(Charsets.UTF_8))
+
+            assertEquals(memo, memoOf(script))
+        }
+    }
+
+    @Test
+    fun transactionInfo_pushData1Memo_returnsWholeMemo() {
+        val script = ("6a4c4c" + "61".repeat(76)).hexToByteArray()
+
+        assertEquals("a".repeat(76), memoOf(script))
+    }
+
+    @Test
+    fun transactionInfo_hodlerNullData_returnsNullMemo() {
+        val script = ("6a51" + "020700" + "14" + "11".repeat(20)).hexToByteArray()
+
+        assertNull(memoOf(script))
+    }
+
+    @Test
+    fun transactionInfo_truncatedPushData1_returnsNullMemo() {
+        val script = ("6a4c50" + "61".repeat(10)).hexToByteArray()
+
+        assertNull(memoOf(script))
+    }
+
+    private fun memoOf(script: ByteArray): String? {
+        val output = TransactionOutput(
+            value = 0,
+            index = 0,
+            script = script,
+            type = ScriptType.NULL_DATA,
+            lockingScriptPayload = script
+        )
+
+        return converter.transactionInfo(fullTransactionInfo(null, outputs = listOf(output))).outputs.single().memo
+    }
+
     private fun fullTransactionInfo(
         previousOutputScriptType: ScriptType?,
-        inputAddress: String = SENDER_ADDRESS
+        inputAddress: String = SENDER_ADDRESS,
+        outputs: List<TransactionOutput> = emptyList()
     ): FullTransactionInfo {
         val header = Transaction().apply {
             hash = TRANSACTION_HASH
@@ -132,7 +179,7 @@ class BaseTransactionInfoConverterTest {
             block = null,
             header = header,
             inputs = listOf(InputWithPreviousOutput(input, previousOutput)),
-            outputs = emptyList(),
+            outputs = outputs,
             metadata = metadata,
             transactionSerializer = BaseTransactionSerializer()
         )
