@@ -3,6 +3,8 @@ package io.horizontalsystems.bitcoincore.managers
 import io.horizontalsystems.bitcoincore.network.BitcoinNetworkError
 import io.horizontalsystems.bitcoincore.network.BitcoinNetworkErrorListener
 import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -29,6 +31,46 @@ class ApiManagerNetworkErrorTest {
         assertEquals("$unreachableHost/addresses", error.url)
         assertEquals("nonexistent.invalid", error.host)
         assertTrue(error.resolvedIps.isEmpty())
+    }
+
+    @Test
+    fun post_transportFailure_emitsNetworkErrorWithMethodUrlAndHost() {
+        var captured: BitcoinNetworkError? = null
+        val holder = NetworkErrorListenerHolder().apply {
+            listener = BitcoinNetworkErrorListener { captured = it }
+        }
+        val apiManager = ApiManager(unreachableHost, holder)
+
+        assertThrows(ApiManagerException::class.java) { apiManager.post("push/transaction", "{}") }
+
+        val error = requireNotNull(captured)
+        assertEquals("POST", error.method)
+        assertEquals("$unreachableHost/push/transaction", error.url)
+        assertEquals("nonexistent.invalid", error.host)
+        assertTrue(error.resolvedIps.isEmpty())
+    }
+
+    @Test
+    fun post_errorStatus_emitsNetworkErrorWithMethodAndUrl() {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+
+        try {
+            val host = server.url("/").toString().removeSuffix("/")
+            var captured: BitcoinNetworkError? = null
+            val holder = NetworkErrorListenerHolder().apply {
+                listener = BitcoinNetworkErrorListener { captured = it }
+            }
+
+            assertThrows(ApiManagerException::class.java) { ApiManager(host, holder).post("push/transaction", "{}") }
+
+            val error = requireNotNull(captured)
+            assertEquals("POST", error.method)
+            assertEquals("$host/push/transaction", error.url)
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test

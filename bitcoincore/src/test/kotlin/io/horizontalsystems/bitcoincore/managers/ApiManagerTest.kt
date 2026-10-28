@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.managers
 
+import com.eclipsesource.json.Json
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
@@ -164,6 +165,45 @@ class ApiManagerTest {
 
         assertTrue(records.isNotEmpty())
         assertTrue(records.none { it.message.orEmpty().contains("SECRET") })
+    }
+
+    @Test
+    fun post_successfulResponse_sendsJsonBodyAndReturnsParsedJson() {
+        val body = """{"data":"0100"}"""
+        val reply = """{"data":{"transaction_hash":"abc"}}"""
+
+        withServer(MockResponse().setBody(reply)) { server, host ->
+            val result = ApiManager(host).post("push/transaction", body)
+
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            assertEquals("/push/transaction", request.path)
+            assertEquals(body, request.body.readUtf8())
+            assertTrue(request.getHeader("Content-Type").orEmpty().startsWith("application/json"))
+            assertEquals(Json.parse(reply), result)
+        }
+    }
+
+    @Test
+    fun post_errorStatus_throwsApiManagerException() {
+        val reply = """{"data":null,"context":{"code":400,"error":"Invalid transaction"}}"""
+
+        withServer(MockResponse().setResponseCode(400).setBody(reply)) { server, host ->
+            val error = assertThrows { ApiManager(host).post("push/transaction", "{}") }
+
+            assertTrue(error is ApiManagerException)
+            assertEquals(1, server.requestCount)
+        }
+    }
+
+    @Test
+    fun post_serverError_isNotRetried() {
+        withServer(MockResponse().setResponseCode(503), MockResponse().setResponseCode(503)) { server, host ->
+            val error = assertThrows { ApiManager(host).post("push/transaction", "{}") }
+
+            assertTrue(error is ApiManagerException)
+            assertEquals(1, server.requestCount)
+        }
     }
 
     private fun captureApiManagerLog(block: () -> Unit): List<LogRecord> {

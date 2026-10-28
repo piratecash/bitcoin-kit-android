@@ -3,15 +3,13 @@ package io.horizontalsystems.bitcoincore.managers
 import com.eclipsesource.json.Json
 import com.eclipsesource.json.JsonValue
 import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import java.io.BufferedOutputStream
-import java.io.BufferedWriter
 import java.io.IOException
 import java.io.InputStream
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URL
@@ -36,6 +34,8 @@ class ApiManager(
             .connectTimeout(5000, TimeUnit.MILLISECONDS)
             .readTimeout(60000, TimeUnit.MILLISECONDS)
             .build()
+
+        private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 
     private fun <T> retryOnServerError(maxRetries: Int = MAX_RETRIES, operation: (attempt: Int) -> T): T {
@@ -100,28 +100,28 @@ class ApiManager(
 
     @Throws
     fun post(resource: String, data: String): JsonValue {
+        val url = "$host/$resource"
+
+        logger.info("Fetching from $authority")
+
         try {
-            val path = "$host/$resource"
+            val request = Request.Builder().url(url).post(data.toRequestBody(JSON_MEDIA_TYPE)).build()
 
-            logger.info("Fetching from $authority")
-
-            val url = URL(path)
-            val urlConnection = url.openConnection() as HttpURLConnection
-            urlConnection.requestMethod = "POST"
-            urlConnection.setRequestProperty("Content-Type", "application/json")
-            val out = BufferedOutputStream(urlConnection.outputStream)
-            val writer = BufferedWriter(OutputStreamWriter(out, "UTF-8"))
-            writer.write(data)
-            writer.flush()
-            writer.close()
-            out.close()
-
-            return urlConnection.inputStream.use {
-                Json.parse(it.bufferedReader())
-            }
-        } catch (exception: IOException) {
-            networkErrorListener?.emit(source = host, method = "POST", url = "$host/$resource", throwable = exception)
-            throw ApiManagerException.Other("${exception.javaClass.simpleName}: $authority")
+            return httpClient.newCall(request)
+                .execute()
+                .use { response ->
+                    if (!response.isSuccessful) {
+                        val error = ApiManagerException.Other("Unexpected error ${response.code} from $authority")
+                        networkErrorListener?.emit(source = host, method = "POST", url = url, throwable = error)
+                        throw error
+                    }
+                    val body = response.body?.string()?.takeIf { it.isNotEmpty() }
+                        ?: throw ApiManagerException.Other("Empty response body: $authority")
+                    Json.parse(body)
+                }
+        } catch (e: IOException) {
+            networkErrorListener?.emit(source = host, method = "POST", url = url, throwable = e)
+            throw ApiManagerException.Other("${e.javaClass.simpleName}: $authority")
         }
     }
 
