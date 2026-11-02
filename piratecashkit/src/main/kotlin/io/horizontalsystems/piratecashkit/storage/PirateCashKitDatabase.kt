@@ -2,6 +2,7 @@ package io.horizontalsystems.piratecashkit.storage
 
 import androidx.room.*
 import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
 import io.horizontalsystems.piratecashkit.models.InstantTransactionHash
 import io.horizontalsystems.piratecashkit.models.InstantTransactionInput
 import io.horizontalsystems.piratecashkit.models.Masternode
@@ -33,10 +34,14 @@ abstract class PirateCashKitDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName, databaseKey)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): PirateCashKitDatabase =
-            databaseBuilder<PirateCashKitDatabase>(File(dataDir, dbName).path, databaseKey, allowMainThreadQueries = true)
-                .fallbackToDestructiveMigration(dropAllTables = false)
-                .build()
+        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): PirateCashKitDatabase {
+            val path = File(dataDir, dbName).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
+                databaseBuilder<PirateCashKitDatabase>(path, databaseKey, allowMainThreadQueries = true)
+                    .fallbackToDestructiveMigration(dropAllTables = false)
+                    .build()
+            }
+        }
     }
 }
 

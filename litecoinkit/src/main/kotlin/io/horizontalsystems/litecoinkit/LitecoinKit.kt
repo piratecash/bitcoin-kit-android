@@ -80,6 +80,9 @@ import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.validators.LegacyDifficultyAdjustmentValidator
 import io.horizontalsystems.litecoinkit.validators.ProofOfWorkValidator
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class LitecoinKit : AbstractKit {
     enum class NetworkType {
@@ -99,17 +102,37 @@ class LitecoinKit : AbstractKit {
     private val mwebEngine: LitecoinMwebEngine?
         get() = mwebEngineHandle?.engine
     private val bitcoinCoreListener = MwebAwareBitcoinCoreListener()
-    private var mwebEngineListener: MwebListenerAdapter? = null
+    private val listeners = CopyOnWriteArraySet<Listener>()
+    private val mwebEngineListeners = ConcurrentHashMap<Listener, MwebListenerAdapter>()
+    // Several adapters share one kit, and a second start() must not re-enter a running core.
+    private val lifecycleLock = ReentrantLock()
+    private var running = false
+    // Not lifecycleLock: start() holds it through native startup, and adding a listener must not wait on that.
+    private val listenersLock = ReentrantLock()
+    private var disposed = false
     private val mwebPublicTransactionBridge: MwebPublicTransactionBridge by lazy { MwebBitcoinCoreBridge() }
     private lateinit var mwebAddressCodec: MwebAddressCodec
     private lateinit var mwebPublicPegInSender: MwebPublicPegInSender
 
-    var listener: Listener? = null
-        set(value) {
-            field = value
-            bitcoinCore.listener = bitcoinCoreListener
-            setMwebListener(value)
+    fun addListener(listener: Listener) {
+        listenersLock.withLock {
+            if (disposed || !listeners.add(listener)) return
+            val engine = mwebEngine ?: return
+            val adapter = MwebListenerAdapter(listener)
+            mwebEngineListeners[listener] = adapter
+            engine.addListener(adapter)
         }
+    }
+
+    fun removeListener(listener: Listener) {
+        listenersLock.withLock {
+            listeners.remove(listener)
+            val adapter = mwebEngineListeners.remove(listener) ?: return
+            // Flag first: the engine may be mid-dispatch to this adapter.
+            adapter.dispose()
+            mwebEngine?.removeListener(adapter)
+        }
+    }
 
     /**
      * @param dataDir Absolute path of the app's `databases` directory
@@ -393,7 +416,6 @@ class LitecoinKit : AbstractKit {
         mwebEngineHandle = mwebEngineHandle(
             dataDir, mwebDataDir, mwebSeed, walletId, networkType, mwebConfig, databaseKey,
         )
-        setMwebListener(listener)
     }
 
     /**
@@ -403,9 +425,13 @@ class LitecoinKit : AbstractKit {
      * it from Android main thread when MWEB is enabled.
      */
     override fun start() {
-        super.start()
-        mwebEngineHandle?.start()
-        syncPublicMwebTransactions()
+        lifecycleLock.withLock {
+            if (running) return
+            super.start()
+            mwebEngineHandle?.start()
+            syncPublicMwebTransactions()
+            running = true
+        }
     }
 
     /**
@@ -415,10 +441,13 @@ class LitecoinKit : AbstractKit {
      * Android main thread when MWEB is enabled.
      */
     override fun pauseNetwork() {
-        try {
-            stopMweb()
-        } finally {
-            super.pauseNetwork()
+        lifecycleLock.withLock {
+            running = false
+            try {
+                stopMweb()
+            } finally {
+                super.pauseNetwork()
+            }
         }
     }
 
@@ -429,10 +458,13 @@ class LitecoinKit : AbstractKit {
      * Android main thread when MWEB is enabled.
      */
     override fun stop() {
-        try {
-            stopMweb()
-        } finally {
-            super.stop()
+        lifecycleLock.withLock {
+            running = false
+            try {
+                stopMweb()
+            } finally {
+                super.stop()
+            }
         }
     }
 
@@ -459,17 +491,17 @@ class LitecoinKit : AbstractKit {
     }
 
     override fun dispose() {
-        mwebEngine?.let { engine ->
-            mwebEngineListener?.let { listener ->
-                listener.dispose()
-                engine.removeListener(listener)
+        lifecycleLock.withLock {
+            running = false
+            listenersLock.withLock {
+                disposed = true
+                listeners.forEach(::removeListener)
             }
+            mwebPublicPegInSender.stop()
+            mwebEngineHandle?.release()
+            mwebEngineHandle = null
+            super.dispose()
         }
-        mwebEngineListener = null
-        mwebPublicPegInSender.stop()
-        mwebEngineHandle?.release()
-        mwebEngineHandle = null
-        super.dispose()
     }
 
     val litecoinBalance: LitecoinBalance
@@ -728,16 +760,6 @@ class LitecoinKit : AbstractKit {
         return mwebEngine ?: throw MwebError.NativeUnavailable()
     }
 
-    private fun setMwebListener(listener: Listener?) {
-        val engine = mwebEngine ?: return
-        mwebEngineListener?.let { current ->
-            current.dispose()
-            engine.removeListener(current)
-        }
-        mwebEngineListener = listener?.let(::MwebListenerAdapter)
-        mwebEngineListener?.let(engine::addListener)
-    }
-
     private fun syncPublicMwebTransactions() {
         mwebEngine?.syncPublicTransactions(mwebPublicTransactionBridge)
     }
@@ -749,23 +771,23 @@ class LitecoinKit : AbstractKit {
     private inner class MwebAwareBitcoinCoreListener : BitcoinCore.Listener {
         override fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>) {
             syncPublicMwebTransactionsAsync()
-            listener?.onTransactionsUpdate(inserted, updated)
+            listeners.forEach { it.onTransactionsUpdate(inserted, updated) }
         }
 
         override fun onTransactionsDelete(hashes: List<String>) {
-            listener?.onTransactionsDelete(hashes)
+            listeners.forEach { it.onTransactionsDelete(hashes) }
         }
 
         override fun onBalanceUpdate(balance: BalanceInfo) {
-            listener?.onBalanceUpdate(balance)
+            listeners.forEach { it.onBalanceUpdate(balance) }
         }
 
         override fun onLastBlockInfoUpdate(blockInfo: BlockInfo) {
-            listener?.onLastBlockInfoUpdate(blockInfo)
+            listeners.forEach { it.onLastBlockInfoUpdate(blockInfo) }
         }
 
         override fun onKitStateUpdate(state: KitState) {
-            listener?.onKitStateUpdate(state)
+            listeners.forEach { it.onKitStateUpdate(state) }
         }
     }
 

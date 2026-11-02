@@ -223,18 +223,20 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
     }
 
     override fun deleteBlocks(blocks: List<Block>) {
-        blocks.forEach { block ->
-            val transactions = store.transaction.getBlockTransactions(block.headerHash)
+        store.inTransaction {
+            blocks.forEach { block ->
+                val transactions = store.transaction.getBlockTransactions(block.headerHash)
 
-            transactions.forEach {
-                store.input.deleteAll(getTransactionInputs(it))
-                store.output.deleteAll(getTransactionOutputs(it))
+                transactions.forEach {
+                    store.input.deleteAll(getTransactionInputs(it))
+                    store.output.deleteAll(getTransactionOutputs(it))
+                }
+
+                store.transaction.deleteAll(transactions)
             }
 
-            store.transaction.deleteAll(transactions)
+            store.block.deleteAll(blocks)
         }
-
-        store.block.deleteAll(blocks)
     }
 
     override fun deleteBlocksWithoutTransactions(toHeight: Int) {

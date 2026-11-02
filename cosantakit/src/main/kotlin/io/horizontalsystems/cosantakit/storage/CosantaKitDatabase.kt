@@ -2,6 +2,7 @@ package io.horizontalsystems.cosantakit.storage
 
 import androidx.room.*
 import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
 import io.horizontalsystems.cosantakit.models.*
 import java.io.File
 
@@ -29,10 +30,14 @@ abstract class CosantaKitDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName, databaseKey)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): CosantaKitDatabase =
-            databaseBuilder<CosantaKitDatabase>(File(dataDir, dbName).path, databaseKey, allowMainThreadQueries = true)
-                .fallbackToDestructiveMigration(dropAllTables = false)
-                .build()
+        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): CosantaKitDatabase {
+            val path = File(dataDir, dbName).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
+                databaseBuilder<CosantaKitDatabase>(path, databaseKey, allowMainThreadQueries = true)
+                    .fallbackToDestructiveMigration(dropAllTables = false)
+                    .build()
+            }
+        }
     }
 }
 

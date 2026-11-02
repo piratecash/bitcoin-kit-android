@@ -83,14 +83,13 @@ abstract class CoreDatabase : RoomDatabase() {
 
     companion object {
 
-        fun getInstance(dataDir: String, dbName: String): CoreDatabase {
-            val path = File(dataDir, dbName).path
-            return coreDatabaseBuilder(path).applyCoreConfig().build()
-        }
+        fun getInstance(dataDir: String, dbName: String): CoreDatabase = getInstance(dataDir, dbName, null)
 
         fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): CoreDatabase {
             val path = File(dataDir, dbName).path
-            return coreDatabaseBuilder(path, databaseKey).applyCoreConfig().build()
+            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
+                coreDatabaseBuilder(path, databaseKey).applyCoreConfig().build()
+            }
         }
 
         private fun RoomDatabase.Builder<CoreDatabase>.applyCoreConfig(): RoomDatabase.Builder<CoreDatabase> =

@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
 import io.horizontalsystems.dashkit.models.InstantTransactionHash
 import io.horizontalsystems.dashkit.models.InstantTransactionInput
 import io.horizontalsystems.dashkit.models.Masternode
@@ -38,10 +39,14 @@ abstract class DashKitDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName, databaseKey)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): DashKitDatabase =
-            databaseBuilder<DashKitDatabase>(File(dataDir, dbName).path, databaseKey, allowMainThreadQueries = true)
-                .fallbackToDestructiveMigration(dropAllTables = false)
-                .build()
+        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): DashKitDatabase {
+            val path = File(dataDir, dbName).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
+                databaseBuilder<DashKitDatabase>(path, databaseKey, allowMainThreadQueries = true)
+                    .fallbackToDestructiveMigration(dropAllTables = false)
+                    .build()
+            }
+        }
     }
 }
 

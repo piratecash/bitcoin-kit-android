@@ -55,6 +55,13 @@ kotlin {
                 implementation(libs.sqlite.bundled)
             }
         }
+        val androidInstrumentedTest by getting {
+            dependencies {
+                implementation("androidx.test.ext:junit:1.1.5")
+                implementation("androidx.test:runner:1.5.2")
+                implementation(libs.core)
+            }
+        }
         val jvmTest by getting {
             dependencies {
                 implementation(libs.junit)
@@ -103,6 +110,7 @@ android {
     sourceSets {
         getByName("main").java.srcDirs("src/main/kotlin")
         getByName("test").java.srcDirs("src/test/kotlin")
+        getByName("androidTest").java.srcDirs("src/androidTest/kotlin")
     }
 
     compileOptions {

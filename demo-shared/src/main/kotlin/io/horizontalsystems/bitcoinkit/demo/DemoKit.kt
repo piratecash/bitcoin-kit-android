@@ -63,7 +63,7 @@ class DemoKit(
             is BitcoinCashKit -> kit.listener = CoreListenerAdapter()
             is ECashKit -> kit.listener = CoreListenerAdapter()
             is DogecoinKit -> kit.listener = CoreListenerAdapter()
-            is LitecoinKit -> kit.listener = LitecoinListenerAdapter()
+            is LitecoinKit -> kit.addListener(LitecoinListenerAdapter())
             is DashKit -> kit.listener = DashFamilyListenerAdapter()
             is CosantaKit -> kit.listener = DashFamilyListenerAdapter()
             is PirateCashKit -> kit.listener = DashFamilyListenerAdapter()

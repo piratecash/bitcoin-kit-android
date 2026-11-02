@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.storage
 
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
 import io.horizontalsystems.sqlcipher.room.SqlCipherDatabases
+import java.io.File
 
 typealias DatabaseMigrationResult = io.horizontalsystems.sqlcipher.room.DatabaseMigrationResult
 typealias DatabaseEncryptionException = io.horizontalsystems.sqlcipher.room.DatabaseEncryptionException
@@ -24,7 +25,11 @@ object DatabaseEncryption {
         databaseNames: Collection<String>,
         migrationId: String,
         databaseKey: ByteArray,
-    ): DatabaseMigrationResult = bitcoinKitDatabases.migrateDatabases(dataDir, databaseNames, migrationId, databaseKey)
+    ): DatabaseMigrationResult =
+        bitcoinKitDatabases.migrateDatabases(dataDir, databaseNames, migrationId, databaseKey).also { result ->
+            // An already-encrypted group is left untouched, so its cached instances stay valid.
+            if (result.migratedDatabaseCount > 0) evictCachedInstances(dataDir, databaseNames)
+        }
 
     fun clearDatabases(
         dataDir: String,
@@ -32,9 +37,15 @@ object DatabaseEncryption {
         migrationId: String,
     ) {
         bitcoinKitDatabases.clearDatabases(dataDir, databaseNames, migrationId)
+        evictCachedInstances(dataDir, databaseNames)
     }
 }
 
 fun deleteDatabaseFiles(dataDir: String, dbName: String) {
     bitcoinKitDatabases.deleteDatabaseFiles(dataDir, dbName)
+    evictCachedInstances(dataDir, listOf(dbName))
+}
+
+private fun evictCachedInstances(dataDir: String, databaseNames: Collection<String>) {
+    databaseNames.forEach { SharedRoomDatabases.evict(File(dataDir, it).path) }
 }
