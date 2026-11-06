@@ -100,6 +100,19 @@ class BaseTransactionInfoConverterTest {
     }
 
     @Test
+    fun transactionInfo_inputOfForeignOutput_fillsSpentOutput() {
+        val info = converter.transactionInfo(
+            fullTransactionInfo(
+                previousOutputScriptType = null,
+                previousOutputTxHash = byteArrayOf(0x0a, 0x0b),
+                previousOutputIndex = 7
+            )
+        )
+
+        assertEquals("0b0a:7", info.inputs.single().spentOutput)
+    }
+
+    @Test
     fun transactionInfo_pushedMemo_returnsMemo() {
         val memos = listOf(1, 75, 76, 80, 220).map { "a".repeat(it) } + "П".repeat(40) + "\uD83D\uDE00".repeat(20)
 
@@ -146,7 +159,9 @@ class BaseTransactionInfoConverterTest {
     private fun fullTransactionInfo(
         previousOutputScriptType: ScriptType?,
         inputAddress: String = SENDER_ADDRESS,
-        outputs: List<TransactionOutput> = emptyList()
+        outputs: List<TransactionOutput> = emptyList(),
+        previousOutputTxHash: ByteArray = PREVIOUS_TRANSACTION_HASH,
+        previousOutputIndex: Long = 0
     ): FullTransactionInfo {
         val header = Transaction().apply {
             hash = TRANSACTION_HASH
@@ -154,8 +169,8 @@ class BaseTransactionInfoConverterTest {
             status = Transaction.Status.RELAYED
         }
         val input = TransactionInput(
-            previousOutputTxHash = PREVIOUS_TRANSACTION_HASH,
-            previousOutputIndex = 0,
+            previousOutputTxHash = previousOutputTxHash,
+            previousOutputIndex = previousOutputIndex,
             sequence = 0xffffffffL
         ).apply {
             transactionHash = TRANSACTION_HASH

@@ -43,7 +43,14 @@ class BaseTransactionInfoConverter(private val pluginManager: PluginManager) {
                 }
             }
 
-            inputsInfo.add(TransactionInputInfo(mine, value, input.walletAddress()))
+            inputsInfo.add(
+                TransactionInputInfo(
+                    mine,
+                    value,
+                    input.walletAddress(),
+                    "${input.input.previousOutputTxHash.toReversedHex()}:${input.input.previousOutputIndex}"
+                )
+            )
         }
 
         fullTransaction.outputs.forEach { output ->

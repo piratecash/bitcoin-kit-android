@@ -28,6 +28,7 @@ class TransactionInvalidator(
 
         invalidTransactionsFullInfo.forEach { fullTxInfo ->
             fullTxInfo.header.status = Transaction.Status.INVALID
+            fullTxInfo.header.conflictingTxHash = transaction.conflictingTxHash ?: fullTxInfo.header.conflictingTxHash
         }
 
         val invalidTransactions = invalidTransactionsFullInfo.map { fullTxInfo ->
