@@ -54,6 +54,12 @@ interface TransactionDao {
     @Query("DELETE FROM `Transaction` WHERE hash=:hash")
     fun deleteByHash(hash: ByteArray)
 
+    @Query("UPDATE `Transaction` SET conflictingTxHash = :winner WHERE conflictingTxHash = :loser AND hash != :winner")
+    fun moveConflicts(loser: ByteArray, winner: ByteArray)
+
+    @Query("UPDATE `Transaction` SET conflictingTxHash = NULL WHERE conflictingTxHash = :hash")
+    fun clearConflicts(hash: ByteArray)
+
     @Delete
     fun deleteAll(transactions: List<Transaction>)
 

@@ -121,6 +121,7 @@ interface IStorage {
     fun getTransactionOutputsCount(hash: ByteArray): Int
     fun addTransaction(transaction: FullTransaction)
     fun updateTransaction(transaction: Transaction)
+    fun moveConflicts(loser: ByteArray, winner: ByteArray)
     fun updateTransaction(transaction: FullTransaction)
     fun getBlockTransactions(block: Block): List<Transaction>
     fun getNewTransactions(): List<FullTransaction>
@@ -172,10 +173,10 @@ interface IStorage {
     fun getTransactionInputs(transaction: Transaction): List<TransactionInput>
     fun getTransactionInputs(txHash: ByteArray): List<TransactionInput>
     fun getTransactionInputs(txHashes: List<ByteArray>): List<TransactionInput>
-    fun getTransactionInput(
+    fun getTransactionInputs(
         previousOutputTxHash: ByteArray,
         previousOutputIndex: Long
-    ): TransactionInput?
+    ): List<TransactionInput>
 
     fun getTransactionInputsByPrevOutputTxHash(txHash: ByteArray): List<TransactionInput>
 

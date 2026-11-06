@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.transactions
 
 import io.horizontalsystems.bitcoincore.core.IStorage
+import io.horizontalsystems.bitcoincore.extensions.toHexString
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionInput
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
@@ -66,34 +67,31 @@ class TransactionConflictsResolver(private val storage: IStorage) {
         }
     }
 
+    fun isSpentByMinedTransaction(transaction: FullTransaction): Boolean {
+        return getConflictingTransactionsForTransaction(transaction).any { it.blockHash != null }
+    }
+
     // Checks if the transactions has a conflicting input with higher sequence
     fun isTransactionReplaced(transaction: FullTransaction): Boolean {
-        val conflictingTransactions = getConflictingTransactionsForTransaction(transaction)
+        val minedTransactions = getConflictingTransactionsForTransaction(transaction).filter { it.blockHash != null }
 
-        if (conflictingTransactions.isEmpty() || conflictingTransactions.any { it.blockHash == null }) {
+        if (minedTransactions.isEmpty()) {
             return false
         }
 
-        val conflictingFullTransactions = storage.getFullTransactions(conflictingTransactions)
-
-        return conflictingFullTransactions
+        return storage.getFullTransactions(minedTransactions)
             .any { existingHasHigherSequence(mempoolTransaction = transaction, existingTransaction = it) }
     }
 
     private fun getConflictingTransactionsForTransaction(transaction: FullTransaction): List<Transaction> {
-        return transaction.inputs.mapNotNull { input ->
+        return transaction.inputs
             // Skip coinbase inputs - they all share the same null hash and shouldn't trigger conflicts
-            if (isCoinbaseInput(input)) return@mapNotNull null
-
-            val conflictingTxHash = storage.getTransactionInput(input.previousOutputTxHash, input.previousOutputIndex)?.transactionHash
-            when {
-                conflictingTxHash == null -> null
-                conflictingTxHash.contentEquals(transaction.header.hash) -> null
-                else -> conflictingTxHash
-            }
-        }.mapNotNull {
-            storage.getTransaction(it)
-        }
+            .filterNot(::isCoinbaseInput)
+            .flatMap { storage.getTransactionInputs(it.previousOutputTxHash, it.previousOutputIndex) }
+            .map { it.transactionHash }
+            .filterNot { it.contentEquals(transaction.header.hash) }
+            .distinctBy { it.toHexString() }
+            .mapNotNull { storage.getTransaction(it) }
     }
 
     /**

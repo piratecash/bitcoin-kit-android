@@ -496,6 +496,7 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         store.input.deleteAll(getTransactionInputs(pendingTransaction))
         store.output.deleteAll(getTransactionOutputs(pendingTransaction))
         store.transactionMetadata.delete(pendingTransaction.hash)
+        handOverConflicts(pendingTransaction)
         store.transaction.delete(pendingTransaction)
     }
 
@@ -564,11 +565,20 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
             invalidTransactions.forEach { invalidTransaction ->
                 store.invalidTransaction.insert(invalidTransaction)
 
-                val inputs = store.input.getInputsWithPrevouts(listOf(invalidTransaction.hash))
-                inputs.forEach { input ->
-                    input.previousOutput?.let {
-                        store.output.markFailedToSpend(it.transactionHash, it.index)
+                // Losing to a competitor says nothing about the outputs it tried to spend.
+                val lostConflict = invalidTransaction.conflictingTxHash != null ||
+                    store.input.hasConflictingInput(invalidTransaction.hash)
+                if (!lostConflict) {
+                    store.input.getInputsWithPrevouts(listOf(invalidTransaction.hash)).forEach { input ->
+                        input.previousOutput?.let {
+                            store.output.markFailedToSpend(it.transactionHash, it.index)
+                        }
                     }
+                }
+
+                handOverConflicts(invalidTransaction)
+                store.sentTransaction.getTransaction(invalidTransaction.hash)?.let {
+                    store.sentTransaction.delete(it)
                 }
 
                 store.input.deleteByTxHash(invalidTransaction.hash)
@@ -635,8 +645,21 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         return store.input.getTransactionInputs(txHashes)
     }
 
-    override fun getTransactionInput(previousOutputTxHash: ByteArray, previousOutputIndex: Long): TransactionInput? {
-        return store.input.getInput(previousOutputTxHash, previousOutputIndex)
+    override fun getTransactionInputs(previousOutputTxHash: ByteArray, previousOutputIndex: Long): List<TransactionInput> {
+        return store.input.getInputs(previousOutputTxHash, previousOutputIndex)
+    }
+
+    override fun moveConflicts(loser: ByteArray, winner: ByteArray) {
+        store.transaction.moveConflicts(loser, winner)
+    }
+
+    private fun handOverConflicts(removed: Transaction) {
+        val winner = removed.conflictingTxHash
+        if (winner != null) {
+            store.transaction.moveConflicts(removed.hash, winner)
+        } else {
+            store.transaction.clearConflicts(removed.hash)
+        }
     }
 
     override fun getTransactionInputsByPrevOutputTxHash(txHash: ByteArray): List<TransactionInput> {
