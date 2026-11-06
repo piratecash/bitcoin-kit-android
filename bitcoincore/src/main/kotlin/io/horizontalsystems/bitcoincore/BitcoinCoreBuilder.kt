@@ -714,6 +714,8 @@ class BitcoinCoreBuilder {
                 lockTimeSetter = lockTimeSetter,
                 transactionSerializer = transactionSerializer,
                 transactionVersion = network.transactionVersion,
+                addressConverter = addressConverter,
+                changeScriptType = purpose.scriptType,
             )
         }
 
