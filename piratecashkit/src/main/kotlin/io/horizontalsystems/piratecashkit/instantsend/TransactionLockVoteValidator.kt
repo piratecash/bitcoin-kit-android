@@ -1,6 +1,7 @@
 package io.horizontalsystems.piratecashkit.instantsend
 
 import io.horizontalsystems.bitcoincore.core.IHasher
+import io.horizontalsystems.dashlib.BLS
 import io.horizontalsystems.piratecashkit.PirateCashKitErrors
 import io.horizontalsystems.piratecashkit.IPirateCashStorage
 

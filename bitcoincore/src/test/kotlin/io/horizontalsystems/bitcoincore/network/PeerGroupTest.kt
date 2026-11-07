@@ -1,6 +1,6 @@
 //package io.horizontalsystems.bitcoincore.network
 //
-//import com.nhaarman.mockitokotlin2.whenever
+//import org.mockito.kotlin.whenever
 //import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 //import io.horizontalsystems.bitcoincore.io.BitcoinInputMarkable
 //import io.horizontalsystems.bitcoincore.managers.ConnectionManager

@@ -306,6 +306,8 @@ object OpCodes {
         return bytes + data
     }
 
+    fun nullData(data: ByteArray): ByteArray = byteArrayOf(OP_RETURN.toByte()) + push(data)
+
     fun scriptWPKH(data: ByteArray, versionByte: Int = 0): ByteArray {
         return push(versionByte) + push(data)
     }

@@ -1,6 +1,6 @@
 package io.horizontalsystems.bitcoincore.managers
 
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.network.Network
 import org.junit.Assert.assertFalse

@@ -1,6 +1,6 @@
 package io.horizontalsystems.bitcoincore.blocks
 
-import com.nhaarman.mockitokotlin2.*
+import org.mockito.kotlin.*
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray

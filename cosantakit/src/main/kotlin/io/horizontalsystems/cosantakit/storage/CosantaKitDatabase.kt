@@ -1,8 +1,11 @@
 package io.horizontalsystems.cosantakit.storage
 
-import android.content.Context
 import androidx.room.*
+import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
 import io.horizontalsystems.cosantakit.models.*
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
+import java.io.File
 
 @Database(version = 7, exportSchema = false, entities = [
     Masternode::class,
@@ -20,20 +23,31 @@ abstract class CosantaKitDatabase : RoomDatabase() {
     abstract val instantTransactionInputDao: InstantTransactionInputDao
 
     companion object {
-
-        @Volatile
-        private var instance: CosantaKitDatabase? = null
-
-        @Synchronized
-        fun getInstance(context: Context, dbName: String): CosantaKitDatabase {
-            return instance ?: buildDatabase(context, dbName).also { instance = it }
+        fun getInstance(dataDir: String, dbName: String): CosantaKitDatabase {
+            return buildDatabase(dataDir, dbName)
         }
 
-        private fun buildDatabase(context: Context, dbName: String): CosantaKitDatabase {
-            return Room.databaseBuilder(context, CosantaKitDatabase::class.java, dbName)
-                    .fallbackToDestructiveMigration()
-                    .allowMainThreadQueries()
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): CosantaKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey, nameResolver)
+        }
+
+        private fun buildDatabase(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray? = null,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): CosantaKitDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey, nameResolver) {
+                databaseBuilder<CosantaKitDatabase>(path, databaseKey, allowMainThreadQueries = true, nameResolver = nameResolver)
+                    .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
+            }
         }
     }
 }

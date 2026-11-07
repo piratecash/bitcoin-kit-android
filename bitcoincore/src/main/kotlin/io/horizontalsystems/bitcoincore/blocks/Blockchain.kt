@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.blocks
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorException
 import io.horizontalsystems.bitcoincore.blocks.validators.IBlockValidator
 import io.horizontalsystems.bitcoincore.core.IStorage
@@ -9,7 +10,6 @@ import io.horizontalsystems.bitcoincore.models.Block
 import io.horizontalsystems.bitcoincore.models.MerkleBlock
 import io.horizontalsystems.bitcoincore.models.OrphanBlock
 import io.horizontalsystems.bitcoincore.storage.BlockHeader
-import timber.log.Timber
 
 class Blockchain(
     private val storage: IStorage,
@@ -17,55 +17,19 @@ class Blockchain(
     private val dataListener: IBlockchainDataListener,
     private val logTag: String
 ) {
+    private val log = Logger.withTag(logTag)
+
     fun connect(merkleBlock: MerkleBlock): Block {
         val blockInDB = storage.getBlock(merkleBlock.blockHash)
         if (blockInDB != null) {
-            Timber.tag(logTag).d("Block already exists in DB: hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}")
+            log.d { "Block already exists in DB: hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}" }
 
-            val header = merkleBlock.header
-            var needsUpdate = false
-
-            if (blockInDB.merkleRoot.isEmpty()) {
-                blockInDB.merkleRoot = header.merkleRoot.copyOf()
-                needsUpdate = true
-            }
-
-            if (blockInDB.version != header.version) {
-                blockInDB.version = header.version
-                needsUpdate = true
-            }
-
-            if (!blockInDB.previousBlockHash.contentEquals(header.previousBlockHeaderHash)) {
-                blockInDB.previousBlockHash = header.previousBlockHeaderHash.copyOf()
-                needsUpdate = true
-            }
-
-            if (blockInDB.timestamp != header.timestamp) {
-                blockInDB.timestamp = header.timestamp
-                needsUpdate = true
-            }
-
-            if (blockInDB.bits != header.bits) {
-                blockInDB.bits = header.bits
-                needsUpdate = true
-            }
-
-            if (blockInDB.nonce != header.nonce) {
-                blockInDB.nonce = header.nonce
-                needsUpdate = true
-            }
-
-            if (needsUpdate) {
-                storage.updateBlock(blockInDB)
-                Timber.tag(logTag).d("Block data refreshed from merkle block: hash=${merkleBlock.blockHash.toHexString()}")
-            }
-
-            return blockInDB
+            return refreshFromHeader(blockInDB, merkleBlock.header)
         }
 
         val parentBlock = storage.getBlock(merkleBlock.header.previousBlockHeaderHash)
         if (parentBlock == null) {
-            Timber.tag(logTag).i("No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans")
+            log.i { "No parent block found for ${merkleBlock.blockHash.toHexString()}, adding to orphans" }
             storage.addOrphanBlock(OrphanBlock(merkleBlock))
             // add to orphans with empty parent
             // Maybe we shouldn't disconnect the peer here since we will request parent block
@@ -76,14 +40,14 @@ class Blockchain(
         try {
             blockValidator?.validate(block, parentBlock)
         } catch (e: BlockValidatorException) {
-            Timber.tag(logTag).d("Block validation failed: hash=${merkleBlock.blockHash.toHexString()}, error=${e.message}")
+            log.d { "Block validation failed: hash=${merkleBlock.blockHash.toHexString()}, error=${e.message}" }
             throw e
         }
 
         val isFork = checkIfFork(block, parentBlock)
         if (isFork) {
             block.stale = true
-            Timber.tag(logTag).d("Block marked as stale (fork): hash=${merkleBlock.blockHash.toHexString()}, height=${block.height}")
+            log.d { "Block marked as stale (fork): hash=${merkleBlock.blockHash.toHexString()}, height=${block.height}" }
         }
 
         if (block.height % 2016 == 0) {
@@ -93,23 +57,74 @@ class Blockchain(
         return addBlockAndNotify(block)
     }
 
-    fun forceAdd(merkleBlock: MerkleBlock, height: Int): Block {
-        val blockInDB = storage.getBlock(merkleBlock.blockHash)
+    fun forceAdd(merkleBlock: MerkleBlock, height: Int): Block =
+        insertOrRefresh(merkleBlock.header, height)
+
+    /**
+     * Stores an ancestor the header walk proved against a block we already hold. Unlike
+     * [insertLastBlock] it repairs an existing row, because the header is known-genuine.
+     */
+    fun insertVerifiedAncestor(header: BlockHeader, height: Int): Block =
+        insertOrRefresh(header, height)
+
+    private fun insertOrRefresh(header: BlockHeader, height: Int): Block {
+        val blockInDB = storage.getBlock(header.hash)
         if (blockInDB != null) {
-            Timber.tag(logTag).d("Block already exists in DB (forceAdd): hash=${merkleBlock.blockHash.toHexString()}, height=${blockInDB.height}")
-            return blockInDB
+            log.d { "Block already exists in DB (forceAdd): hash=${header.hash.toHexString()}, height=${blockInDB.height}" }
+            return refreshFromHeader(blockInDB, header)
         }
-        Timber.tag(logTag).d("Force adding block: hash=${merkleBlock.blockHash.toHexString()}, height=$height")
-        return addBlockAndNotify(Block(merkleBlock.header, height))
+        log.d { "Force adding block: hash=${header.hash.toHexString()}, height=$height" }
+        return addBlockAndNotify(Block(header, height))
+    }
+
+    private fun refreshFromHeader(blockInDB: Block, header: BlockHeader): Block {
+        var needsUpdate = false
+
+        if (blockInDB.merkleRoot.isEmpty()) {
+            blockInDB.merkleRoot = header.merkleRoot.copyOf()
+            needsUpdate = true
+        }
+
+        if (blockInDB.version != header.version) {
+            blockInDB.version = header.version
+            needsUpdate = true
+        }
+
+        if (!blockInDB.previousBlockHash.contentEquals(header.previousBlockHeaderHash)) {
+            blockInDB.previousBlockHash = header.previousBlockHeaderHash.copyOf()
+            needsUpdate = true
+        }
+
+        if (blockInDB.timestamp != header.timestamp) {
+            blockInDB.timestamp = header.timestamp
+            needsUpdate = true
+        }
+
+        if (blockInDB.bits != header.bits) {
+            blockInDB.bits = header.bits
+            needsUpdate = true
+        }
+
+        if (blockInDB.nonce != header.nonce) {
+            blockInDB.nonce = header.nonce
+            needsUpdate = true
+        }
+
+        if (needsUpdate) {
+            storage.updateBlock(blockInDB)
+            log.d { "Block data refreshed from header: hash=${blockInDB.headerHash.toHexString()}" }
+        }
+
+        return blockInDB
     }
 
     fun insertLastBlock(header: BlockHeader, height: Int) {
         if (storage.getBlock(header.hash) != null) {
-            Timber.tag(logTag).d("Last block already exists in DB: hash=${header.hash.toHexString()}, height=$height")
+            log.d { "Last block already exists in DB: hash=${header.hash.toHexString()}, height=$height" }
             return
         }
 
-        Timber.tag(logTag).d("Inserting last block: hash=${header.hash.toHexString()}, height=$height")
+        log.d { "Inserting last block: hash=${header.hash.toHexString()}, height=$height" }
         addBlockAndNotify(Block(header, height))
     }
 
@@ -152,7 +167,7 @@ class Blockchain(
 
     private fun addBlockAndNotify(block: Block): Block {
         storage.addBlock(block)
-//        Timber.tag(logTag).d("Block added successfully: hash=${block.headerHash.toHexString()}, height=${block.height}, stale=${block.stale}")
+//        log.d { "Block added successfully: hash=${block.headerHash.toHexString()}, height=${block.height}, stale=${block.stale}" }
         dataListener.onBlockInsert(block)
         return block
     }
