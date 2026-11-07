@@ -49,6 +49,9 @@ kotlin {
             dependsOn(jvmCommonMain)
             dependencies { implementation(libs.kotlinx.coroutines.core) }
         }
+        val jvmTest by getting {
+            dependencies { implementation(libs.junit) }
+        }
     }
 }
 

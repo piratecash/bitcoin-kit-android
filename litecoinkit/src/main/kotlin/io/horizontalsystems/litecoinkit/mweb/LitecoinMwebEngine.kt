@@ -3,6 +3,7 @@ package io.horizontalsystems.litecoinkit.mweb
 import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressPool
@@ -50,6 +51,8 @@ internal class LitecoinMwebEngine(
     private val restoreCheckpointProvider: (LitecoinKit.NetworkType, Int) -> String? =
         MwebRestoreCheckpointProvider::encodedCheckpoint,
     databaseKey: ByteArray? = null,
+    nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    private val disableDebugLog: Boolean = false,
 ) {
     interface Listener {
         fun onMwebBalanceUpdate(balance: MwebBalance) = Unit
@@ -73,10 +76,10 @@ internal class LitecoinMwebEngine(
 
     private val accountKeys = MwebKeyManager(seed).accountKeys()
     private val restoreHeight = MwebRestorePolicy(MwebNetworkPolicy.network(networkType)).resolve(restorePoint)
-    private val daemonDataDir = MwebFiles.daemonDataDir(mwebDataDir, networkType, walletId)
+    private val daemonDataDir = MwebFiles.daemonDataDir(mwebDataDir, networkType, walletId, nameResolver)
     private val addressCodec = MwebAddressCodec(networkType)
     private val storage = MwebRoomStorage(
-        MwebDatabase.getInstance(dataDir, MwebFiles.databaseName(networkType, walletId), databaseKey)
+        MwebDatabase.getInstance(dataDir, MwebFiles.databaseName(networkType, walletId), databaseKey, nameResolver)
     )
     private val coroutineScope = CoroutineScope(SupervisorJob() + dispatcherProvider.io)
     private val stateMutex = Mutex()
@@ -425,6 +428,7 @@ internal class LitecoinMwebEngine(
                     dataDir = daemonDataDir,
                     restoreHeight = restoreHeight,
                     restoreCheckpoint = restoreCheckpointProvider(networkType, restoreHeight),
+                    disableDebugLog = disableDebugLog,
                 )
             )
         }
@@ -772,8 +776,14 @@ internal class LitecoinMwebEngine(
         private const val STATUS_POLL_INTERVAL_MILLIS = 5_000L
         private const val LOCAL_TRANSACTION_TTL_MILLIS = 24 * 60 * 60 * 1_000L
 
-        fun clear(dataDir: String, mwebDataDir: String, networkType: LitecoinKit.NetworkType, walletId: String) {
-            MwebFiles.clear(dataDir, mwebDataDir, networkType, walletId)
+        fun clear(
+            dataDir: String,
+            mwebDataDir: String,
+            networkType: LitecoinKit.NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
+            MwebFiles.clear(dataDir, mwebDataDir, networkType, walletId, nameResolver)
         }
     }
 }

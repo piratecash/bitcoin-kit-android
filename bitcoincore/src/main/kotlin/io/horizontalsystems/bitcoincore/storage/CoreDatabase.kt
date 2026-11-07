@@ -41,6 +41,7 @@ import io.horizontalsystems.bitcoincore.storage.migrations.Migration_29_30
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_30_31
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_31_32
 import io.horizontalsystems.bitcoincore.storage.migrations.Migration_32_33
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import java.io.File
 
 @Database(
@@ -85,10 +86,15 @@ abstract class CoreDatabase : RoomDatabase() {
 
         fun getInstance(dataDir: String, dbName: String): CoreDatabase = getInstance(dataDir, dbName, null)
 
-        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): CoreDatabase {
-            val path = File(dataDir, dbName).path
-            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
-                coreDatabaseBuilder(path, databaseKey).applyCoreConfig().build()
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): CoreDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey, nameResolver) {
+                coreDatabaseBuilder(path, databaseKey, nameResolver).applyCoreConfig().build()
             }
         }
 

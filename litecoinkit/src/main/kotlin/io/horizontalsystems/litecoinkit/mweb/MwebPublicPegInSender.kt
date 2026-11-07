@@ -5,6 +5,7 @@ import io.horizontalsystems.bitcoincore.extensions.toReversedByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
@@ -31,8 +32,9 @@ internal class MwebPublicPegInSender(
     private val networkType: LitecoinKit.NetworkType,
     private val addressCodec: MwebAddressCodec,
     private val config: MwebPublicSendConfig,
+    nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
 ) {
-    private val dataDir = MwebFiles.publicSendDaemonDataDir(mwebDataDir, networkType, walletId)
+    private val dataDir = MwebFiles.publicSendDaemonDataDir(mwebDataDir, networkType, walletId, nameResolver)
     private val random = SecureRandom()
     private val lock = Any()
     private val operationMutex = Mutex()
@@ -246,6 +248,7 @@ internal class MwebPublicPegInSender(
                     peerAddress = config.peerAddress,
                     dataDir = dataDir,
                     restoreHeight = 0,
+                    disableDebugLog = config.disableDebugLog,
                 )
             )
         }

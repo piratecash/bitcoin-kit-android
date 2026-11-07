@@ -38,6 +38,9 @@ kotlin {
             resources.srcDir("src/main/resources")
             dependsOn(jvmCommonMain)
         }
+        val jvmTest by getting {
+            dependencies { implementation(libs.junit) }
+        }
     }
 }
 

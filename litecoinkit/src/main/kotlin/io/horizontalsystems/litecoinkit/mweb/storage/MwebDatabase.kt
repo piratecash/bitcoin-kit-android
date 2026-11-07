@@ -7,6 +7,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import java.io.File
 
 @Database(
@@ -155,13 +156,23 @@ abstract class MwebDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName)
         }
 
-        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): MwebDatabase {
-            return buildDatabase(dataDir, dbName, databaseKey)
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): MwebDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey, nameResolver)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): MwebDatabase {
-            val path = File(dataDir, dbName).path
-            return databaseBuilder<MwebDatabase>(path, databaseKey)
+        private fun buildDatabase(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray? = null,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): MwebDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return databaseBuilder<MwebDatabase>(path, databaseKey, nameResolver = nameResolver)
                 .addMigrations(*MIGRATIONS)
                 .build()
         }

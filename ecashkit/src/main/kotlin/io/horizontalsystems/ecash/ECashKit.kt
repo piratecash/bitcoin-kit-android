@@ -37,6 +37,7 @@ import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.CashAddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.ecash.messages.ECashBlockMessageParser
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
@@ -82,6 +83,7 @@ class ECashKit : AbstractKit {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         databaseKey = databaseKey,
@@ -92,6 +94,7 @@ class ECashKit : AbstractKit {
         peerSize = peerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -115,6 +118,7 @@ class ECashKit : AbstractKit {
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         databaseKey = databaseKey,
@@ -125,6 +129,7 @@ class ECashKit : AbstractKit {
         peerSize = peerSize,
         syncMode = syncMode,
         confirmationsThreshold = confirmationsThreshold,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -190,6 +195,7 @@ class ECashKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -203,6 +209,7 @@ class ECashKit : AbstractKit {
         iInputSigner = iInputSigner,
         iSchnorrInputSigner = iSchnorrInputSigner,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -268,6 +275,7 @@ class ECashKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -281,6 +289,7 @@ class ECashKit : AbstractKit {
         iInputSigner = iInputSigner,
         iSchnorrInputSigner = iSchnorrInputSigner,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     private constructor(
@@ -296,6 +305,7 @@ class ECashKit : AbstractKit {
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
         databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         network = network(networkType)
 
@@ -318,6 +328,7 @@ class ECashKit : AbstractKit {
             iInputSigner = iInputSigner,
             iSchnorrInputSigner = iSchnorrInputSigner,
             databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
     }
 
@@ -335,9 +346,10 @@ class ECashKit : AbstractKit {
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
         databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver,
     ): BitcoinCore {
         val database =
-            CoreDatabase.getInstance(dataDir, getDatabaseName(networkType, walletId, syncMode), databaseKey)
+            CoreDatabase.getInstance(dataDir, getDatabaseName(networkType, walletId, syncMode), databaseKey, nameResolver)
         val storage = Storage(database)
 
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
@@ -478,18 +490,26 @@ class ECashKit : AbstractKit {
             networkType: NetworkType,
             walletId: String,
             databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): DatabaseMigrationResult = DatabaseEncryption.migrateDatabases(
             dataDir = dataDir,
             databaseNames = databaseNames(networkType, walletId),
             migrationId = migrationId(networkType, walletId),
             databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
 
-        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
+        fun clear(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
             DatabaseEncryption.clearDatabases(
                 dataDir = dataDir,
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
             )
         }
 

@@ -55,6 +55,7 @@ import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
 import io.horizontalsystems.bitcoincore.utils.SegwitLegacyAddressConverter
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -187,10 +188,12 @@ class LitecoinKit : AbstractKit {
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebConfig: MwebConfig? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, mwebDataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase),
         walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose,
         sharedPeerGroupHolder, mwebConfig, mwebPublicSendConfig,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -245,10 +248,12 @@ class LitecoinKit : AbstractKit {
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebConfig: MwebConfig? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, mwebDataDir, connectionManager, HDExtendedKey(seed, purpose), purpose, null,
         walletId, networkType, peerSize, syncMode, confirmationsThreshold, null, null,
         sharedPeerGroupHolder, seed, mwebConfig, mwebPublicSendConfig, databaseKey,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -306,10 +311,12 @@ class LitecoinKit : AbstractKit {
         mwebSeed: ByteArray? = null,
         mwebConfig: MwebConfig? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, mwebDataDir, connectionManager, extendedKey, purpose, null, walletId, networkType,
         peerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
         sharedPeerGroupHolder, mwebSeed, mwebConfig, mwebPublicSendConfig, databaseKey,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -361,10 +368,12 @@ class LitecoinKit : AbstractKit {
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, mwebDataDir, connectionManager, null, null, watchAddress, walletId, networkType,
         peerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
         sharedPeerGroupHolder, null, null, mwebPublicSendConfig, databaseKey,
+        nameResolver = nameResolver,
     )
 
     private constructor(
@@ -386,10 +395,11 @@ class LitecoinKit : AbstractKit {
         mwebConfig: MwebConfig?,
         mwebPublicSendConfig: MwebPublicSendConfig,
         databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         network = network(networkType)
         mwebAddressCodec = MwebAddressCodec(networkType)
-        mwebPublicPegInSender = MwebPublicPegInSender(mwebDataDir, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig)
+        mwebPublicPegInSender = MwebPublicPegInSender(mwebDataDir, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig, nameResolver)
 
         val address = watchAddress?.let { parseAddress(it, network) }
         val watchAddressPublicKey = address?.let { WatchAddressPublicKey(it.lockingScriptPayload, it.scriptType) }
@@ -411,10 +421,11 @@ class LitecoinKit : AbstractKit {
             iSchnorrInputSigner = iSchnorrInputSigner,
             sharedPeerGroupHolder = sharedPeerGroupHolder,
             databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
         bitcoinCore.listener = bitcoinCoreListener
         mwebEngineHandle = mwebEngineHandle(
-            dataDir, mwebDataDir, mwebSeed, walletId, networkType, mwebConfig, databaseKey,
+            dataDir, mwebDataDir, mwebSeed, walletId, networkType, mwebConfig, databaseKey, nameResolver,
         )
     }
 
@@ -799,6 +810,7 @@ class LitecoinKit : AbstractKit {
         networkType: NetworkType,
         config: MwebConfig?,
         databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver,
     ): LitecoinMwebEngineHandle? {
         if (config == null) return null
 
@@ -810,6 +822,7 @@ class LitecoinKit : AbstractKit {
             walletId = walletId,
             networkType = networkType,
             config = config,
+            nameResolver = nameResolver,
         )
     }
 
@@ -913,6 +926,7 @@ class LitecoinKit : AbstractKit {
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
+        nameResolver: DatabaseNameResolver,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         databaseKey: ByteArray? = null,
     ): BitcoinCore {
@@ -921,6 +935,7 @@ class LitecoinKit : AbstractKit {
             dataDir,
             getDatabaseName(networkType, walletId, syncMode, purpose),
             databaseKey,
+            nameResolver,
         )
         val storage = Storage(database)
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
@@ -1077,8 +1092,9 @@ class LitecoinKit : AbstractKit {
             walletId: String,
             networkType: NetworkType,
             peerSize: Int = defaultPeerSize,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): SharedPeerGroupHolder = getOrCreateSharedPeerGroupInternal(
-            dataDir, databaseKey, connectionManager, walletId, networkType, peerSize,
+            dataDir, databaseKey, connectionManager, walletId, networkType, peerSize, nameResolver,
         )
 
         @Synchronized
@@ -1089,6 +1105,7 @@ class LitecoinKit : AbstractKit {
             walletId: String,
             networkType: NetworkType,
             peerSize: Int,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): SharedPeerGroupHolder {
             val key = migrationId(networkType, walletId)
             sharedGroups[key]?.let { holder ->
@@ -1102,7 +1119,7 @@ class LitecoinKit : AbstractKit {
             val networkMessageSerializer = NetworkMessageSerializer(network.magic)
             val bloomFilterManager = BloomFilterManager()
 
-            val sharedDb = CoreDatabase.getInstance(dataDir, sharedDbName(networkType, walletId), databaseKey)
+            val sharedDb = CoreDatabase.getInstance(dataDir, sharedDbName(networkType, walletId), databaseKey, nameResolver)
             val sharedStorage = Storage(sharedDb)
             val peerAddressManager = PeerAddressManager(network, sharedStorage)
 
@@ -1181,6 +1198,7 @@ class LitecoinKit : AbstractKit {
             networkType: NetworkType,
             walletId: String,
             databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): DatabaseMigrationResult {
             LitecoinMwebEngineRegistry.checkInactive(walletId, networkType)
             MwebPublicPegInSender.checkCanClear(walletId, networkType)
@@ -1192,6 +1210,7 @@ class LitecoinKit : AbstractKit {
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
                 databaseKey = databaseKey,
+                nameResolver = nameResolver,
             )
         }
 
@@ -1201,7 +1220,13 @@ class LitecoinKit : AbstractKit {
          * All LitecoinKit instances for this wallet/network must be disposed first. If an
          * MWEB engine is still active, this method fails before deleting public data.
          */
-        fun clear(dataDir: String, mwebDataDir: String, networkType: NetworkType, walletId: String) {
+        fun clear(
+            dataDir: String,
+            mwebDataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
             LitecoinMwebEngineRegistry.checkInactive(walletId, networkType)
             MwebPublicPegInSender.checkCanClear(walletId, networkType)
             releaseSharedPeerGroup(walletId, networkType)
@@ -1209,8 +1234,9 @@ class LitecoinKit : AbstractKit {
                 dataDir = dataDir,
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
             )
-            MwebFiles.clearDaemonData(mwebDataDir, networkType, walletId)
+            MwebFiles.clearDaemonData(mwebDataDir, networkType, walletId, nameResolver)
         }
 
         private fun migrationId(networkType: NetworkType, walletId: String): String =
@@ -1223,8 +1249,14 @@ class LitecoinKit : AbstractKit {
          * Litecoin BIP44/BIP49/BIP84/BIP86 databases. Active public-send daemons
          * must be stopped by stopping or disposing their LitecoinKit instances first.
          */
-        fun clearMweb(dataDir: String, mwebDataDir: String, networkType: NetworkType, walletId: String) {
-            LitecoinMwebEngine.clear(dataDir, mwebDataDir, networkType, walletId)
+        fun clearMweb(
+            dataDir: String,
+            mwebDataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
+            LitecoinMwebEngine.clear(dataDir, mwebDataDir, networkType, walletId, nameResolver)
         }
 
         private fun network(networkType: NetworkType) = when (networkType) {

@@ -111,6 +111,9 @@ data class MwebConfig(
 
     /** Factory for the native daemon binding; override in tests only. */
     val daemonClientFactory: MwebDaemonClientFactory = MwebdKmpDaemonClientFactory,
+
+    /** Desktop only: mwebd keeps no debug log, whose text names the network. Android rejects it. */
+    val disableDebugLog: Boolean = false,
 )
 
 /**
@@ -135,6 +138,9 @@ data class MwebPublicSendConfig(
 
     /** Factory for the native daemon binding; override in tests only. */
     val daemonClientFactory: MwebDaemonClientFactory = MwebdKmpDaemonClientFactory,
+
+    /** Desktop only: mwebd keeps no debug log, whose text names the network. Android rejects it. */
+    val disableDebugLog: Boolean = false,
 )
 
 /** Fee/selection preview returned before creating and broadcasting a send. */

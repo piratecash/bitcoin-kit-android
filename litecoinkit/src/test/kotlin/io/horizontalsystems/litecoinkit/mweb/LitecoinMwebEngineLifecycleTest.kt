@@ -1848,6 +1848,35 @@ class LitecoinMwebEngineLifecycleTest {
     }
 
     @Test
+    fun publicPegInSender_debugLogDisabledAndResolver_daemonConfigCarriesThem() {
+        var capturedConfig: MwebDaemonConfig? = null
+        val sender = MwebPublicPegInSender(
+            mwebDataDir = mwebDataDir,
+            walletId = walletId("mweb-public-pegin-log-test"),
+            networkType = LitecoinKit.NetworkType.MainNet,
+            addressCodec = MwebAddressCodec(LitecoinKit.NetworkType.MainNet),
+            config = MwebPublicSendConfig(
+                dispatcherProvider = dispatcherProvider,
+                daemonClientFactory = { config ->
+                    capturedConfig = config
+                    FakeDaemonClient()
+                },
+                disableDebugLog = true,
+            ),
+            nameResolver = { "opaque-daemon" },
+        ).also(publicPegInSenders::add)
+
+        sender.sendInfo(
+            request = MwebSendRequest.PublicToMweb(mwebDestination(), 1_000, 1),
+            publicOptions = publicOptions(),
+            publicTransactionBridge = FakePublicTransactionBridge(publicUtxos = listOf(publicUtxo(value = 5_000))),
+        )
+
+        assertEquals(true, capturedConfig?.disableDebugLog)
+        assertEquals("opaque-daemon", capturedConfig?.dataDir?.name)
+    }
+
+    @Test
     fun publicPegInSender_daemonCrashDropsClientForNextAttempt() {
         val walletId = walletId("mweb-public-pegin-crash-test")
         val crashedClient = FakeDaemonClient(createError = IllegalStateException("boom"))

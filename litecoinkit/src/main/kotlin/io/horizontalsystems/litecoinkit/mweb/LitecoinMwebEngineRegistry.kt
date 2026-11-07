@@ -1,5 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import java.util.concurrent.ConcurrentHashMap
 
@@ -14,6 +15,7 @@ internal object LitecoinMwebEngineRegistry {
         walletId: String,
         networkType: LitecoinKit.NetworkType,
         config: MwebConfig,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ): LitecoinMwebEngineHandle {
         val key = Key(walletId, networkType)
         while (true) {
@@ -25,6 +27,7 @@ internal object LitecoinMwebEngineRegistry {
                 walletId = walletId,
                 networkType = networkType,
                 config = config,
+                nameResolver = nameResolver,
             ).let { candidate ->
                 entries.putIfAbsent(key, candidate)?.also { candidate.dispose() } ?: candidate
             }
@@ -90,6 +93,7 @@ internal object LitecoinMwebEngineRegistry {
         walletId: String,
         private val networkType: LitecoinKit.NetworkType,
         config: MwebConfig,
+        private val nameResolver: DatabaseNameResolver,
         var references: Int = 0,
         var starts: Int = 0,
     ) {
@@ -99,6 +103,7 @@ internal object LitecoinMwebEngineRegistry {
         private val peerAddress = config.peerAddress
         private val dispatcherProvider = config.dispatcherProvider
         private val daemonClientFactory = config.daemonClientFactory
+        private val disableDebugLog = config.disableDebugLog
         private val walletId = walletId
         private var engine: LitecoinMwebEngine? = null
         private var disposed = false
@@ -108,7 +113,11 @@ internal object LitecoinMwebEngineRegistry {
         fun acquire(config: MwebConfig, databaseKey: ByteArray?): Boolean {
             if (disposed || closing) return false
 
-            check(config.restorePoint == restorePoint && config.peerAddress == peerAddress) {
+            check(
+                config.restorePoint == restorePoint &&
+                    config.peerAddress == peerAddress &&
+                    config.disableDebugLog == disableDebugLog
+            ) {
                 "Conflicting MWEB config for $walletId ${networkType.name}"
             }
             check(this.databaseKey.contentEqualsNullable(databaseKey)) {
@@ -134,6 +143,8 @@ internal object LitecoinMwebEngineRegistry {
                 restorePoint = restorePoint,
                 peerAddress = peerAddress,
                 daemonClientFactory = daemonClientFactory,
+                nameResolver = nameResolver,
+                disableDebugLog = disableDebugLog,
             ).also { engine = it }
         }
 

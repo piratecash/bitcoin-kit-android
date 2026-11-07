@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.storage
 
 import io.horizontalsystems.bitcoincore.models.PeerAddress
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -126,7 +127,7 @@ class SharedRoomDatabasesJvmTest {
         open(null).peerAddress.insertAll(listOf(PeerAddress("10.0.0.1")))
 
         // The raw delegate skips DatabaseEncryption's eviction, leaving the plaintext instance cached.
-        bitcoinKitDatabases.migrateDatabases(dataDir.path, listOf(name), MIGRATION_ID, key)
+        bitcoinKitDatabases(DatabaseNameResolver.Identity).migrateDatabases(dataDir.path, listOf(name), MIGRATION_ID, key)
 
         assertThrows(DatabaseKeyRequiredException::class.java) { open(null) }
         Unit

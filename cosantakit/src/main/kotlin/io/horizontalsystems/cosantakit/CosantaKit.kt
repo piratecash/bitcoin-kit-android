@@ -71,6 +71,7 @@ import io.horizontalsystems.cosantakit.tasks.PeerTaskFactory
 import io.horizontalsystems.cosantakit.validators.CosantaProofOfStakeValidator
 import io.horizontalsystems.cosantakit.validators.CosantaProofOfWorkValidator
 import io.horizontalsystems.dashlib.BLS
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -200,9 +201,11 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase), walletId,
         networkType, peerSize, syncMode, confirmationsThreshold,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -215,6 +218,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         peerSize: Int = defaultPeerSize,
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -228,6 +232,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         iInputSigner = null,
         iSchnorrInputSigner = null,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -242,6 +247,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -255,6 +261,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         iInputSigner = iInputSigner,
         iSchnorrInputSigner = iSchnorrInputSigner,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -269,6 +276,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -282,6 +290,7 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         iInputSigner = iInputSigner,
         iSchnorrInputSigner = iSchnorrInputSigner,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
 
@@ -311,13 +320,15 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
         databaseKey: ByteArray? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         val coreDatabase =
-            CoreDatabase.getInstance(dataDir, getDatabaseNameCore(networkType, walletId, syncMode), databaseKey)
+            CoreDatabase.getInstance(dataDir, getDatabaseNameCore(networkType, walletId, syncMode), databaseKey, nameResolver)
         val cosantaDatabase = CosantaKitDatabase.getInstance(
             dataDir,
             getDatabaseName(networkType, walletId, syncMode),
             databaseKey,
+            nameResolver,
         )
 
         val coreStorage = Storage(coreDatabase)
@@ -577,11 +588,13 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             networkType: NetworkType,
             walletId: String,
             databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): DatabaseMigrationResult = DatabaseEncryption.migrateDatabases(
             dataDir = dataDir,
             databaseNames = databaseNames(networkType, walletId),
             migrationId = migrationId(networkType, walletId),
             databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
 
         private fun parseAddress(address: String, network: Network): Address {
@@ -596,11 +609,17 @@ class CosantaKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listene
             NetworkType.TestNet -> TestNetCosanta()
         }
 
-        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
+        fun clear(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
             DatabaseEncryption.clearDatabases(
                 dataDir = dataDir,
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
             )
         }
 

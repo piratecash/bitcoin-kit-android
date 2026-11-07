@@ -79,6 +79,7 @@ import io.horizontalsystems.dashkit.tasks.PeerTaskFactory
 import io.horizontalsystems.dashkit.validators.DarkGravityWaveTestnetValidator
 import io.horizontalsystems.dashkit.validators.DarkGravityWaveValidator
 import io.horizontalsystems.dashlib.BLS
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -164,9 +165,11 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         initWithEmptySeeds: Boolean = false,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase), walletId,
         networkType, peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, initWithEmptySeeds,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -205,6 +208,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         initWithEmptySeeds: Boolean = false,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -220,6 +224,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         iInputSigner = null,
         iSchnorrInputSigner = null,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -265,6 +270,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         initWithEmptySeeds: Boolean = false,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -280,6 +286,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         iInputSigner = iInputSigner,
         iSchnorrInputSigner = iSchnorrInputSigner,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     constructor(
@@ -325,6 +332,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         initWithEmptySeeds: Boolean = false,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir = dataDir,
         connectionManager = connectionManager,
@@ -340,6 +348,7 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         iInputSigner = iInputSigner,
         iSchnorrInputSigner = iSchnorrInputSigner,
         databaseKey = databaseKey,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -371,11 +380,12 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
         databaseKey: ByteArray? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         val coreDatabase =
-            CoreDatabase.getInstance(dataDir, getDatabaseNameCore(networkType, walletId, syncMode), databaseKey)
+            CoreDatabase.getInstance(dataDir, getDatabaseNameCore(networkType, walletId, syncMode), databaseKey, nameResolver)
         val dashDatabase =
-            DashKitDatabase.getInstance(dataDir, getDatabaseName(networkType, walletId, syncMode), databaseKey)
+            DashKitDatabase.getInstance(dataDir, getDatabaseName(networkType, walletId, syncMode), databaseKey, nameResolver)
 
         coreStorage = Storage(coreDatabase)
         dashStorage = DashStorage(dashDatabase, coreStorage)
@@ -737,11 +747,13 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
             networkType: NetworkType,
             walletId: String,
             databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): DatabaseMigrationResult = DatabaseEncryption.migrateDatabases(
             dataDir = dataDir,
             databaseNames = databaseNames(networkType, walletId),
             migrationId = migrationId(networkType, walletId),
             databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
 
         private fun parseAddress(address: String, network: Network): Address {
@@ -757,11 +769,17 @@ class DashKit : AbstractKit, IInstantTransactionDelegate, BitcoinCore.Listener {
                 NetworkType.TestNet -> TestNetDash()
             }
 
-        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
+        fun clear(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
             DatabaseEncryption.clearDatabases(
                 dataDir = dataDir,
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
             )
         }
 

@@ -13,6 +13,7 @@ import io.horizontalsystems.dashkit.models.InstantTransactionInput
 import io.horizontalsystems.dashkit.models.Masternode
 import io.horizontalsystems.dashkit.models.MasternodeListState
 import io.horizontalsystems.dashkit.models.Quorum
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import java.io.File
 
 @Database(version = 6, exportSchema = false, entities = [
@@ -35,14 +36,24 @@ abstract class DashKitDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName)
         }
 
-        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): DashKitDatabase {
-            return buildDatabase(dataDir, dbName, databaseKey)
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): DashKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey, nameResolver)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): DashKitDatabase {
-            val path = File(dataDir, dbName).path
-            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
-                databaseBuilder<DashKitDatabase>(path, databaseKey, allowMainThreadQueries = true)
+        private fun buildDatabase(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray? = null,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): DashKitDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey, nameResolver) {
+                databaseBuilder<DashKitDatabase>(path, databaseKey, allowMainThreadQueries = true, nameResolver = nameResolver)
                     .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
             }

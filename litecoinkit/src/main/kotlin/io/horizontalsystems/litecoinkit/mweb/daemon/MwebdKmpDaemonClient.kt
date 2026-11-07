@@ -154,6 +154,7 @@ private class MwebdKmpDaemonClient(
                 ),
                 peerAddress = config.peerAddress,
                 restoreCheckpoint = config.restoreCheckpoint,
+                disableDebugLog = config.disableDebugLog,
             )
         )
     }

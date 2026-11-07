@@ -4,6 +4,7 @@ import androidx.room.*
 import io.horizontalsystems.bitcoincore.core.databaseBuilder
 import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
 import io.horizontalsystems.cosantakit.models.*
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import java.io.File
 
 @Database(version = 7, exportSchema = false, entities = [
@@ -26,14 +27,24 @@ abstract class CosantaKitDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName)
         }
 
-        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): CosantaKitDatabase {
-            return buildDatabase(dataDir, dbName, databaseKey)
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): CosantaKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey, nameResolver)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): CosantaKitDatabase {
-            val path = File(dataDir, dbName).path
-            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
-                databaseBuilder<CosantaKitDatabase>(path, databaseKey, allowMainThreadQueries = true)
+        private fun buildDatabase(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray? = null,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): CosantaKitDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey, nameResolver) {
+                databaseBuilder<CosantaKitDatabase>(path, databaseKey, allowMainThreadQueries = true, nameResolver = nameResolver)
                     .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
             }

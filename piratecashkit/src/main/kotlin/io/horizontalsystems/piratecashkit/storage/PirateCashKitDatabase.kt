@@ -3,6 +3,7 @@ package io.horizontalsystems.piratecashkit.storage
 import androidx.room.*
 import io.horizontalsystems.bitcoincore.core.databaseBuilder
 import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.piratecashkit.models.InstantTransactionHash
 import io.horizontalsystems.piratecashkit.models.InstantTransactionInput
 import io.horizontalsystems.piratecashkit.models.Masternode
@@ -30,14 +31,24 @@ abstract class PirateCashKitDatabase : RoomDatabase() {
             return buildDatabase(dataDir, dbName)
         }
 
-        fun getInstance(dataDir: String, dbName: String, databaseKey: ByteArray?): PirateCashKitDatabase {
-            return buildDatabase(dataDir, dbName, databaseKey)
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): PirateCashKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey, nameResolver)
         }
 
-        private fun buildDatabase(dataDir: String, dbName: String, databaseKey: ByteArray? = null): PirateCashKitDatabase {
-            val path = File(dataDir, dbName).path
-            return SharedRoomDatabases.getOrBuild(path, databaseKey) {
-                databaseBuilder<PirateCashKitDatabase>(path, databaseKey, allowMainThreadQueries = true)
+        private fun buildDatabase(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray? = null,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): PirateCashKitDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey, nameResolver) {
+                databaseBuilder<PirateCashKitDatabase>(path, databaseKey, allowMainThreadQueries = true, nameResolver = nameResolver)
                     .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
             }

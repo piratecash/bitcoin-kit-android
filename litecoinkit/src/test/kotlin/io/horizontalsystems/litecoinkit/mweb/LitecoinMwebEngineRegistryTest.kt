@@ -50,6 +50,38 @@ class LitecoinMwebEngineRegistryTest {
     }
 
     @Test
+    fun start_debugLogDisabled_daemonConfigCarriesFlag() {
+        var capturedConfig: MwebDaemonConfig? = null
+        val daemonClient = FakeDaemonClient()
+        val handle = handle(
+            walletId(),
+            daemonClient,
+            config = config(daemonClient).copy(
+                daemonClientFactory = { config ->
+                    capturedConfig = config
+                    daemonClient
+                },
+                disableDebugLog = true,
+            ),
+        )
+
+        handle.start()
+
+        assertEquals(true, capturedConfig?.disableDebugLog)
+    }
+
+    @Test
+    fun acquire_conflictingDebugLogFlag_throws() {
+        val walletId = walletId()
+        val daemonClient = FakeDaemonClient()
+        handle(walletId, daemonClient)
+
+        assertThrows(IllegalStateException::class.java) {
+            handle(walletId, daemonClient, config = config(daemonClient).copy(disableDebugLog = true))
+        }
+    }
+
+    @Test
     fun acquire_sameWalletAndNetwork_reusesEngineAndRefCountsStartStop() {
         val walletId = walletId()
         val daemonClient = FakeDaemonClient()

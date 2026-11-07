@@ -53,7 +53,7 @@ def libraryModules = [
 
 // Published with the same coordinates, but deliberately outside libraryModules:
 // addLibraryModuleDependencies hardcodes type 'aar', which a plain jar does not have.
-def standaloneModules = ['dashlib-native', 'sqlcipher-driver']
+def standaloneModules = ['dashlib-native', 'sqlcipher-driver', 'database-naming']
 
 def localMavenRepository = { repositories ->
     repositories.maven {

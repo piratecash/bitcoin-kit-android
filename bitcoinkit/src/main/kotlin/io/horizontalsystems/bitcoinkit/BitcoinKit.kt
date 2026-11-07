@@ -39,6 +39,7 @@ import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.IAddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.hdwalletkit.*
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hodler.HodlerPlugin
@@ -117,9 +118,11 @@ class BitcoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase), walletId, networkType,
         peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, purpose, sharedPeerGroupHolder,
+        nameResolver = nameResolver,
     )
 
 
@@ -164,9 +167,11 @@ class BitcoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         purpose: Purpose = Purpose.BIP44,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, connectionManager, HDExtendedKey(seed, purpose), purpose, null, walletId, networkType,
         peerSize, minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder, databaseKey,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -220,10 +225,12 @@ class BitcoinKit : AbstractKit {
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, connectionManager, extendedKey, purpose, null, walletId, networkType, peerSize,
         minConnectedPeerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
         sharedPeerGroupHolder, databaseKey,
+        nameResolver = nameResolver,
     )
 
     /**
@@ -268,9 +275,11 @@ class BitcoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) : this(
         dataDir, connectionManager, null, null, watchAddress, walletId, networkType, peerSize,
         minConnectedPeerSize, syncMode, confirmationsThreshold, null, null, sharedPeerGroupHolder, databaseKey,
+        nameResolver = nameResolver,
     )
 
     private constructor(
@@ -289,6 +298,7 @@ class BitcoinKit : AbstractKit {
         iSchnorrInputSigner: ISchnorrInputSigner?,
         sharedPeerGroupHolder: SharedPeerGroupHolder?,
         databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         network = network(networkType)
 
@@ -314,6 +324,7 @@ class BitcoinKit : AbstractKit {
             iSchnorrInputSigner = iSchnorrInputSigner,
             sharedPeerGroupHolder = sharedPeerGroupHolder,
             databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
     }
 
@@ -332,6 +343,7 @@ class BitcoinKit : AbstractKit {
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
+        nameResolver: DatabaseNameResolver,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         databaseKey: ByteArray? = null,
     ): BitcoinCore {
@@ -340,6 +352,7 @@ class BitcoinKit : AbstractKit {
             dataDir,
             getDatabaseName(networkType, walletId, syncMode, purpose),
             databaseKey,
+            nameResolver,
         )
         val storage = Storage(database)
 
@@ -509,8 +522,9 @@ class BitcoinKit : AbstractKit {
             walletId: String,
             networkType: NetworkType,
             peerSize: Int = defaultPeerSize,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): SharedPeerGroupHolder = getOrCreateSharedPeerGroupInternal(
-            dataDir, databaseKey, connectionManager, walletId, networkType, peerSize,
+            dataDir, databaseKey, connectionManager, walletId, networkType, peerSize, nameResolver,
         )
 
         @Synchronized
@@ -521,6 +535,7 @@ class BitcoinKit : AbstractKit {
             walletId: String,
             networkType: NetworkType,
             peerSize: Int,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): SharedPeerGroupHolder {
             val key = migrationId(networkType, walletId)
             sharedGroups[key]?.let { holder ->
@@ -534,7 +549,7 @@ class BitcoinKit : AbstractKit {
             val networkMessageSerializer = NetworkMessageSerializer(network.magic)
             val bloomFilterManager = BloomFilterManager()
 
-            val sharedDb = CoreDatabase.getInstance(dataDir, sharedDbName(networkType, walletId), databaseKey)
+            val sharedDb = CoreDatabase.getInstance(dataDir, sharedDbName(networkType, walletId), databaseKey, nameResolver)
             val sharedStorage = Storage(sharedDb)
             val peerAddressManager = PeerAddressManager(network, sharedStorage)
 
@@ -621,6 +636,7 @@ class BitcoinKit : AbstractKit {
             networkType: NetworkType,
             walletId: String,
             databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): DatabaseMigrationResult {
             check(!sharedGroups.containsKey(migrationId(networkType, walletId))) {
                 "Dispose the active BitcoinKit instances before migrating their databases"
@@ -630,6 +646,7 @@ class BitcoinKit : AbstractKit {
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
                 databaseKey = databaseKey,
+                nameResolver = nameResolver,
             )
         }
 
@@ -640,12 +657,18 @@ class BitcoinKit : AbstractKit {
          * @param networkType The networkType of the BitcoinKit.
          * @param walletId The string wallet ID of the BitcoinKit.
          */
-        fun clear(dataDir: String, networkType: NetworkType, walletId: String) {
+        fun clear(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
             releaseSharedPeerGroup(walletId, networkType)
             DatabaseEncryption.clearDatabases(
                 dataDir = dataDir,
                 databaseNames = databaseNames(networkType, walletId),
                 migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
             )
         }
 

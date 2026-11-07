@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.storage
 
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.sqlcipher.room.SqlCipherDatabases
 import java.io.File
 
@@ -15,35 +16,50 @@ typealias InsufficientDatabaseMigrationSpaceException =
     io.horizontalsystems.sqlcipher.room.InsufficientDatabaseMigrationSpaceException
 
 @PublishedApi
-internal val bitcoinKitDatabases = SqlCipherDatabases("bitcoin-kit")
+internal fun bitcoinKitDatabases(nameResolver: DatabaseNameResolver): SqlCipherDatabases =
+    SqlCipherDatabases(nameResolver.resolve("bitcoin-kit"))
 
 object DatabaseEncryption {
     fun supportedSyncModes(): List<SyncMode> = listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())
 
+    /** [databaseNames] and [migrationId] are default names; [nameResolver] maps them to the on-disk ones. */
     suspend fun migrateDatabases(
         dataDir: String,
         databaseNames: Collection<String>,
         migrationId: String,
         databaseKey: ByteArray,
-    ): DatabaseMigrationResult =
-        bitcoinKitDatabases.migrateDatabases(dataDir, databaseNames, migrationId, databaseKey).also { result ->
-            // An already-encrypted group is left untouched, so its cached instances stay valid.
-            if (result.migratedDatabaseCount > 0) evictCachedInstances(dataDir, databaseNames)
-        }
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ): DatabaseMigrationResult {
+        val names = databaseNames.map(nameResolver::resolve)
+        return bitcoinKitDatabases(nameResolver)
+            .migrateDatabases(dataDir, names, nameResolver.resolve(migrationId), databaseKey)
+            .also { result ->
+                // An already-encrypted group is left untouched, so its cached instances stay valid.
+                if (result.migratedDatabaseCount > 0) evictCachedInstances(dataDir, names)
+            }
+    }
 
+    /** [databaseNames] and [migrationId] are default names; [nameResolver] maps them to the on-disk ones. */
     fun clearDatabases(
         dataDir: String,
         databaseNames: Collection<String>,
         migrationId: String,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
-        bitcoinKitDatabases.clearDatabases(dataDir, databaseNames, migrationId)
-        evictCachedInstances(dataDir, databaseNames)
+        val names = databaseNames.map(nameResolver::resolve)
+        bitcoinKitDatabases(nameResolver).clearDatabases(dataDir, names, nameResolver.resolve(migrationId))
+        evictCachedInstances(dataDir, names)
     }
 }
 
-fun deleteDatabaseFiles(dataDir: String, dbName: String) {
-    bitcoinKitDatabases.deleteDatabaseFiles(dataDir, dbName)
-    evictCachedInstances(dataDir, listOf(dbName))
+fun deleteDatabaseFiles(
+    dataDir: String,
+    dbName: String,
+    nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+) {
+    val name = nameResolver.resolve(dbName)
+    bitcoinKitDatabases(nameResolver).deleteDatabaseFiles(dataDir, name)
+    evictCachedInstances(dataDir, listOf(name))
 }
 
 private fun evictCachedInstances(dataDir: String, databaseNames: Collection<String>) {

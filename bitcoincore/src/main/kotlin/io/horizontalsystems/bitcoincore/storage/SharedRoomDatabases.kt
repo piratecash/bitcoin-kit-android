@@ -2,6 +2,7 @@ package io.horizontalsystems.bitcoincore.storage
 
 import androidx.room.RoomDatabase
 import io.horizontalsystems.bitcoincore.extensions.toHexString
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
@@ -13,9 +14,14 @@ object SharedRoomDatabases {
 
     /** The instance is shared: consumers must never `close()` it, a closed cached instance cannot be detected. */
     @Suppress("UNCHECKED_CAST")
-    fun <T : RoomDatabase> getOrBuild(path: String, databaseKey: ByteArray?, build: () -> T): T {
+    fun <T : RoomDatabase> getOrBuild(
+        path: String,
+        databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver,
+        build: () -> T,
+    ): T {
         // A cache hit skips the builder, yet the file may have entered or finished a migration since.
-        if (databaseKey == null) bitcoinKitDatabases.verifyPlaintextDatabaseAccess(path)
+        if (databaseKey == null) bitcoinKitDatabases(nameResolver).verifyPlaintextDatabaseAccess(path)
         return instances.computeIfAbsent(canonicalPath(path) + SEPARATOR + fingerprint(databaseKey)) { build() } as T
     }
 

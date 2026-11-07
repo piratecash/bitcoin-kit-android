@@ -36,6 +36,7 @@ kotlin {
                 api(libs.hd.wallet.kit)
                 api(libs.kermit)
                 api(project(":sqlcipher-room"))
+                api(project(":database-naming"))
             }
         }
         val androidMain by getting {
