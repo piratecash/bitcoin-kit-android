@@ -1,7 +1,5 @@
 package cash.p.dogecoinkit
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import cash.p.dogecoinkit.messages.DogeCoinMerkleBlockMessageParser
 import cash.p.dogecoinkit.validators.DogeDifficultyAdjustmentValidator
 import cash.p.dogecoinkit.validators.DogeTestNetDifficultyAdjustmentValidator
@@ -19,6 +17,7 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyTestNetDifficultyValidator
 import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.Bip44RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
@@ -29,6 +28,8 @@ import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.MerkleBlockMessageParser
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
+import io.horizontalsystems.bitcoincore.storage.DatabaseEncryption
+import io.horizontalsystems.bitcoincore.storage.DatabaseMigrationResult
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.transactions.builder.IInputSigner
 import io.horizontalsystems.bitcoincore.transactions.builder.ISchnorrInputSigner
@@ -36,6 +37,7 @@ import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
 import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -58,7 +60,8 @@ class DogecoinKit : AbstractKit {
         }
 
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         words: List<String>,
         passphrase: String,
         walletId: String,
@@ -67,7 +70,8 @@ class DogecoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
     ) : this(
-        context,
+        dataDir,
+        connectionManager,
         Mnemonic().toSeed(words, passphrase),
         walletId,
         networkType,
@@ -77,7 +81,33 @@ class DogecoinKit : AbstractKit {
     )
 
     constructor(
-        context: Context,
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        words: List<String>,
+        passphrase: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir = dataDir,
+        databaseKey = databaseKey,
+        connectionManager = connectionManager,
+        seed = Mnemonic().toSeed(words, passphrase),
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        nameResolver = nameResolver,
+    )
+
+    constructor(
+        dataDir: String,
+        connectionManager: IConnectionManager,
         seed: ByteArray,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -85,7 +115,8 @@ class DogecoinKit : AbstractKit {
         syncMode: SyncMode = defaultSyncMode,
         confirmationsThreshold: Int = defaultConfirmationsThreshold
     ) : this(
-        context,
+        dataDir,
+        connectionManager,
         HDExtendedKey(seed, Purpose.BIP44),
         walletId,
         networkType,
@@ -94,18 +125,45 @@ class DogecoinKit : AbstractKit {
         confirmationsThreshold
     )
 
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        seed: ByteArray,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir = dataDir,
+        databaseKey = databaseKey,
+        connectionManager = connectionManager,
+        extendedKey = HDExtendedKey(seed, Purpose.BIP44),
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        nameResolver = nameResolver,
+    )
+
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
      * @param extendedKey HDExtendedKey that contains HDKey and version
-     * @param walletId an arbitrary ID of type String.
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -114,35 +172,78 @@ class DogecoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null
-    ) {
-        network = network(networkType)
-
-        bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = extendedKey,
-            watchAddressPublicKey = null,
-            networkType = networkType,
-            walletId = walletId,
-            syncMode = syncMode,
-            peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold,
-            iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
-        )
-    }
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = extendedKey,
+        watchAddress = null,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = null,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
-     * @param watchAddress address for watching in read-only mode
-     * @param walletId an arbitrary ID of type String.
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param databaseKey SQLCipher key of the wallet's databases.
+     * @param connectionManager Source of network connectivity state.
+     * @param extendedKey HDExtendedKey that contains HDKey and version
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
      * @param networkType The network type. The default is MainNet.
      * @param peerSize The # of peer-nodes required. The default is 10 peers.
      * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = extendedKey,
+        watchAddress = null,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = databaseKey,
+        nameResolver = nameResolver,
+    )
+
+    /**
+     * @constructor Creates and initializes the BitcoinKit
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param connectionManager Source of network connectivity state.
+     * @param watchAddress address for watching in read-only mode
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
+     * @param networkType The network type. The default is MainNet.
+     * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
+     * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
+     */
+    constructor(
+        dataDir: String,
+        connectionManager: IConnectionManager,
         watchAddress: String,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -151,16 +252,89 @@ class DogecoinKit : AbstractKit {
         confirmationsThreshold: Int = defaultConfirmationsThreshold,
         iInputSigner: IInputSigner? = null,
         iSchnorrInputSigner: ISchnorrInputSigner? = null
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = null,
+        watchAddress = watchAddress,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = null,
+    )
+
+    /**
+     * @constructor Creates and initializes the BitcoinKit
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param databaseKey SQLCipher key of the wallet's databases.
+     * @param connectionManager Source of network connectivity state.
+     * @param watchAddress address for watching in read-only mode
+     * @param walletId Wallet ID; must not contain a path separator, it is embedded verbatim in the database file name.
+     * @param networkType The network type. The default is MainNet.
+     * @param peerSize The # of peer-nodes required. The default is 10 peers.
+     * @param syncMode How the kit syncs with the blockchain. The default is SyncMode.Api().
+     * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
+     */
+    constructor(
+        dataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        watchAddress: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir = dataDir,
+        connectionManager = connectionManager,
+        extendedKey = null,
+        watchAddress = watchAddress,
+        walletId = walletId,
+        networkType = networkType,
+        peerSize = peerSize,
+        syncMode = syncMode,
+        confirmationsThreshold = confirmationsThreshold,
+        iInputSigner = iInputSigner,
+        iSchnorrInputSigner = iSchnorrInputSigner,
+        databaseKey = databaseKey,
+        nameResolver = nameResolver,
+    )
+
+    private constructor(
+        dataDir: String,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey?,
+        watchAddress: String?,
+        walletId: String,
+        networkType: NetworkType,
+        peerSize: Int,
+        syncMode: SyncMode,
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         network = network(networkType)
 
-        val address = parseAddress(watchAddress, network)
-        val watchAddressPublicKey =
+        val watchAddressPublicKey = watchAddress?.let {
+            val address = parseAddress(it, network)
             WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
+        }
 
         bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = null,
+            dataDir = dataDir,
+            connectionManager = connectionManager,
+            extendedKey = extendedKey,
             watchAddressPublicKey = watchAddressPublicKey,
             networkType = networkType,
             walletId = walletId,
@@ -168,12 +342,15 @@ class DogecoinKit : AbstractKit {
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner
+            iSchnorrInputSigner = iSchnorrInputSigner,
+            databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
     }
 
     private fun bitcoinCore(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey?,
         watchAddressPublicKey: WatchAddressPublicKey?,
         networkType: NetworkType,
@@ -182,15 +359,17 @@ class DogecoinKit : AbstractKit {
         peerSize: Int,
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
-        iSchnorrInputSigner: ISchnorrInputSigner?
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver,
     ): BitcoinCore {
         val database =
-            CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode))
+            CoreDatabase.getInstance(dataDir, getDatabaseName(networkType, walletId, syncMode), databaseKey, nameResolver)
         val storage = Storage(database)
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
         val apiSyncStateManager =
             ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
-        val blockchairApi = BlockchairApi(network.blockchairChainId)
+        val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
         val apiTransactionProvider = apiTransactionProvider(networkType, blockchairApi)
         val paymentAddressParser = PaymentAddressParser("dogecoin", removeScheme = true)
         val blockValidatorSet = blockValidatorSet(storage, networkType)
@@ -199,7 +378,7 @@ class DogecoinKit : AbstractKit {
         val blockHeaderHasher = DoubleSha256Hasher()
 
         val bitcoinCore = coreBuilder
-            .setContext(context)
+            .setConnectionManager(connectionManager)
             .setExtendedKey(extendedKey)
             .setWatchAddressPublicKey(watchAddressPublicKey)
             .setPurpose(Purpose.BIP44)
@@ -214,6 +393,7 @@ class DogecoinKit : AbstractKit {
             .setStorage(storage)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
             .apply {
@@ -306,7 +486,7 @@ class DogecoinKit : AbstractKit {
         }
 
         NetworkType.TestNet -> {
-            BCoinApi("")
+            BCoinApi("", networkErrorHolder)
         }
     }
 
@@ -323,31 +503,49 @@ class DogecoinKit : AbstractKit {
         const val defaultPeerSize: Int = 10
         const val defaultConfirmationsThreshold: Int = 6
 
-        private fun getDatabaseName(
+        internal fun getDatabaseName(
             networkType: NetworkType,
             walletId: String,
             syncMode: SyncMode
         ): String =
             "Dogecoin-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}"
 
-        fun clear(context: Context, networkType: NetworkType, walletId: String) {
-            for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
-                for (purpose in Purpose.values())
-                    try {
-                        SQLiteDatabase.deleteDatabase(
-                            context.getDatabasePath(
-                                getDatabaseName(
-                                    networkType,
-                                    walletId,
-                                    syncMode
-                                )
-                            )
-                        )
-                    } catch (ex: Exception) {
-                        continue
-                    }
+        internal fun databaseNames(networkType: NetworkType, walletId: String): List<String> =
+            DatabaseEncryption.supportedSyncModes().map { syncMode ->
+                getDatabaseName(networkType, walletId, syncMode)
             }
+
+        /** Must be called before constructing any kit for this wallet. */
+        suspend fun migrateDatabases(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): DatabaseMigrationResult = DatabaseEncryption.migrateDatabases(
+            dataDir = dataDir,
+            databaseNames = databaseNames(networkType, walletId),
+            migrationId = migrationId(networkType, walletId),
+            databaseKey = databaseKey,
+            nameResolver = nameResolver,
+        )
+
+        fun clear(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
+            DatabaseEncryption.clearDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
+            )
         }
+
+        private fun migrationId(networkType: NetworkType, walletId: String): String =
+            "dogecoin-${networkType.name}-$walletId"
     }
 
 }

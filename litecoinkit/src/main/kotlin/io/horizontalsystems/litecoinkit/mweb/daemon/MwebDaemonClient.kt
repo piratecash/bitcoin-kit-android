@@ -64,6 +64,7 @@ data class MwebDaemonConfig(
     val dataDir: File,
     val restoreHeight: Int,
     val restoreCheckpoint: String? = null,
+    val disableDebugLog: Boolean = false,
 )
 
 fun interface MwebDaemonClientFactory {

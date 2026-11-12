@@ -1,6 +1,5 @@
 package io.horizontalsystems.bitcoincore.storage
 
-import androidx.sqlite.db.SupportSQLiteQuery
 import androidx.room.*
 import io.horizontalsystems.bitcoincore.models.InvalidTransaction
 import io.horizontalsystems.bitcoincore.models.Transaction
@@ -32,7 +31,7 @@ interface TransactionDao {
     fun getNewTransactions(): List<Transaction>
 
     @RawQuery
-    fun getTransactionWithBlockBySql(query: SupportSQLiteQuery): List<TransactionWithBlock>
+    fun getTransactionWithBlockBySql(query: RoomRawQuery): List<TransactionWithBlock>
 
     @Query("SELECT * FROM `Transaction` t LEFT JOIN Block b ON t.blockHash = b.headerHash WHERE hash = :hash")
     fun getTransactionWithBlock(hash: ByteArray): TransactionWithBlock?
@@ -54,6 +53,12 @@ interface TransactionDao {
 
     @Query("DELETE FROM `Transaction` WHERE hash=:hash")
     fun deleteByHash(hash: ByteArray)
+
+    @Query("UPDATE `Transaction` SET conflictingTxHash = :winner WHERE conflictingTxHash = :loser AND hash != :winner")
+    fun moveConflicts(loser: ByteArray, winner: ByteArray)
+
+    @Query("UPDATE `Transaction` SET conflictingTxHash = NULL WHERE conflictingTxHash = :hash")
+    fun clearConflicts(hash: ByteArray)
 
     @Delete
     fun deleteAll(transactions: List<Transaction>)

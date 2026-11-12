@@ -1,13 +1,14 @@
 package io.horizontalsystems.bitcoincore.storage.migrations
 
 import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 
 object Migration_28_29 : Migration(28, 29) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("DROP TABLE IF EXISTS orphanblock")
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("DROP TABLE IF EXISTS orphanblock")
 
-        db.execSQL("""
+        connection.execSQL("""
             CREATE TABLE orphanblock (
                 block_version INTEGER NOT NULL,
                 previousBlockHash BLOB NOT NULL,

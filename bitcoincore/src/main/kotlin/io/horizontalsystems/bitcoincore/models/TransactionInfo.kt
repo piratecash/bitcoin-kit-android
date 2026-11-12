@@ -82,6 +82,8 @@ open class TransactionInfo {
                     value = if (it.get("value")?.isNull == false) it.get("value")
                         ?.asLong() else null,
                     address = if (it.get("address")?.isNull == false) it.get("address")
+                        ?.asString() else null,
+                    spentOutput = if (it.get("spentOutput")?.isNull == false) it.get("spentOutput")
                         ?.asString() else null
                 )
 
@@ -139,6 +141,7 @@ open class TransactionInfo {
             inputObj.add("mine", input.mine)
             input.value?.let { inputObj.add("value", it) }
             inputObj.add("address", input.address)
+            input.spentOutput?.let { inputObj.add("spentOutput", it) }
             jsonArray.add(inputObj)
         }
         return jsonArray
@@ -184,7 +187,8 @@ enum class TransactionStatus(val code: Int) {
 data class TransactionInputInfo(
     val mine: Boolean,
     val value: Long? = null,
-    val address: String? = null
+    val address: String? = null,
+    val spentOutput: String? = null
 )
 
 data class TransactionOutputInfo(

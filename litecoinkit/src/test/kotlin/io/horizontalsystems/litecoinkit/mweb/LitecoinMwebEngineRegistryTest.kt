@@ -3,6 +3,9 @@ package io.horizontalsystems.litecoinkit.mweb
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.horizontalsystems.litecoinkit.LitecoinKit
+import io.horizontalsystems.litecoinkit.testAppContext
+import io.horizontalsystems.litecoinkit.testDataDir
+import io.horizontalsystems.litecoinkit.testMwebDataDir
 import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonClient
 import io.horizontalsystems.litecoinkit.mweb.daemon.MwebDaemonConfig
@@ -28,7 +31,9 @@ import kotlin.coroutines.CoroutineContext
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class LitecoinMwebEngineRegistryTest {
-    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val context = testAppContext()
+    private val dataDir = context.testDataDir
+    private val mwebDataDir = context.testMwebDataDir
     private val walletIds = mutableListOf<String>()
     private val handles = mutableListOf<LitecoinMwebEngineHandle>()
     private val ioDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
@@ -38,10 +43,42 @@ class LitecoinMwebEngineRegistryTest {
     fun tearDown() {
         handles.forEach { handle -> handle.release() }
         walletIds.forEach { walletId ->
-            LitecoinMwebEngineRegistry.clear(context, walletId, LitecoinKit.NetworkType.MainNet)
-            LitecoinMwebEngineRegistry.clear(context, walletId, LitecoinKit.NetworkType.TestNet)
+            LitecoinMwebEngineRegistry.clear(dataDir, mwebDataDir, walletId, LitecoinKit.NetworkType.MainNet)
+            LitecoinMwebEngineRegistry.clear(dataDir, mwebDataDir, walletId, LitecoinKit.NetworkType.TestNet)
         }
         ioDispatcher.close()
+    }
+
+    @Test
+    fun start_debugLogDisabled_daemonConfigCarriesFlag() {
+        var capturedConfig: MwebDaemonConfig? = null
+        val daemonClient = FakeDaemonClient()
+        val handle = handle(
+            walletId(),
+            daemonClient,
+            config = config(daemonClient).copy(
+                daemonClientFactory = { config ->
+                    capturedConfig = config
+                    daemonClient
+                },
+                disableDebugLog = true,
+            ),
+        )
+
+        handle.start()
+
+        assertEquals(true, capturedConfig?.disableDebugLog)
+    }
+
+    @Test
+    fun acquire_conflictingDebugLogFlag_throws() {
+        val walletId = walletId()
+        val daemonClient = FakeDaemonClient()
+        handle(walletId, daemonClient)
+
+        assertThrows(IllegalStateException::class.java) {
+            handle(walletId, daemonClient, config = config(daemonClient).copy(disableDebugLog = true))
+        }
     }
 
     @Test
@@ -124,7 +161,7 @@ class LitecoinMwebEngineRegistryTest {
         handle(walletId, FakeDaemonClient())
 
         assertThrows(IllegalStateException::class.java) {
-            LitecoinMwebEngineRegistry.clear(context, walletId, LitecoinKit.NetworkType.MainNet)
+            LitecoinMwebEngineRegistry.clear(dataDir, mwebDataDir, walletId, LitecoinKit.NetworkType.MainNet)
         }
     }
 
@@ -145,7 +182,7 @@ class LitecoinMwebEngineRegistryTest {
         val firstEngine = first.engine
         first.release()
 
-        LitecoinMwebEngineRegistry.clear(context, walletId, LitecoinKit.NetworkType.MainNet)
+        LitecoinMwebEngineRegistry.clear(dataDir, mwebDataDir, walletId, LitecoinKit.NetworkType.MainNet)
         val second = handle(walletId, FakeDaemonClient())
 
         assertNotSame(firstEngine, second.engine)
@@ -163,8 +200,10 @@ class LitecoinMwebEngineRegistryTest {
             executor.submit<LitecoinMwebEngineHandle> {
                 startLatch.await()
                 LitecoinMwebEngineRegistry.acquire(
-                    context = context,
+                    dataDir = dataDir,
+                    mwebDataDir = mwebDataDir,
                     seed = ByteArray(32),
+                    databaseKey = null,
                     walletId = walletId,
                     networkType = LitecoinKit.NetworkType.MainNet,
                     config = config(daemonClient),
@@ -205,8 +244,10 @@ class LitecoinMwebEngineRegistryTest {
         config: MwebConfig = config(daemonClient),
     ): LitecoinMwebEngineHandle {
         val handle = LitecoinMwebEngineRegistry.acquire(
-            context = context,
+            dataDir = dataDir,
+            mwebDataDir = mwebDataDir,
             seed = ByteArray(32),
+            databaseKey = null,
             walletId = walletId,
             networkType = networkType,
             config = config,
