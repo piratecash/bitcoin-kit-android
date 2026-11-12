@@ -34,6 +34,13 @@ if (!DashjBlsLibrary.available) {
 `BLS` in `dashlib` never calls this loader itself, so without that call signature verification simply
 does not work on desktop. It is fail-closed: an unverifiable lock vote is rejected, silently.
 
+## Loading from the application package
+
+By default the loader unpacks the jar's copy into a temporary file. A packaged application that ships
+the native in its own resources sets `DashjBlsLibrary.NATIVE_DIR_PROPERTY` (`dashjbls.native.dir`) to
+that directory before touching `available`. The native is then loaded from there only: a missing or
+unloadable file makes `available` return `false`, with no extraction and no fallback to the jar.
+
 ## Where the binaries come from
 
 The binaries are **not in this repository**, and JitPack does not compile them — unlike every other

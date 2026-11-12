@@ -2,6 +2,7 @@ package io.horizontalsystems.dashlibnative
 
 import java.io.InputStream
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -9,14 +10,37 @@ import java.util.logging.Logger
 /**
  * Loads the packaged `dashjbls` native on desktop JVMs. Desktop applications must touch
  * [available] on startup, before constructing any kit; Android loads the native itself.
+ * Setting [NATIVE_DIR_PROPERTY] loads the native from that directory only.
  */
 object DashjBlsLibrary {
+    const val NATIVE_DIR_PROPERTY = "dashjbls.native.dir"
+
     private const val NAME = "dashjbls"
     private val logger = Logger.getLogger("DashjBlsLibrary")
 
     val available: Boolean by lazy { loadOnce() }
 
     private fun loadOnce(): Boolean = try {
+        load(System.getProperty(NATIVE_DIR_PROPERTY))
+        true
+    } catch (e: LinkageError) {
+        failed(e)
+    } catch (e: Exception) {
+        failed(e)
+    }
+
+    internal fun load(nativeDir: String?) {
+        if (nativeDir == null) loadFromJar() else loadFromDir(nativeDir)
+    }
+
+    // The file belongs to the installed, OS-signed app: no extraction and no fallback to the jar copy.
+    private fun loadFromDir(nativeDir: String) {
+        val library = Path.of(nativeDir).resolve(System.mapLibraryName(NAME))
+        require(Files.isRegularFile(library)) { "Dash BLS native is missing: $library" }
+        System.load(library.toAbsolutePath().toString())
+    }
+
+    private fun loadFromJar() {
         val fileName = System.mapLibraryName(NAME)
         val packaged = DashjBlsLibrary::class.java
             .getResourceAsStream("/natives/${osTag()}-${archTag()}/$fileName")
@@ -27,11 +51,6 @@ object DashjBlsLibrary {
         } else {
             System.loadLibrary(NAME)
         }
-        true
-    } catch (e: LinkageError) {
-        failed(e)
-    } catch (e: Exception) {
-        failed(e)
     }
 
     private fun extractToTempFile(source: InputStream, fileName: String): String {
