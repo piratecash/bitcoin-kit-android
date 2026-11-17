@@ -44,6 +44,24 @@ class MessageSignerTest {
         assertTrue(verifyBip322(addressConverter.convert(P2WPKH_VECTOR_ADDRESS), message, witnessOf(signature)))
     }
 
+    // ECDSA nonces are deterministic (RFC 6979), so our witness must equal a published one byte for byte.
+    @Test
+    fun sign_bip322P2wpkhVectors_reproducesPublishedSignature() {
+        val privateKey = privateKeyFromWif(P2WPKH_VECTOR_WIF)
+        val publicKey = publicKeyOf(privateKey)
+        val signer = softwareSigner(ScriptType.P2WPKH, SingleKeyWallet(privateKey), storageFor(publicKey, ScriptType.P2WPKH))
+        val vectors = bip322Vectors("basic-test-vectors.json").get("simple").asArray()
+            .map { it.asObject() }
+            .filter { it.getString("address", "") == P2WPKH_VECTOR_ADDRESS }
+        assertEquals(2, vectors.size)
+
+        vectors.forEach { vector ->
+            val published = vector.get("bip322_signatures").asArray().map { it.asString().removePrefix(BIP322_SIMPLE_PREFIX) }
+            val signature = runBlocking { signer.sign(P2WPKH_VECTOR_ADDRESS, vector.getString("message", ""), MessageSignatureFormat.Bip322) }
+            assertTrue("$signature not in $published", signature in published)
+        }
+    }
+
     @Test
     fun sign_bip322OwnP2trAddress_returnsUnprefixedWitnessThatVerifies() {
         val privateKey = privateKeyFromWif(P2TR_VECTOR_WIF)
