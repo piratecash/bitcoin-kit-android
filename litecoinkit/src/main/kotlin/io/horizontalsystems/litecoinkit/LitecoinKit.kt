@@ -1,7 +1,5 @@
 package io.horizontalsystems.litecoinkit
 
-import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import io.horizontalsystems.bitcoincore.AbstractKit
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.KitState
@@ -16,6 +14,7 @@ import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorChain
 import io.horizontalsystems.bitcoincore.blocks.validators.BlockValidatorSet
 import io.horizontalsystems.bitcoincore.blocks.validators.LegacyTestNetDifficultyValidator
 import io.horizontalsystems.bitcoincore.core.DoubleSha256Hasher
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IPluginData
 import io.horizontalsystems.bitcoincore.core.purpose
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
@@ -25,7 +24,6 @@ import io.horizontalsystems.bitcoincore.managers.Bip84RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.Bip86RestoreKeyConverter
 import io.horizontalsystems.bitcoincore.managers.BlockValidatorHelper
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
-import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BlockInfo
@@ -43,6 +41,8 @@ import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroup
 import io.horizontalsystems.bitcoincore.network.peer.SharedPeerGroupHolder
 import io.horizontalsystems.bitcoincore.serializers.BlockHeaderParser
 import io.horizontalsystems.bitcoincore.storage.CoreDatabase
+import io.horizontalsystems.bitcoincore.storage.DatabaseEncryption
+import io.horizontalsystems.bitcoincore.storage.DatabaseMigrationResult
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.storage.Storage
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
@@ -55,6 +55,7 @@ import io.horizontalsystems.bitcoincore.utils.Base58AddressConverter
 import io.horizontalsystems.bitcoincore.utils.PaymentAddressParser
 import io.horizontalsystems.bitcoincore.utils.SegwitAddressConverter
 import io.horizontalsystems.bitcoincore.utils.SegwitLegacyAddressConverter
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.hdwalletkit.HDExtendedKey
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.Mnemonic
@@ -64,6 +65,7 @@ import io.horizontalsystems.litecoinkit.mweb.LitecoinMwebEngineRegistry
 import io.horizontalsystems.litecoinkit.mweb.MwebBalance
 import io.horizontalsystems.litecoinkit.mweb.MwebConfig
 import io.horizontalsystems.litecoinkit.mweb.MwebError
+import io.horizontalsystems.litecoinkit.mweb.MwebFiles
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicPegInSender
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicSendConfig
 import io.horizontalsystems.litecoinkit.mweb.MwebPublicSendOptions
@@ -79,6 +81,9 @@ import io.horizontalsystems.litecoinkit.mweb.address.MwebAddressCodec
 import io.horizontalsystems.litecoinkit.validators.LegacyDifficultyAdjustmentValidator
 import io.horizontalsystems.litecoinkit.validators.ProofOfWorkValidator
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class LitecoinKit : AbstractKit {
     enum class NetworkType {
@@ -98,20 +103,48 @@ class LitecoinKit : AbstractKit {
     private val mwebEngine: LitecoinMwebEngine?
         get() = mwebEngineHandle?.engine
     private val bitcoinCoreListener = MwebAwareBitcoinCoreListener()
-    private var mwebEngineListener: MwebListenerAdapter? = null
+    private val listeners = CopyOnWriteArraySet<Listener>()
+    private val mwebEngineListeners = ConcurrentHashMap<Listener, MwebListenerAdapter>()
+    // Several adapters share one kit, and a second start() must not re-enter a running core.
+    private val lifecycleLock = ReentrantLock()
+    private var running = false
+    // Not lifecycleLock: start() holds it through native startup, and adding a listener must not wait on that.
+    private val listenersLock = ReentrantLock()
+    private var disposed = false
     private val mwebPublicTransactionBridge: MwebPublicTransactionBridge by lazy { MwebBitcoinCoreBridge() }
     private lateinit var mwebAddressCodec: MwebAddressCodec
     private lateinit var mwebPublicPegInSender: MwebPublicPegInSender
 
-    var listener: Listener? = null
-        set(value) {
-            field = value
-            bitcoinCore.listener = bitcoinCoreListener
-            setMwebListener(value)
+    fun addListener(listener: Listener) {
+        listenersLock.withLock {
+            if (disposed || !listeners.add(listener)) return
+            val engine = mwebEngine ?: return
+            val adapter = MwebListenerAdapter(listener)
+            mwebEngineListeners[listener] = adapter
+            engine.addListener(adapter)
         }
+    }
 
+    fun removeListener(listener: Listener) {
+        listenersLock.withLock {
+            listeners.remove(listener)
+            val adapter = mwebEngineListeners.remove(listener) ?: return
+            // Flag first: the engine may be mid-dispatch to this adapter.
+            adapter.dispose()
+            mwebEngine?.removeListener(adapter)
+        }
+    }
+
+    /**
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param mwebDataDir Absolute path of `context.noBackupFilesDir`, where the MWEB daemon
+     *   keeps its state; any other directory forces a full MWEB resync.
+     */
     constructor(
-        context: Context,
+        dataDir: String,
+        mwebDataDir: String,
+        connectionManager: IConnectionManager,
         words: List<String>,
         passphrase: String,
         walletId: String,
@@ -124,7 +157,9 @@ class LitecoinKit : AbstractKit {
         mwebConfig: MwebConfig? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
     ) : this(
-        context = context,
+        dataDir = dataDir,
+        mwebDataDir = mwebDataDir,
+        connectionManager = connectionManager,
         seed = Mnemonic().toSeed(words, passphrase),
         walletId = walletId,
         networkType = networkType,
@@ -138,7 +173,39 @@ class LitecoinKit : AbstractKit {
     )
 
     constructor(
-        context: Context,
+        dataDir: String,
+        mwebDataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        words: List<String>,
+        passphrase: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        mwebConfig: MwebConfig? = null,
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir, mwebDataDir, databaseKey, connectionManager, Mnemonic().toSeed(words, passphrase),
+        walletId, networkType, peerSize, syncMode, confirmationsThreshold, purpose,
+        sharedPeerGroupHolder, mwebConfig, mwebPublicSendConfig,
+        nameResolver = nameResolver,
+    )
+
+    /**
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param mwebDataDir Absolute path of `context.noBackupFilesDir`, where the MWEB daemon
+     *   keeps its state; any other directory forces a full MWEB resync.
+     */
+    constructor(
+        dataDir: String,
+        mwebDataDir: String,
+        connectionManager: IConnectionManager,
         seed: ByteArray,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -150,7 +217,9 @@ class LitecoinKit : AbstractKit {
         mwebConfig: MwebConfig? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
     ) : this(
-        context = context,
+        dataDir = dataDir,
+        mwebDataDir = mwebDataDir,
+        connectionManager = connectionManager,
         extendedKey = HDExtendedKey(seed, purpose),
         purpose = purpose,
         walletId = walletId,
@@ -164,9 +233,36 @@ class LitecoinKit : AbstractKit {
         mwebPublicSendConfig = mwebPublicSendConfig,
     )
 
+    constructor(
+        dataDir: String,
+        mwebDataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        seed: ByteArray,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        purpose: Purpose = Purpose.BIP44,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        mwebConfig: MwebConfig? = null,
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir, mwebDataDir, connectionManager, HDExtendedKey(seed, purpose), purpose, null,
+        walletId, networkType, peerSize, syncMode, confirmationsThreshold, null, null,
+        sharedPeerGroupHolder, seed, mwebConfig, mwebPublicSendConfig, databaseKey,
+        nameResolver = nameResolver,
+    )
+
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param mwebDataDir Absolute path of `context.noBackupFilesDir`, where the MWEB daemon
+     *   keeps its state; any other directory forces a full MWEB resync.
+     * @param connectionManager Source of network connectivity state.
      * @param extendedKey HDExtendedKey that contains HDKey and version
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
@@ -175,7 +271,9 @@ class LitecoinKit : AbstractKit {
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        mwebDataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey,
         purpose: Purpose,
         walletId: String,
@@ -189,33 +287,45 @@ class LitecoinKit : AbstractKit {
         mwebSeed: ByteArray? = null,
         mwebConfig: MwebConfig? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
-    ) {
-        network = network(networkType)
-        mwebAddressCodec = MwebAddressCodec(networkType)
-        mwebPublicPegInSender = MwebPublicPegInSender(context, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig)
+    ) : this(
+        dataDir, mwebDataDir, connectionManager, extendedKey, purpose, null, walletId, networkType,
+        peerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
+        sharedPeerGroupHolder, mwebSeed, mwebConfig, mwebPublicSendConfig, null,
+    )
 
-        bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = extendedKey,
-            watchAddressPublicKey = null,
-            networkType = networkType,
-            walletId = walletId,
-            syncMode = syncMode,
-            purpose = purpose,
-            peerSize = peerSize,
-            confirmationsThreshold = confirmationsThreshold,
-            iInputSigner = iInputSigner,
-            iSchnorrInputSigner = iSchnorrInputSigner,
-            sharedPeerGroupHolder = sharedPeerGroupHolder
-        )
-        bitcoinCore.listener = bitcoinCoreListener
-        mwebEngineHandle = mwebEngineHandle(context, mwebSeed, walletId, networkType, mwebConfig)
-        setMwebListener(listener)
-    }
+    constructor(
+        dataDir: String,
+        mwebDataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey,
+        purpose: Purpose,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        mwebSeed: ByteArray? = null,
+        mwebConfig: MwebConfig? = null,
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir, mwebDataDir, connectionManager, extendedKey, purpose, null, walletId, networkType,
+        peerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
+        sharedPeerGroupHolder, mwebSeed, mwebConfig, mwebPublicSendConfig, databaseKey,
+        nameResolver = nameResolver,
+    )
 
     /**
      * @constructor Creates and initializes the BitcoinKit
-     * @param context The Android context
+     * @param dataDir Absolute path of the app's `databases` directory
+     *   (`context.getDatabasePath("x").parent`); any other directory opens an empty database.
+     * @param mwebDataDir Absolute path of `context.noBackupFilesDir`, where the MWEB daemon
+     *   keeps its state; any other directory forces a full MWEB resync.
+     * @param connectionManager Source of network connectivity state.
      * @param watchAddress address for watching in read-only mode
      * @param walletId an arbitrary ID of type String.
      * @param networkType The network type. The default is MainNet.
@@ -224,7 +334,9 @@ class LitecoinKit : AbstractKit {
      * @param confirmationsThreshold How many confirmations required to be considered confirmed. The default is 6 confirmations.
      */
     constructor(
-        context: Context,
+        dataDir: String,
+        mwebDataDir: String,
+        connectionManager: IConnectionManager,
         watchAddress: String,
         walletId: String,
         networkType: NetworkType = defaultNetworkType,
@@ -235,30 +347,86 @@ class LitecoinKit : AbstractKit {
         iSchnorrInputSigner: ISchnorrInputSigner? = null,
         sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
         mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+    ) : this(
+        dataDir, mwebDataDir, connectionManager, null, null, watchAddress, walletId, networkType,
+        peerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
+        sharedPeerGroupHolder, null, null, mwebPublicSendConfig, null,
+    )
+
+    constructor(
+        dataDir: String,
+        mwebDataDir: String,
+        databaseKey: ByteArray,
+        connectionManager: IConnectionManager,
+        watchAddress: String,
+        walletId: String,
+        networkType: NetworkType = defaultNetworkType,
+        peerSize: Int = defaultPeerSize,
+        syncMode: SyncMode = defaultSyncMode,
+        confirmationsThreshold: Int = defaultConfirmationsThreshold,
+        iInputSigner: IInputSigner? = null,
+        iSchnorrInputSigner: ISchnorrInputSigner? = null,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        mwebPublicSendConfig: MwebPublicSendConfig = MwebPublicSendConfig(),
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+    ) : this(
+        dataDir, mwebDataDir, connectionManager, null, null, watchAddress, walletId, networkType,
+        peerSize, syncMode, confirmationsThreshold, iInputSigner, iSchnorrInputSigner,
+        sharedPeerGroupHolder, null, null, mwebPublicSendConfig, databaseKey,
+        nameResolver = nameResolver,
+    )
+
+    private constructor(
+        dataDir: String,
+        mwebDataDir: String,
+        connectionManager: IConnectionManager,
+        extendedKey: HDExtendedKey?,
+        purpose: Purpose?,
+        watchAddress: String?,
+        walletId: String,
+        networkType: NetworkType,
+        peerSize: Int,
+        syncMode: SyncMode,
+        confirmationsThreshold: Int,
+        iInputSigner: IInputSigner?,
+        iSchnorrInputSigner: ISchnorrInputSigner?,
+        sharedPeerGroupHolder: SharedPeerGroupHolder?,
+        mwebSeed: ByteArray?,
+        mwebConfig: MwebConfig?,
+        mwebPublicSendConfig: MwebPublicSendConfig,
+        databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ) {
         network = network(networkType)
         mwebAddressCodec = MwebAddressCodec(networkType)
-        mwebPublicPegInSender = MwebPublicPegInSender(context, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig)
+        mwebPublicPegInSender = MwebPublicPegInSender(mwebDataDir, walletId, networkType, mwebAddressCodec, mwebPublicSendConfig, nameResolver)
 
-        val address = parseAddress(watchAddress, network)
-        val watchAddressPublicKey = WatchAddressPublicKey(address.lockingScriptPayload, address.scriptType)
-        val purpose = address.scriptType.purpose ?: throw IllegalStateException("Not supported scriptType ${address.scriptType}")
+        val address = watchAddress?.let { parseAddress(it, network) }
+        val watchAddressPublicKey = address?.let { WatchAddressPublicKey(it.lockingScriptPayload, it.scriptType) }
+        val resolvedPurpose = purpose ?: address?.scriptType?.purpose
+            ?: throw IllegalStateException("Wallet purpose is unavailable")
 
         bitcoinCore = bitcoinCore(
-            context = context,
-            extendedKey = null,
+            dataDir = dataDir,
+            connectionManager = connectionManager,
+            extendedKey = extendedKey,
             watchAddressPublicKey = watchAddressPublicKey,
             networkType = networkType,
             walletId = walletId,
             syncMode = syncMode,
-            purpose = purpose,
+            purpose = resolvedPurpose,
             peerSize = peerSize,
             confirmationsThreshold = confirmationsThreshold,
             iInputSigner = iInputSigner,
             iSchnorrInputSigner = iSchnorrInputSigner,
-            sharedPeerGroupHolder = sharedPeerGroupHolder
+            sharedPeerGroupHolder = sharedPeerGroupHolder,
+            databaseKey = databaseKey,
+            nameResolver = nameResolver,
         )
         bitcoinCore.listener = bitcoinCoreListener
+        mwebEngineHandle = mwebEngineHandle(
+            dataDir, mwebDataDir, mwebSeed, walletId, networkType, mwebConfig, databaseKey, nameResolver,
+        )
     }
 
     /**
@@ -268,9 +436,30 @@ class LitecoinKit : AbstractKit {
      * it from Android main thread when MWEB is enabled.
      */
     override fun start() {
-        super.start()
-        mwebEngineHandle?.start()
-        syncPublicMwebTransactions()
+        lifecycleLock.withLock {
+            if (running) return
+            super.start()
+            mwebEngineHandle?.start()
+            syncPublicMwebTransactions()
+            running = true
+        }
+    }
+
+    /**
+     * Stops public sync and the MWEB daemon without releasing the engine — [start] revives both.
+     *
+     * This method blocks the caller while MWEB native shutdown runs; do not call it from
+     * Android main thread when MWEB is enabled.
+     */
+    override fun pauseNetwork() {
+        lifecycleLock.withLock {
+            running = false
+            try {
+                stopMweb()
+            } finally {
+                super.pauseNetwork()
+            }
+        }
     }
 
     /**
@@ -280,9 +469,23 @@ class LitecoinKit : AbstractKit {
      * Android main thread when MWEB is enabled.
      */
     override fun stop() {
-        mwebPublicPegInSender.stop()
-        mwebEngineHandle?.stop()
-        super.stop()
+        lifecycleLock.withLock {
+            running = false
+            try {
+                stopMweb()
+            } finally {
+                super.stop()
+            }
+        }
+    }
+
+    /** Native shutdown can throw, and every stop still has to run. */
+    private fun stopMweb() {
+        try {
+            mwebPublicPegInSender.stop()
+        } finally {
+            mwebEngineHandle?.stop()
+        }
     }
 
     /**
@@ -299,17 +502,17 @@ class LitecoinKit : AbstractKit {
     }
 
     override fun dispose() {
-        mwebEngine?.let { engine ->
-            mwebEngineListener?.let { listener ->
-                listener.dispose()
-                engine.removeListener(listener)
+        lifecycleLock.withLock {
+            running = false
+            listenersLock.withLock {
+                disposed = true
+                listeners.forEach(::removeListener)
             }
+            mwebPublicPegInSender.stop()
+            mwebEngineHandle?.release()
+            mwebEngineHandle = null
+            super.dispose()
         }
-        mwebEngineListener = null
-        mwebPublicPegInSender.stop()
-        mwebEngineHandle?.release()
-        mwebEngineHandle = null
-        super.dispose()
     }
 
     val litecoinBalance: LitecoinBalance
@@ -568,16 +771,6 @@ class LitecoinKit : AbstractKit {
         return mwebEngine ?: throw MwebError.NativeUnavailable()
     }
 
-    private fun setMwebListener(listener: Listener?) {
-        val engine = mwebEngine ?: return
-        mwebEngineListener?.let { current ->
-            current.dispose()
-            engine.removeListener(current)
-        }
-        mwebEngineListener = listener?.let(::MwebListenerAdapter)
-        mwebEngineListener?.let(engine::addListener)
-    }
-
     private fun syncPublicMwebTransactions() {
         mwebEngine?.syncPublicTransactions(mwebPublicTransactionBridge)
     }
@@ -589,41 +782,47 @@ class LitecoinKit : AbstractKit {
     private inner class MwebAwareBitcoinCoreListener : BitcoinCore.Listener {
         override fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>) {
             syncPublicMwebTransactionsAsync()
-            listener?.onTransactionsUpdate(inserted, updated)
+            listeners.forEach { it.onTransactionsUpdate(inserted, updated) }
         }
 
         override fun onTransactionsDelete(hashes: List<String>) {
-            listener?.onTransactionsDelete(hashes)
+            listeners.forEach { it.onTransactionsDelete(hashes) }
         }
 
         override fun onBalanceUpdate(balance: BalanceInfo) {
-            listener?.onBalanceUpdate(balance)
+            listeners.forEach { it.onBalanceUpdate(balance) }
         }
 
         override fun onLastBlockInfoUpdate(blockInfo: BlockInfo) {
-            listener?.onLastBlockInfoUpdate(blockInfo)
+            listeners.forEach { it.onLastBlockInfoUpdate(blockInfo) }
         }
 
         override fun onKitStateUpdate(state: KitState) {
-            listener?.onKitStateUpdate(state)
+            listeners.forEach { it.onKitStateUpdate(state) }
         }
     }
 
     private fun mwebEngineHandle(
-        context: Context,
+        dataDir: String,
+        mwebDataDir: String,
         seed: ByteArray?,
         walletId: String,
         networkType: NetworkType,
         config: MwebConfig?,
+        databaseKey: ByteArray?,
+        nameResolver: DatabaseNameResolver,
     ): LitecoinMwebEngineHandle? {
         if (config == null) return null
 
         return LitecoinMwebEngineRegistry.acquire(
-            context = context,
+            dataDir = dataDir,
+            mwebDataDir = mwebDataDir,
             seed = seed ?: throw IllegalArgumentException("MWEB requires a seed-derived LitecoinKit constructor; watch-only constructor cannot enable MWEB"),
+            databaseKey = databaseKey,
             walletId = walletId,
             networkType = networkType,
             config = config,
+            nameResolver = nameResolver,
         )
     }
 
@@ -715,7 +914,8 @@ class LitecoinKit : AbstractKit {
     }
 
     private fun bitcoinCore(
-        context: Context,
+        dataDir: String,
+        connectionManager: IConnectionManager,
         extendedKey: HDExtendedKey?,
         watchAddressPublicKey: WatchAddressPublicKey?,
         networkType: NetworkType,
@@ -726,13 +926,21 @@ class LitecoinKit : AbstractKit {
         confirmationsThreshold: Int,
         iInputSigner: IInputSigner?,
         iSchnorrInputSigner: ISchnorrInputSigner?,
-        sharedPeerGroupHolder: SharedPeerGroupHolder? = null
+        nameResolver: DatabaseNameResolver,
+        sharedPeerGroupHolder: SharedPeerGroupHolder? = null,
+        databaseKey: ByteArray? = null,
     ): BitcoinCore {
-        val database = CoreDatabase.getInstance(context, getDatabaseName(networkType, walletId, syncMode, purpose))
+        sharedPeerGroupHolder?.requireDatabaseKey(databaseKey)
+        val database = CoreDatabase.getInstance(
+            dataDir,
+            getDatabaseName(networkType, walletId, syncMode, purpose),
+            databaseKey,
+            nameResolver,
+        )
         val storage = Storage(database)
         val checkpoint = Checkpoint.resolveCheckpoint(syncMode, network, storage)
         val apiSyncStateManager = ApiSyncStateManager(storage, network.syncableFromApi && syncMode !is SyncMode.Full)
-        val blockchairApi = BlockchairApi(network.blockchairChainId)
+        val blockchairApi = BlockchairApi(network.blockchairChainId, networkErrorHolder)
         val apiTransactionProvider = apiTransactionProvider(networkType, blockchairApi)
         val paymentAddressParser = PaymentAddressParser("litecoin", removeScheme = true)
         val blockValidatorSet = blockValidatorSet(storage, networkType)
@@ -741,7 +949,7 @@ class LitecoinKit : AbstractKit {
         val coreBuilder = BitcoinCoreBuilder()
 
         val bitcoinCore = coreBuilder
-            .setContext(context)
+            .setConnectionManager(connectionManager)
             .setExtendedKey(extendedKey)
             .setWatchAddressPublicKey(watchAddressPublicKey)
             .setPurpose(purpose)
@@ -756,6 +964,7 @@ class LitecoinKit : AbstractKit {
             .setTransactionSerializer(transactionSerializer)
             .setApiTransactionProvider(apiTransactionProvider)
             .setApiSyncStateManager(apiSyncStateManager)
+            .setNetworkErrorHolder(networkErrorHolder)
             .setBlockValidator(blockValidatorSet)
             .setAllowBroadcastFromUnsyncedPeers(true)
             .setRequestUnknownBlocks(syncMode is SyncMode.Blockchair)
@@ -848,7 +1057,7 @@ class LitecoinKit : AbstractKit {
         }
 
         NetworkType.TestNet -> {
-            BCoinApi("")
+            BCoinApi("", networkErrorHolder)
         }
     }
 
@@ -866,83 +1075,144 @@ class LitecoinKit : AbstractKit {
 
         private val sharedGroups = ConcurrentHashMap<String, SharedPeerGroupHolder>()
 
-        @Synchronized
         fun getOrCreateSharedPeerGroup(
-            context: Context,
+            dataDir: String,
+            connectionManager: IConnectionManager,
             walletId: String,
             networkType: NetworkType,
             peerSize: Int = defaultPeerSize
+        ): SharedPeerGroupHolder = getOrCreateSharedPeerGroupInternal(
+            dataDir, null, connectionManager, walletId, networkType, peerSize,
+        )
+
+        fun getOrCreateSharedPeerGroup(
+            dataDir: String,
+            databaseKey: ByteArray,
+            connectionManager: IConnectionManager,
+            walletId: String,
+            networkType: NetworkType,
+            peerSize: Int = defaultPeerSize,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): SharedPeerGroupHolder = getOrCreateSharedPeerGroupInternal(
+            dataDir, databaseKey, connectionManager, walletId, networkType, peerSize, nameResolver,
+        )
+
+        @Synchronized
+        private fun getOrCreateSharedPeerGroupInternal(
+            dataDir: String,
+            databaseKey: ByteArray?,
+            connectionManager: IConnectionManager,
+            walletId: String,
+            networkType: NetworkType,
+            peerSize: Int,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
         ): SharedPeerGroupHolder {
-            val key = "litecoin-${networkType.name}-$walletId"
-            return sharedGroups.getOrPut(key) {
-                val network = network(networkType)
-                val peerManager = PeerManager()
-                peerManager.setAllowBroadcastFromUnsyncedPeers(true)
-                val networkMessageParser = NetworkMessageParser(network.magic)
-                val networkMessageSerializer = NetworkMessageSerializer(network.magic)
-                val bloomFilterManager = BloomFilterManager()
-                val connectionManager = ConnectionManager.getInstance(context)
-
-                val sharedDbName = "Litecoin-Shared-${networkType.name}-$walletId"
-                val sharedDb = CoreDatabase.getInstance(context, sharedDbName)
-                val sharedStorage = Storage(sharedDb)
-                val peerAddressManager = PeerAddressManager(network, sharedStorage)
-
-                val peerGroup = SharedPeerGroup(
-                    hostManager = peerAddressManager,
-                    network = network,
-                    peerManager = peerManager,
-                    peerSize = peerSize,
-                    networkMessageParser = networkMessageParser,
-                    networkMessageSerializer = networkMessageSerializer,
-                    connectionManager = connectionManager,
-                    localDownloadedBestBlockHeight = 0,
-                    handleAddrMessage = true
-                )
-                peerAddressManager.listener = peerGroup
-
-                val blockHeaderHasher = DoubleSha256Hasher()
-                val transactionSerializer = LitecoinTransactionSerializer()
-
-                networkMessageParser.add(AddrMessageParser())
-                networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
-                networkMessageParser.add(InvMessageParser())
-                networkMessageParser.add(GetDataMessageParser())
-                networkMessageParser.add(PingMessageParser())
-                networkMessageParser.add(PongMessageParser())
-                networkMessageParser.add(TransactionMessageParser(transactionSerializer))
-                networkMessageParser.add(VerAckMessageParser())
-                networkMessageParser.add(VersionMessageParser())
-                networkMessageParser.add(RejectMessageParser())
-                networkMessageParser.add(GetAddrMessageParser())
-
-                networkMessageSerializer.add(FilterLoadMessageSerializer())
-                networkMessageSerializer.add(GetBlocksMessageSerializer())
-                networkMessageSerializer.add(InvMessageSerializer())
-                networkMessageSerializer.add(GetDataMessageSerializer())
-                networkMessageSerializer.add(MempoolMessageSerializer())
-                networkMessageSerializer.add(PingMessageSerializer())
-                networkMessageSerializer.add(PongMessageSerializer())
-                networkMessageSerializer.add(TransactionMessageSerializer(transactionSerializer))
-                networkMessageSerializer.add(VerAckMessageSerializer())
-                networkMessageSerializer.add(VersionMessageSerializer())
-                networkMessageSerializer.add(GetAddrMessageSerializer())
-
-                SharedPeerGroupHolder(
-                    peerGroup, peerManager, bloomFilterManager,
-                    networkMessageParser, networkMessageSerializer
-                )
+            val key = migrationId(networkType, walletId)
+            sharedGroups[key]?.let { holder ->
+                holder.requireDatabaseKey(databaseKey)
+                return holder
             }
+            val network = network(networkType)
+            val peerManager = PeerManager()
+            peerManager.setAllowBroadcastFromUnsyncedPeers(true)
+            val networkMessageParser = NetworkMessageParser(network.magic)
+            val networkMessageSerializer = NetworkMessageSerializer(network.magic)
+            val bloomFilterManager = BloomFilterManager()
+
+            val sharedDb = CoreDatabase.getInstance(dataDir, sharedDbName(networkType, walletId), databaseKey, nameResolver)
+            val sharedStorage = Storage(sharedDb)
+            val peerAddressManager = PeerAddressManager(network, sharedStorage)
+
+            val peerGroup = SharedPeerGroup(
+                hostManager = peerAddressManager,
+                network = network,
+                peerManager = peerManager,
+                peerSize = peerSize,
+                networkMessageParser = networkMessageParser,
+                networkMessageSerializer = networkMessageSerializer,
+                connectionManager = connectionManager,
+                localDownloadedBestBlockHeight = 0,
+                handleAddrMessage = true
+            )
+            peerAddressManager.listener = peerGroup
+
+            val blockHeaderHasher = DoubleSha256Hasher()
+            val transactionSerializer = LitecoinTransactionSerializer()
+
+            networkMessageParser.add(AddrMessageParser())
+            networkMessageParser.add(MerkleBlockMessageParser(BlockHeaderParser(blockHeaderHasher)))
+            networkMessageParser.add(InvMessageParser())
+            networkMessageParser.add(GetDataMessageParser())
+            networkMessageParser.add(PingMessageParser())
+            networkMessageParser.add(PongMessageParser())
+            networkMessageParser.add(TransactionMessageParser(transactionSerializer))
+            networkMessageParser.add(VerAckMessageParser())
+            networkMessageParser.add(VersionMessageParser())
+            networkMessageParser.add(RejectMessageParser())
+            networkMessageParser.add(GetAddrMessageParser())
+            // The ancestor header walk runs on shared kits too
+            networkMessageParser.add(HeadersMessageParser(blockHeaderHasher))
+
+            networkMessageSerializer.add(FilterLoadMessageSerializer())
+            networkMessageSerializer.add(GetBlocksMessageSerializer())
+            networkMessageSerializer.add(InvMessageSerializer())
+            networkMessageSerializer.add(GetDataMessageSerializer())
+            networkMessageSerializer.add(MempoolMessageSerializer())
+            networkMessageSerializer.add(PingMessageSerializer())
+            networkMessageSerializer.add(PongMessageSerializer())
+            networkMessageSerializer.add(TransactionMessageSerializer(transactionSerializer))
+            networkMessageSerializer.add(VerAckMessageSerializer())
+            networkMessageSerializer.add(VersionMessageSerializer())
+            networkMessageSerializer.add(GetAddrMessageSerializer())
+            networkMessageSerializer.add(GetHeadersMessageSerializer())
+
+            return SharedPeerGroupHolder(
+                peerGroup, peerManager, bloomFilterManager,
+                networkMessageParser, networkMessageSerializer, databaseKey,
+            ).also { sharedGroups[key] = it }
         }
 
         @Synchronized
         fun releaseSharedPeerGroup(walletId: String, networkType: NetworkType) {
-            val key = "litecoin-${networkType.name}-$walletId"
+            val key = migrationId(networkType, walletId)
             sharedGroups.remove(key)?.peerGroup?.forceStop()
         }
 
-        private fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode, purpose: Purpose): String =
+        internal fun getDatabaseName(networkType: NetworkType, walletId: String, syncMode: SyncMode, purpose: Purpose): String =
             "Litecoin-${networkType.name}-$walletId-${syncMode.javaClass.simpleName}-${purpose.name}"
+
+        internal fun sharedDbName(networkType: NetworkType, walletId: String): String =
+            "Litecoin-Shared-${networkType.name}-$walletId"
+
+        internal fun databaseNames(networkType: NetworkType, walletId: String): List<String> = buildList {
+            add(sharedDbName(networkType, walletId))
+            DatabaseEncryption.supportedSyncModes().forEach { syncMode ->
+                Purpose.values().forEach { purpose -> add(getDatabaseName(networkType, walletId, syncMode, purpose)) }
+            }
+            add(MwebFiles.databaseName(networkType, walletId))
+        }
+
+        /** Must be called before constructing any kit for this wallet. */
+        suspend fun migrateDatabases(
+            dataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            databaseKey: ByteArray,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): DatabaseMigrationResult {
+            LitecoinMwebEngineRegistry.checkInactive(walletId, networkType)
+            MwebPublicPegInSender.checkCanClear(walletId, networkType)
+            check(!sharedGroups.containsKey(migrationId(networkType, walletId))) {
+                "Dispose the active LitecoinKit instances before migrating their databases"
+            }
+            return DatabaseEncryption.migrateDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+                databaseKey = databaseKey,
+                nameResolver = nameResolver,
+            )
+        }
 
         /**
          * Deletes Litecoin public and MWEB databases for [walletId].
@@ -950,22 +1220,27 @@ class LitecoinKit : AbstractKit {
          * All LitecoinKit instances for this wallet/network must be disposed first. If an
          * MWEB engine is still active, this method fails before deleting public data.
          */
-        fun clear(context: Context, networkType: NetworkType, walletId: String) {
-            LitecoinMwebEngineRegistry.clear(context, walletId, networkType)
+        fun clear(
+            dataDir: String,
+            mwebDataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
+            LitecoinMwebEngineRegistry.checkInactive(walletId, networkType)
+            MwebPublicPegInSender.checkCanClear(walletId, networkType)
             releaseSharedPeerGroup(walletId, networkType)
-            try {
-                val sharedDbName = "Litecoin-Shared-${networkType.name}-$walletId"
-                SQLiteDatabase.deleteDatabase(context.getDatabasePath(sharedDbName))
-            } catch (_: Exception) { }
-            for (syncMode in listOf(SyncMode.Api(), SyncMode.Full(), SyncMode.Blockchair())) {
-                for (purpose in Purpose.values())
-                    try {
-                        SQLiteDatabase.deleteDatabase(context.getDatabasePath(getDatabaseName(networkType, walletId, syncMode, purpose)))
-                    } catch (ex: Exception) {
-                        continue
-                    }
-            }
+            DatabaseEncryption.clearDatabases(
+                dataDir = dataDir,
+                databaseNames = databaseNames(networkType, walletId),
+                migrationId = migrationId(networkType, walletId),
+                nameResolver = nameResolver,
+            )
+            MwebFiles.clearDaemonData(mwebDataDir, networkType, walletId, nameResolver)
         }
+
+        private fun migrationId(networkType: NetworkType, walletId: String): String =
+            "litecoin-${networkType.name}-$walletId"
 
         /**
          * Deletes only MWEB scan storage, wallet daemon data, and public-send daemon data for [walletId].
@@ -974,8 +1249,14 @@ class LitecoinKit : AbstractKit {
          * Litecoin BIP44/BIP49/BIP84/BIP86 databases. Active public-send daemons
          * must be stopped by stopping or disposing their LitecoinKit instances first.
          */
-        fun clearMweb(context: Context, networkType: NetworkType, walletId: String) {
-            LitecoinMwebEngine.clear(context, networkType, walletId)
+        fun clearMweb(
+            dataDir: String,
+            mwebDataDir: String,
+            networkType: NetworkType,
+            walletId: String,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ) {
+            LitecoinMwebEngine.clear(dataDir, mwebDataDir, networkType, walletId, nameResolver)
         }
 
         private fun network(networkType: NetworkType) = when (networkType) {

@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore
 
 import io.horizontalsystems.bitcoincore.core.IPluginData
+import io.horizontalsystems.bitcoincore.messages.MessageSignatureFormat
 import io.horizontalsystems.bitcoincore.models.BitcoinPaymentData
 import io.horizontalsystems.bitcoincore.models.BitcoinSendInfo
 import io.horizontalsystems.bitcoincore.models.PublicKey
@@ -9,7 +10,9 @@ import io.horizontalsystems.bitcoincore.models.TransactionDataSortType
 import io.horizontalsystems.bitcoincore.models.TransactionFilterType
 import io.horizontalsystems.bitcoincore.models.TransactionInfo
 import io.horizontalsystems.bitcoincore.models.UsedAddress
+import io.horizontalsystems.bitcoincore.network.BitcoinNetworkErrorListener
 import io.horizontalsystems.bitcoincore.network.Network
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransaction
 import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionInfo
 import io.horizontalsystems.bitcoincore.rbf.ReplacementType
@@ -24,6 +27,19 @@ abstract class AbstractKit {
 
     protected abstract var bitcoinCore: BitcoinCore
     protected abstract var network: Network
+
+    /**
+     * Shared holder for the passive network-error observer. Threaded into every API
+     * provider at construction time; the app installs the actual listener AFTER the
+     * kit is built via [networkErrorListener] (same pattern as the existing listener).
+     */
+    val networkErrorHolder = NetworkErrorListenerHolder()
+
+    var networkErrorListener: BitcoinNetworkErrorListener?
+        get() = networkErrorHolder.listener
+        set(value) {
+            networkErrorHolder.listener = value
+        }
 
     fun getUnspentOutputs(filters: UtxoFilters): List<UnspentOutputInfo> {
         return bitcoinCore.getUnspentOutputs(filters)
@@ -46,6 +62,13 @@ abstract class AbstractKit {
     open fun start() {
         bitcoinCore.start()
     }
+
+    open fun pauseNetwork() {
+        bitcoinCore.pauseNetwork()
+    }
+
+    open val isNetworkPaused: Boolean
+        get() = bitcoinCore.isNetworkPaused
 
     open fun stop() {
         bitcoinCore.stop()
@@ -239,6 +262,10 @@ abstract class AbstractKit {
 
     suspend fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
         return bitcoinCore.redeem(unspentOutput, address, memo, feeRate, sortType, rbfEnabled)
+    }
+
+    suspend fun signMessage(address: String, message: String, format: MessageSignatureFormat): String {
+        return bitcoinCore.signMessage(address, message, format)
     }
 
     fun receiveAddress(): String {

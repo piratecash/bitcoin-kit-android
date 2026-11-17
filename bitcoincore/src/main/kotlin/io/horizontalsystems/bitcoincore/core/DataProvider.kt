@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.core
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.blocks.IBlockchainDataListener
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
@@ -18,7 +19,6 @@ import io.reactivex.Single
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import java.util.concurrent.TimeUnit
-import timber.log.Timber
 
 class DataProvider(
         private val storage: IStorage,
@@ -26,6 +26,7 @@ class DataProvider(
         private val transactionInfoConverter: ITransactionInfoConverter,
         private val logTag: String
 ) : IBlockchainDataListener {
+    private val log = Logger.withTag(logTag)
 
     interface Listener {
         fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>)
@@ -66,12 +67,12 @@ class DataProvider(
         if (block.height > (lastBlockInfo?.height ?: 0)) {
             val blockInfo = blockInfo(block)
 
-//            Timber.tag(logTag).d("Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}")
+//            log.d { "Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}" }
             lastBlockInfo = blockInfo
             listener?.onLastBlockInfoUpdate(blockInfo)
             balanceUpdateSubject.onNext(true)
         } else {
-            Timber.tag(logTag).d("Block inserted but not updating last block: hash=${block.headerHash.toHexString()}, height=${block.height}, currentLastHeight=${lastBlockInfo?.height}")
+            log.d { "Block inserted but not updating last block: hash=${block.headerHash.toHexString()}, height=${block.height}, currentLastHeight=${lastBlockInfo?.height}" }
         }
     }
 

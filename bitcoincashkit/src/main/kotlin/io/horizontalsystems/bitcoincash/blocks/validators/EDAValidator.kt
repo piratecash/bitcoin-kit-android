@@ -27,9 +27,8 @@ class EDAValidator(
             return
         }
 
-        val cursorBlock = checkNotNull(blockValidatorHelper.getPrevious(previousBlock, 6)) {
-            throw BlockValidatorException.NoPreviousBlock()
-        }
+        val cursorBlock = blockValidatorHelper.getPrevious(previousBlock, 6)
+            ?: throw BlockValidatorException.NoPreviousBlock()
 
         val mpt6blocks = medianTimePast(previousBlock) - medianTimePast(cursorBlock)
         if (mpt6blocks >= 12 * 3600) {

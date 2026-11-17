@@ -1,9 +1,9 @@
 package io.horizontalsystems.piratecashkit.instantsend
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.piratecashkit.PirateCashKitErrors
 import io.horizontalsystems.piratecashkit.messages.ISLockMessage
-import timber.log.Timber
 
 /**
  * InstantSendLockValidator (DIP-0022)
@@ -13,6 +13,7 @@ import timber.log.Timber
 class InstantSendLockValidator(
     private val logTag: String
 ) {
+    private val log = Logger.withTag(logTag)
 
     /**
      * Validate InstantSend Lock (ISDLOCK) message.
@@ -30,13 +31,13 @@ class InstantSendLockValidator(
 
     private fun ensureTriviallyValid(islock: ISLockMessage) {
         if (islock.inputs.isEmpty()) {
-            Timber.tag(logTag).d("ISLock rejected: empty inputs")
+            log.d { "ISLock rejected: empty inputs" }
             throw PirateCashKitErrors.ISLockValidation.InvalidStructure()
         }
 
         val isTxHashNull = islock.txHash.all { it == 0.toByte() }
         if (isTxHashNull) {
-            Timber.tag(logTag).d("ISLock rejected: null txHash")
+            log.d { "ISLock rejected: null txHash" }
             throw PirateCashKitErrors.ISLockValidation.InvalidStructure()
         }
 
@@ -44,7 +45,7 @@ class InstantSendLockValidator(
         islock.inputs.forEach { input ->
             val key = HashBytes(input.txHash) to input.vout
             if (!uniqueInputs.add(key)) {
-                Timber.tag(logTag).d("ISLock rejected: duplicated input")
+                log.d { "ISLock rejected: duplicated input" }
                 throw PirateCashKitErrors.ISLockValidation.InvalidStructure()
             }
         }

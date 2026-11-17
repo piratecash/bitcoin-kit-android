@@ -4,19 +4,38 @@ import io.horizontalsystems.bitcoincore.crypto.BloomFilter
 import io.horizontalsystems.bitcoincore.network.Network
 import io.horizontalsystems.bitcoincore.network.messages.*
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
+import io.horizontalsystems.bitcoincore.network.transport.DefaultTransportFactory
 import java.net.InetAddress
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
 
-class Peer(
+class Peer internal constructor(
         val host: String,
         private val network: Network,
         private val listener: Listener,
         networkMessageParser: NetworkMessageParser,
         networkMessageSerializer: NetworkMessageSerializer,
         executorService: ExecutorService,
-        private val now: () -> Long = System::currentTimeMillis)
+        useV2: Boolean,
+        internal val generation: Int,
+        private val now: () -> Long)
     : PeerConnection.Listener, PeerTask.Listener, PeerTask.Requester {
+
+    /**
+     * The long-standing public signature, unchanged. Kept as a delegating secondary constructor so
+     * downstream binaries and Java callers keep resolving it, and so `now` stays the trailing
+     * parameter for Kotlin callers using the trailing-lambda form.
+     */
+    constructor(
+            host: String,
+            network: Network,
+            listener: Listener,
+            networkMessageParser: NetworkMessageParser,
+            networkMessageSerializer: NetworkMessageSerializer,
+            executorService: ExecutorService,
+            now: () -> Long = System::currentTimeMillis,
+    ) : this(host, network, listener, networkMessageParser, networkMessageSerializer, executorService,
+             useV2 = false, generation = 0, now = now)
 
     interface Listener {
         fun onConnect(peer: Peer)
@@ -37,7 +56,15 @@ class Peer(
     var subVersion = ""
 
     private var connectStartTime: Long? = null
-    private val peerConnection = PeerConnection(host, network, this, executorService, networkMessageParser, networkMessageSerializer)
+    private val peerConnection = PeerConnection(
+        host = host,
+        network = network,
+        listener = this,
+        sendingExecutor = executorService,
+        useV2 = useV2,
+        generation = generation,
+        transportFactory = DefaultTransportFactory(network, networkMessageParser, networkMessageSerializer),
+    )
     private val timer = PeerTimer()
 
     var awaitingChainIdentity = false

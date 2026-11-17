@@ -1,9 +1,9 @@
 package io.horizontalsystems.dashkit.instantsend
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.network.peer.Peer
 import io.horizontalsystems.dashkit.messages.ISLockMessage
-import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 class ISLockPeerValidator(
     private val logTag: String
 ) {
+    private val log = Logger.withTag(logTag)
 
     data class PeerConfirmation(
         val peerHost: String,
@@ -73,7 +74,7 @@ class ISLockPeerValidator(
         val isFirstConfirmation = !pendingISLocks.containsKey(txHashKey)
 
         val pending = pendingISLocks.getOrPut(txHashKey) {
-            Timber.tag(logTag).d("New ISLock for tx $txHashKey from ${peer.host}")
+            log.d { "New ISLock for tx $txHashKey from ${peer.host}" }
             PendingISLock(
                 isLock = isLock,
                 confirmations = mutableSetOf(),
@@ -84,8 +85,9 @@ class ISLockPeerValidator(
         // Note: Different quorums can create different ISLock hashes for the same transaction
         // This is normal in Dash network. We accept all valid ISLocks for the same txHash.
         if (!isLock.hash.contentEquals(pending.isLock.hash)) {
-            Timber.tag(logTag)
-                .d("Peer ${peer.host} sent ISLock with different hash for tx $txHashKey (different quorum)")
+            log.d {
+                "Peer ${peer.host} sent ISLock with different hash for tx $txHashKey (different quorum)"
+            }
         }
 
         // Add confirmation from this peer
@@ -97,15 +99,17 @@ class ISLockPeerValidator(
 
         val isNew = pending.confirmations.add(confirmation)
         if (isNew) {
-            Timber.tag(logTag)
-                .d("ISLock for tx $txHashKey: ${pending.confirmations.size}/$REQUIRED_PEER_CONFIRMATIONS confirmations (from ${peer.host})")
+            log.d {
+                "ISLock for tx $txHashKey: ${pending.confirmations.size}/$REQUIRED_PEER_CONFIRMATIONS confirmations (from ${peer.host})"
+            }
         }
 
         // Check if threshold reached
         if (pending.confirmations.size >= REQUIRED_PEER_CONFIRMATIONS) {
             val peerHosts = pending.confirmations.joinToString(", ") { it.peerHost }
-            Timber.tag(logTag)
-                .i("ISLock for tx $txHashKey validated by ${pending.confirmations.size} peers: $peerHosts")
+            log.i {
+                "ISLock for tx $txHashKey validated by ${pending.confirmations.size} peers: $peerHosts"
+            }
             pendingISLocks.remove(txHashKey)
             onValidated(isLock)
         }
@@ -123,8 +127,9 @@ class ISLockPeerValidator(
         pendingISLocks.forEach { (key, pending) ->
             val age = now - pending.firstSeenTimestamp
             if (age > CONFIRMATION_TIMEOUT_MS) {
-                Timber.tag(logTag)
-                    .d("ISLock $key expired after ${age}ms with ${pending.confirmations.size}/$REQUIRED_PEER_CONFIRMATIONS confirmations")
+                log.d {
+                    "ISLock $key expired after ${age}ms with ${pending.confirmations.size}/$REQUIRED_PEER_CONFIRMATIONS confirmations"
+                }
                 keysToRemove.add(key)
             }
         }
@@ -132,7 +137,7 @@ class ISLockPeerValidator(
         keysToRemove.forEach { pendingISLocks.remove(it) }
 
         if (keysToRemove.isNotEmpty()) {
-            Timber.tag(logTag).d("Cleaned up ${keysToRemove.size} expired ISLock(s)")
+            log.d { "Cleaned up ${keysToRemove.size} expired ISLock(s)" }
         }
     }
 
@@ -143,7 +148,7 @@ class ISLockPeerValidator(
     fun onPeerDisconnected(peer: Peer) {
         // Optional: Could remove confirmations from this peer if desired
         // For now, we keep them as they were legitimately received
-        Timber.tag(logTag).d("Peer ${peer.host} disconnected (confirmations retained)")
+        log.d { "Peer ${peer.host} disconnected (confirmations retained)" }
     }
 
     /**
@@ -152,7 +157,7 @@ class ISLockPeerValidator(
     fun removePending(txHash: ByteArray) {
         val txHashKey = txHash.toReversedHex()
         pendingISLocks.remove(txHashKey)?.let {
-            Timber.tag(logTag).d("Removed pending ISLock for tx $txHashKey (validated through alternative path)")
+            log.d { "Removed pending ISLock for tx $txHashKey (validated through alternative path)" }
         }
     }
 

@@ -121,6 +121,7 @@ interface IStorage {
     fun getTransactionOutputsCount(hash: ByteArray): Int
     fun addTransaction(transaction: FullTransaction)
     fun updateTransaction(transaction: Transaction)
+    fun moveConflicts(loser: ByteArray, winner: ByteArray)
     fun updateTransaction(transaction: FullTransaction)
     fun getBlockTransactions(block: Block): List<Transaction>
     fun getNewTransactions(): List<FullTransaction>
@@ -131,7 +132,15 @@ interface IStorage {
     fun getRelayedPendingTransactions(status: Int): List<Transaction>
     fun getIncomingPendingTxHashes(): List<ByteArray>
     fun incomingPendingTransactionsExist(): Boolean
-    fun deleteRelayedPendingTransactions(transactions: List<Transaction>): List<Transaction>
+    fun deleteRelayedPendingTransactions(
+        transactions: List<Transaction>,
+        expectedStatus: Int = Transaction.Status.RELAYED
+    ): List<Transaction>
+
+    // Deletes only NEW transactions that have no SentTransaction record, i.e. transactions whose
+    // bytes were never handed to the network. Re-checked atomically per transaction inside the
+    // delete: a concurrent send that records a SentTransaction blocks the delete.
+    fun deleteNewExpiredTransactions(transactions: List<Transaction>): List<Transaction>
 
     // InvalidTransaction
 
@@ -164,10 +173,10 @@ interface IStorage {
     fun getTransactionInputs(transaction: Transaction): List<TransactionInput>
     fun getTransactionInputs(txHash: ByteArray): List<TransactionInput>
     fun getTransactionInputs(txHashes: List<ByteArray>): List<TransactionInput>
-    fun getTransactionInput(
+    fun getTransactionInputs(
         previousOutputTxHash: ByteArray,
         previousOutputIndex: Long
-    ): TransactionInput?
+    ): List<TransactionInput>
 
     fun getTransactionInputsByPrevOutputTxHash(txHash: ByteArray): List<TransactionInput>
 
@@ -191,6 +200,13 @@ interface IStorage {
     fun addSentTransaction(transaction: SentTransaction)
     fun updateSentTransaction(transaction: SentTransaction)
     fun deleteSentTransaction(transaction: SentTransaction)
+
+    // Atomically records a broadcast attempt only if the transaction is still pending (exists,
+    // unmined, status == NEW): the pending check and the SentTransaction insert happen inside one
+    // DB transaction, so this method and a concurrent deleteNewExpiredTransactions can never both
+    // "win" - whichever commits first decides the outcome for the other. Returns false, writing
+    // nothing, when the transaction was deleted or mined concurrently.
+    fun recordBroadcastAttemptIfPending(transaction: SentTransaction): Boolean
 
     fun getChainWork(block: Block): BigInteger
 }

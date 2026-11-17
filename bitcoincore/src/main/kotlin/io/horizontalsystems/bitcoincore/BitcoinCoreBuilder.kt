@@ -1,12 +1,12 @@
 package io.horizontalsystems.bitcoincore
 
-import android.content.Context
 import io.horizontalsystems.bitcoincore.apisync.blockchair.Api
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApi
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairLastBlockProvider
 import io.horizontalsystems.bitcoincore.apisync.blockchair.BlockchairTransactionProvider
 import io.horizontalsystems.bitcoincore.apisync.blockchair.LastBlockProvider
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import io.horizontalsystems.bitcoincore.apisync.legacy.ApiSyncer
 import io.horizontalsystems.bitcoincore.apisync.legacy.BlockHashDiscoveryBatch
 import io.horizontalsystems.bitcoincore.apisync.legacy.BlockHashScanHelper
@@ -36,6 +36,7 @@ import io.horizontalsystems.bitcoincore.core.IInitialDownload
 import io.horizontalsystems.bitcoincore.core.IInstantTransactionChecker
 import io.horizontalsystems.bitcoincore.core.IPlugin
 import io.horizontalsystems.bitcoincore.core.IPrivateWallet
+import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IPublicKeyManager
 import io.horizontalsystems.bitcoincore.core.IStorage
 import io.horizontalsystems.bitcoincore.core.ITransactionInfoConverter
@@ -48,7 +49,6 @@ import io.horizontalsystems.bitcoincore.core.scriptType
 import io.horizontalsystems.bitcoincore.managers.AccountPublicKeyManager
 import io.horizontalsystems.bitcoincore.managers.ApiSyncStateManager
 import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
-import io.horizontalsystems.bitcoincore.managers.ConnectionManager
 import io.horizontalsystems.bitcoincore.managers.IBloomFilterProvider
 import io.horizontalsystems.bitcoincore.managers.IrregularOutputFinder
 import io.horizontalsystems.bitcoincore.managers.PendingOutpointsProvider
@@ -59,6 +59,7 @@ import io.horizontalsystems.bitcoincore.managers.UnspentOutputProvider
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelector
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorChain
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorSingleNoChange
+import io.horizontalsystems.bitcoincore.messages.MessageSigner
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
@@ -140,7 +141,7 @@ class BitcoinCoreBuilder {
     val addressConverter = AddressConverterChain()
 
     // required parameters
-    private var context: Context? = null
+    private var connectionManager: IConnectionManager? = null
     private var extendedKey: HDExtendedKey? = null
     private var watchAddressPublicKey: WatchAddressPublicKey? = null
     private var purpose: HDWallet.Purpose? = null
@@ -154,6 +155,7 @@ class BitcoinCoreBuilder {
     private var blockValidator: IBlockValidator? = null
     private var checkpoint: Checkpoint? = null
     private var apiSyncStateManager: ApiSyncStateManager? = null
+    private var networkErrorHolder: NetworkErrorListenerHolder? = null
 
     // parameters with default values
     private var confirmationsThreshold = 6
@@ -174,8 +176,8 @@ class BitcoinCoreBuilder {
     private var iInputSigner: IInputSigner? = null
     private var iSchnorrInputSigner: ISchnorrInputSigner? = null
 
-    fun setContext(context: Context): BitcoinCoreBuilder {
-        this.context = context
+    fun setConnectionManager(connectionManager: IConnectionManager): BitcoinCoreBuilder {
+        this.connectionManager = connectionManager
         return this
     }
 
@@ -300,6 +302,11 @@ class BitcoinCoreBuilder {
         return this
     }
 
+    fun setNetworkErrorHolder(networkErrorHolder: NetworkErrorListenerHolder): BitcoinCoreBuilder {
+        this.networkErrorHolder = networkErrorHolder
+        return this
+    }
+
     fun setTransactionSerializer(transactionSerializer: BaseTransactionSerializer): BitcoinCoreBuilder {
         this.transactionSerializer = transactionSerializer
         return this
@@ -323,7 +330,6 @@ class BitcoinCoreBuilder {
             "minConnectedPeerSize must be greater than zero"
         }
 
-        val context = checkNotNull(this.context)
         val extendedKey = this.extendedKey
         val watchAddressPublicKey = this.watchAddressPublicKey
         val purpose = checkNotNull(this.purpose)
@@ -355,7 +361,7 @@ class BitcoinCoreBuilder {
             logTag = network.logTag
         )
 
-        val connectionManager = ConnectionManager.getInstance(context)
+        val connectionManager = checkNotNull(this.connectionManager)
 
         var privateWallet: IPrivateWallet? = null
         val publicKeyFetcher: IPublicKeyFetcher
@@ -443,7 +449,7 @@ class BitcoinCoreBuilder {
             if (apiTransactionProvider is BlockchairTransactionProvider) {
                 apiTransactionProvider.blockchairApi
             } else {
-                BlockchairApi(network.blockchairChainId)
+                BlockchairApi(network.blockchairChainId, networkErrorHolder)
             }
 
         // Best provider for a live "does this tx already exist?" lookup on raw broadcast:
@@ -485,9 +491,9 @@ class BitcoinCoreBuilder {
             storage = storage,
             statusProvider = BlockchairPendingTransactionStatusProvider.create(blockchairApi, network.blockchairChainId),
             dataListener = dataProvider,
-            invalidateOutgoing = invalidator::invalidate,
+            outgoingInvalidator = invalidator,
             logTag = network.logTag,
-            coroutineDispatcher = coroutineDispatcher
+            coroutineDispatcher = coroutineDispatcher,
         )
 
         val isShared = sharedPeerGroupHolder != null
@@ -512,7 +518,8 @@ class BitcoinCoreBuilder {
             blockchain = blockchain,
             transactionProcessor = blockTransactionProcessor,
             publicKeyManager = publicKeyManager,
-            checkpoint = checkpoint
+            checkpoint = checkpoint,
+            headerWalkEnabled = network.usesPlainBlockHeaders
         )
 
 
@@ -571,7 +578,7 @@ class BitcoinCoreBuilder {
                 val blockDiscovery = BlockHashDiscoveryBatch(
                     blockHashScanner,
                     publicKeyFetcher,
-                    checkpoint.block.height,
+                    Checkpoint.apiDiscoveryCeiling(checkpoint, storage),
                     gapLimit
                 )
                 apiSyncer = ApiSyncer(
@@ -708,6 +715,8 @@ class BitcoinCoreBuilder {
                 lockTimeSetter = lockTimeSetter,
                 transactionSerializer = transactionSerializer,
                 transactionVersion = network.transactionVersion,
+                addressConverter = addressConverter,
+                changeScriptType = purpose.scriptType,
             )
         }
 
@@ -733,6 +742,8 @@ class BitcoinCoreBuilder {
         dataProvider.listener = bitcoinCore
         syncManager.listener = bitcoinCore
         bitcoinCore.bloomFilterManager = bloomFilterManager
+        bitcoinCore.messageSigner =
+            MessageSigner(iInputSigner, iSchnorrInputSigner, storage, addressConverter, purpose.scriptType)
 
         val watchedTransactionManager = WatchedTransactionManager()
         bitcoinCore.addBloomFilterProvider(watchedTransactionManager)
@@ -789,9 +800,9 @@ class BitcoinCoreBuilder {
             networkMessageParser.add(GetAddrMessageParser())
             networkMessageSerializer.add(GetAddrMessageSerializer())
 
-            // The chain-identity probe (see Peer) sends getheaders and parses the headers reply.
-            // Only networks that share their wire format with another chain (eCash) define an anchor.
-            if (network.chainIdentityAnchorHash != null) {
+            // The chain-identity probe (see Peer) sends getheaders and parses the headers reply,
+            // and so does the ancestor header walk on chains with plain 80-byte headers.
+            if (network.usesPlainBlockHeaders || network.chainIdentityAnchorHash != null) {
                 networkMessageParser.add(HeadersMessageParser(blockHeaderHasher))
                 networkMessageSerializer.add(GetHeadersMessageSerializer())
             }
@@ -816,6 +827,7 @@ class BitcoinCoreBuilder {
         bitcoinCore.addPeerGroupListener(mempoolTransactions)
 
         transactionSender?.let {
+            bitcoinCore.transactionSender = it
             bitcoinCore.addPeerSyncListener(SendTransactionsOnPeersSynced(transactionSender))
             bitcoinCore.addPeerTaskHandler(transactionSender)
             bitcoinCore.addPeerGroupListener(transactionSender)

@@ -1,12 +1,15 @@
 package io.horizontalsystems.piratecashkit.storage
 
-import android.content.Context
 import androidx.room.*
+import io.horizontalsystems.bitcoincore.core.databaseBuilder
+import io.horizontalsystems.bitcoincore.storage.SharedRoomDatabases
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.piratecashkit.models.InstantTransactionHash
 import io.horizontalsystems.piratecashkit.models.InstantTransactionInput
 import io.horizontalsystems.piratecashkit.models.Masternode
 import io.horizontalsystems.piratecashkit.models.MasternodeListState
 import io.horizontalsystems.piratecashkit.models.Quorum
+import java.io.File
 
 @Database(version = 10, exportSchema = false, entities = [
     Masternode::class,
@@ -24,20 +27,31 @@ abstract class PirateCashKitDatabase : RoomDatabase() {
     abstract val instantTransactionInputDao: InstantTransactionInputDao
 
     companion object {
-
-        @Volatile
-        private var instance: PirateCashKitDatabase? = null
-
-        @Synchronized
-        fun getInstance(context: Context, dbName: String): PirateCashKitDatabase {
-            return instance ?: buildDatabase(context, dbName).also { instance = it }
+        fun getInstance(dataDir: String, dbName: String): PirateCashKitDatabase {
+            return buildDatabase(dataDir, dbName)
         }
 
-        private fun buildDatabase(context: Context, dbName: String): PirateCashKitDatabase {
-            return Room.databaseBuilder(context, PirateCashKitDatabase::class.java, dbName)
-                    .fallbackToDestructiveMigration()
-                    .allowMainThreadQueries()
+        fun getInstance(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray?,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): PirateCashKitDatabase {
+            return buildDatabase(dataDir, dbName, databaseKey, nameResolver)
+        }
+
+        private fun buildDatabase(
+            dataDir: String,
+            dbName: String,
+            databaseKey: ByteArray? = null,
+            nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
+        ): PirateCashKitDatabase {
+            val path = File(dataDir, nameResolver.resolve(dbName)).path
+            return SharedRoomDatabases.getOrBuild(path, databaseKey, nameResolver) {
+                databaseBuilder<PirateCashKitDatabase>(path, databaseKey, allowMainThreadQueries = true, nameResolver = nameResolver)
+                    .fallbackToDestructiveMigration(dropAllTables = false)
                     .build()
+            }
         }
     }
 }

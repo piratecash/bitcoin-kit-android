@@ -4,11 +4,15 @@ import io.horizontalsystems.bitcoincore.apisync.model.AddressItem
 import io.horizontalsystems.bitcoincore.apisync.model.TransactionItem
 import io.horizontalsystems.bitcoincore.core.IApiTransactionProvider
 import io.horizontalsystems.bitcoincore.managers.ApiManager
+import io.horizontalsystems.bitcoincore.network.NetworkErrorListenerHolder
 import java.util.logging.Logger
 
-class InsightApi(host: String) : IApiTransactionProvider {
+class InsightApi(
+    host: String,
+    networkErrorListener: NetworkErrorListenerHolder? = null
+) : IApiTransactionProvider {
     private val maxAddressSize = 100
-    private val apiManager = ApiManager(host)
+    private val apiManager = ApiManager(host, networkErrorListener)
     private val logger = Logger.getLogger("InsightApi")
 
     override fun transactions(addresses: List<String>, stopHeight: Int?): List<TransactionItem> {

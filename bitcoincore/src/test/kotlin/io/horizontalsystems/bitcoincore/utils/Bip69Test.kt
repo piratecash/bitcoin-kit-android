@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincore.utils
 
-import com.nhaarman.mockitokotlin2.doReturn
-import com.nhaarman.mockitokotlin2.mock
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import org.junit.jupiter.api.Assertions

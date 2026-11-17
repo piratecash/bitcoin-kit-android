@@ -4,7 +4,37 @@
 cmake_minimum_required(VERSION 3.4.1)
 set(CMAKE_CXX_STANDARD 11)
 
-set(OPSYS "DROID")
+if(ANDROID)
+    set(OPSYS "DROID")
+else()
+    if(NOT JNI_HEADER_DIR AND DEFINED ENV{JAVA_HOME})
+        set(JNI_HEADER_DIR "$ENV{JAVA_HOME}/include")
+    endif()
+    if(NOT JNI_HEADER_DIR)
+        find_program(JAVA_EXECUTABLE java)
+        if(JAVA_EXECUTABLE)
+            get_filename_component(JAVA_REAL "${JAVA_EXECUTABLE}" REALPATH)
+            get_filename_component(JAVA_BIN "${JAVA_REAL}" DIRECTORY)
+            get_filename_component(JAVA_ROOT "${JAVA_BIN}" DIRECTORY)
+            set(JNI_HEADER_DIR "${JAVA_ROOT}/include")
+        endif()
+    endif()
+    if(WIN32)
+        set(JNI_MD_SUBDIR win32)
+    elseif(APPLE)
+        set(JNI_MD_SUBDIR darwin)
+    else()
+        set(JNI_MD_SUBDIR linux)
+    endif()
+    if(NOT EXISTS "${JNI_HEADER_DIR}/jni.h")
+        message(FATAL_ERROR "jni.h not found (looked in '${JNI_HEADER_DIR}'); pass -DJNI_HEADER_DIR=<jdk>/include")
+    endif()
+    # Cross-building for Windows on Linux: jni.h resolves from the host JDK, include/win32 does not.
+    if(NOT EXISTS "${JNI_HEADER_DIR}/${JNI_MD_SUBDIR}/jni_md.h")
+        message(FATAL_ERROR "jni_md.h not found in '${JNI_HEADER_DIR}/${JNI_MD_SUBDIR}': these JDK headers are for a different target OS; pass -DJNI_HEADER_DIR=<jdk-for-target-os>/include")
+    endif()
+    include_directories("${JNI_HEADER_DIR}" "${JNI_HEADER_DIR}/${JNI_MD_SUBDIR}")
+endif()
 
 add_library( # Sets the name of the library.
         dashjbls
@@ -13,6 +43,22 @@ add_library( # Sets the name of the library.
         # Provides a relative path to your source file(s).
         dashj-bls-signature-wrapper.cpp
         stdio.cpp)
+
+# System.mapLibraryName("dashjbls") is "dashjbls.dll"; MinGW would emit "libdashjbls.dll".
+if(WIN32)
+    set_target_properties(dashjbls PROPERTIES PREFIX "")
+endif()
+
+# Ship no runtime side-by-side: fold libgcc/libstdc++/winpthread into the library itself.
+if(MINGW)
+    set(CMAKE_SHARED_LINKER_FLAGS
+        "${CMAKE_SHARED_LINKER_FLAGS} -static-libgcc -static-libstdc++ -Wl,-Bstatic,-lwinpthread")
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    set(CMAKE_SHARED_LINKER_FLAGS
+        "${CMAKE_SHARED_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+endif()
 
 # Find Java
 
@@ -52,7 +98,9 @@ target_link_libraries( # Specifies the target library.
 #add_subdirectory(src/main/cpp)
 include(bls-signatures.cmake)
 
-add_library(pthread SHARED pthread.c)
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
-set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
-set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS}    -Wl,-z,max-page-size=16384")
+if(ANDROID)
+    add_library(pthread SHARED pthread.c)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
+    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS}    -Wl,-z,max-page-size=16384")
+endif()

@@ -1,7 +1,7 @@
 package io.horizontalsystems.bitcoincore.blocks.validators
 
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.models.Block
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.assertThrows

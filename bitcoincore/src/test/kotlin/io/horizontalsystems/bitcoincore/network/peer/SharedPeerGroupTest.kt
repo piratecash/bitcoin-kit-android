@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore.network.peer
 
-import com.nhaarman.mockitokotlin2.mock
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
 import io.horizontalsystems.bitcoincore.core.IConnectionManager
 import io.horizontalsystems.bitcoincore.core.IPeerAddressManager
 import io.horizontalsystems.bitcoincore.network.Network
@@ -19,7 +20,7 @@ class SharedPeerGroupTest {
     fun setup() {
         sharedPeerGroup = SharedPeerGroup(
             mock<IPeerAddressManager>(),
-            mock<Network>(),
+            mock<Network> { on { logTag } doReturn "test" },
             mock<PeerManager>(),
             10,
             mock<NetworkMessageParser>(),

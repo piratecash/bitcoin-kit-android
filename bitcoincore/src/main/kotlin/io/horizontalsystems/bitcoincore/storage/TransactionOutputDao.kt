@@ -34,6 +34,16 @@ interface TransactionOutputDao {
           LEFT JOIN Block ON `Transaction`.blockHash = Block.headerHash
         WHERE TransactionOutput.scriptType != 0 AND `Transaction`.conflictingTxHash IS NULL
           AND NOT EXISTS (SELECT previousOutputIndex FROM TransactionInput where TransactionInput.previousOutputTxHash = TransactionOutput.transactionHash and TransactionInput.previousOutputIndex = TransactionOutput.`index`)
+          AND NOT (`Transaction`.blockHash IS NULL AND EXISTS (
+            SELECT 1 FROM TransactionInput AS own
+            INNER JOIN TransactionInput AS other
+              ON other.previousOutputTxHash = own.previousOutputTxHash
+              AND other.previousOutputIndex = own.previousOutputIndex
+              AND other.transactionHash != own.transactionHash
+            INNER JOIN `Transaction` AS spender ON spender.hash = other.transactionHash
+            WHERE own.transactionHash = `Transaction`.hash
+              AND (spender.blockHash IS NOT NULL OR other.sequence > own.sequence)
+          ))
     """)
     fun getUnspents(): List<UnspentOutput>
 
