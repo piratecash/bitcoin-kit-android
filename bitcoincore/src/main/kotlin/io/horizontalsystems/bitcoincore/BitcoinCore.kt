@@ -24,6 +24,8 @@ import io.horizontalsystems.bitcoincore.managers.IUnspentOutputSelector
 import io.horizontalsystems.bitcoincore.managers.RestoreKeyConverterChain
 import io.horizontalsystems.bitcoincore.managers.SyncManager
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorChain
+import io.horizontalsystems.bitcoincore.messages.MessageSignatureFormat
+import io.horizontalsystems.bitcoincore.messages.MessageSigner
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BitcoinPaymentData
@@ -113,6 +115,7 @@ class BitcoinCore(
     lateinit var unspentOutputSelector: UnspentOutputSelectorChain
     lateinit var watchedTransactionManager: WatchedTransactionManager
     lateinit var bloomFilterManager: BloomFilterManager
+    internal lateinit var messageSigner: MessageSigner
     var transactionSender: TransactionSender? = null
     var isShared = false
 
@@ -410,6 +413,10 @@ class BitcoinCore(
         unspentOutputs: List<UnspentOutput>,
     ): FullTransaction {
         return transactionCreator?.signRawTransaction(rawTransaction, unspentOutputs) ?: throw CoreError.ReadOnlyCore
+    }
+
+    suspend fun signMessage(address: String, message: String, format: MessageSignatureFormat): String {
+        return messageSigner.sign(address, message, format)
     }
 
     fun serializeTransaction(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {

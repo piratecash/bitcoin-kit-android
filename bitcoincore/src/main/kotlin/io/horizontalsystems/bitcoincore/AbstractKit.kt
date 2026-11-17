@@ -1,6 +1,7 @@
 package io.horizontalsystems.bitcoincore
 
 import io.horizontalsystems.bitcoincore.core.IPluginData
+import io.horizontalsystems.bitcoincore.messages.MessageSignatureFormat
 import io.horizontalsystems.bitcoincore.models.BitcoinPaymentData
 import io.horizontalsystems.bitcoincore.models.BitcoinSendInfo
 import io.horizontalsystems.bitcoincore.models.PublicKey
@@ -261,6 +262,10 @@ abstract class AbstractKit {
 
     suspend fun redeem(unspentOutput: UnspentOutput, address: String, memo: String?, feeRate: Int, sortType: TransactionDataSortType, rbfEnabled: Boolean): FullTransaction {
         return bitcoinCore.redeem(unspentOutput, address, memo, feeRate, sortType, rbfEnabled)
+    }
+
+    suspend fun signMessage(address: String, message: String, format: MessageSignatureFormat): String {
+        return bitcoinCore.signMessage(address, message, format)
     }
 
     fun receiveAddress(): String {

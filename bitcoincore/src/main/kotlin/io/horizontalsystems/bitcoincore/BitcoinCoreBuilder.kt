@@ -59,6 +59,7 @@ import io.horizontalsystems.bitcoincore.managers.UnspentOutputProvider
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelector
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorChain
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorSingleNoChange
+import io.horizontalsystems.bitcoincore.messages.MessageSigner
 import io.horizontalsystems.bitcoincore.models.Checkpoint
 import io.horizontalsystems.bitcoincore.models.WatchAddressPublicKey
 import io.horizontalsystems.bitcoincore.network.Network
@@ -741,6 +742,8 @@ class BitcoinCoreBuilder {
         dataProvider.listener = bitcoinCore
         syncManager.listener = bitcoinCore
         bitcoinCore.bloomFilterManager = bloomFilterManager
+        bitcoinCore.messageSigner =
+            MessageSigner(iInputSigner, iSchnorrInputSigner, storage, addressConverter, purpose.scriptType)
 
         val watchedTransactionManager = WatchedTransactionManager()
         bitcoinCore.addBloomFilterProvider(watchedTransactionManager)

@@ -151,5 +151,8 @@ dependencies {
 
     testImplementation("com.linkedin.dexmaker:dexmaker-mockito-inline:2.28.3")
     testImplementation("androidx.test.ext:junit:1.1.1")
+    testImplementation(libs.secp256k1.jni.jvm)
+    // Independent BIP-137 verifier for the message-signing tests.
+    testImplementation("org.bitcoinj:bitcoinj-core:0.17")
 
 }
