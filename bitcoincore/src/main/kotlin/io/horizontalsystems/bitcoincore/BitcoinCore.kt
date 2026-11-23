@@ -24,6 +24,8 @@ import io.horizontalsystems.bitcoincore.managers.IUnspentOutputSelector
 import io.horizontalsystems.bitcoincore.managers.RestoreKeyConverterChain
 import io.horizontalsystems.bitcoincore.managers.SyncManager
 import io.horizontalsystems.bitcoincore.managers.UnspentOutputSelectorChain
+import io.horizontalsystems.bitcoincore.messages.MessageSignatureFormat
+import io.horizontalsystems.bitcoincore.messages.MessageSigner
 import io.horizontalsystems.bitcoincore.models.Address
 import io.horizontalsystems.bitcoincore.models.BalanceInfo
 import io.horizontalsystems.bitcoincore.models.BitcoinPaymentData
@@ -59,6 +61,7 @@ import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.AddressExtractor
 import io.horizontalsystems.bitcoincore.transactions.TransactionCreator
 import io.horizontalsystems.bitcoincore.transactions.TransactionFeeCalculator
+import io.horizontalsystems.bitcoincore.transactions.TransactionSender
 import io.horizontalsystems.bitcoincore.transactions.TransactionSyncer
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 import io.horizontalsystems.bitcoincore.utils.AddressConverterChain
@@ -70,6 +73,7 @@ import io.horizontalsystems.hdwalletkit.HDWallet
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.HDWalletAccount
 import io.horizontalsystems.hdwalletkit.HDWalletAccountWatch
+import io.reactivex.Maybe
 import io.reactivex.Single
 import java.util.Date
 import java.util.concurrent.Executor
@@ -112,7 +116,12 @@ class BitcoinCore(
     lateinit var unspentOutputSelector: UnspentOutputSelectorChain
     lateinit var watchedTransactionManager: WatchedTransactionManager
     lateinit var bloomFilterManager: BloomFilterManager
+    internal lateinit var messageSigner: MessageSigner
+    var transactionSender: TransactionSender? = null
     var isShared = false
+
+    @Volatile
+    private var networkPaused = false
 
     private val registeredPeerGroupListeners = java.util.concurrent.CopyOnWriteArrayList<PeerGroup.Listener>()
     private val registeredBloomFilterProviders = java.util.concurrent.CopyOnWriteArrayList<IBloomFilterProvider>()
@@ -180,6 +189,9 @@ class BitcoinCore(
     val watchAccount: Boolean
         get() = transactionCreator == null
 
+    val isNetworkPaused: Boolean
+        get() = networkPaused
+
     fun getUnspentOutputs(filters: UtxoFilters): List<UnspentOutputInfo> {
         return unspentOutputSelector.getAllSpendable(filters).map {
             UnspentOutputInfo.fromUnspentOutput(it)
@@ -194,12 +206,27 @@ class BitcoinCore(
     // API methods
     //
     fun start() {
+        networkPaused = false
+        addressExtractor.start()
+        transactionSender?.resumeNetwork()
         syncManager.start()
+    }
+
+    /**
+     * Stops every network activity but keeps the kit usable for local reads:
+     * unlike [stop] it does not unregister from the shared peer group.
+     * Resume with [start].
+     */
+    fun pauseNetwork() {
+        networkPaused = true
+        addressExtractor.stop()
+        // The sender runs its own retry timer, which syncManager.stop() does not reach.
+        transactionSender?.pauseNetwork()
+        syncManager.stop()
     }
 
     fun stop() {
         addressExtractor.stop()
-        dataProvider.clear()
         syncManager.stop()
 
         // Snapshot the kit's listeners BEFORE detaching them so we still know
@@ -218,8 +245,13 @@ class BitcoinCore(
         closePeerScopedResources(peerScopedListeners)
     }
 
+    /**
+     * Final teardown. [dataProvider] is cleared only here: its balance subscription cannot be
+     * recreated, so clearing it in [stop] would leave the balance frozen after a restart.
+     */
     fun dispose() {
         stop()
+        dataProvider.clear()
     }
 
     @Synchronized
@@ -248,12 +280,25 @@ class BitcoinCore(
         connectionManager.onEnterBackground()
     }
 
-    fun transactions(fromUid: String? = null, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
-        return dataProvider.transactions(fromUid, type, limit)
+    fun transactions(
+        fromUid: String? = null,
+        type: TransactionFilterType? = null,
+        limit: Int? = null,
+        sinceTimestamp: Long? = null,
+        untilTimestamp: Long? = null
+    ): Single<List<TransactionInfo>> {
+        return dataProvider.transactions(fromUid, type, limit, sinceTimestamp, untilTimestamp)
             .doOnSuccess { updateInputAddressesIfNeed(it) }
     }
 
+    fun oldestTransactionTimestamp(type: TransactionFilterType?): Maybe<Long> {
+        return dataProvider.oldestTransactionTimestamp(type)
+    }
+
     private fun updateInputAddressesIfNeed(transactions: List<TransactionInfo>) {
+        // AddressExtractor raises its own scope, so a paused kit would still reach the API from here.
+        if (networkPaused) return
+
         addressExtractor.requestInputsByHash(transactions.map { it.transactionHash.hexToByteArray().reversedArray() })
     }
 
@@ -379,6 +424,10 @@ class BitcoinCore(
         unspentOutputs: List<UnspentOutput>,
     ): FullTransaction {
         return transactionCreator?.signRawTransaction(rawTransaction, unspentOutputs) ?: throw CoreError.ReadOnlyCore
+    }
+
+    suspend fun signMessage(address: String, message: String, format: MessageSignatureFormat): String {
+        return messageSigner.sign(address, message, format)
     }
 
     fun serializeTransaction(transaction: FullTransaction, withWitness: Boolean = true): ByteArray {

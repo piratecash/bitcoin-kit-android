@@ -24,6 +24,8 @@ import io.horizontalsystems.bitcoincore.transactions.TransactionSizeCalculator
 import io.horizontalsystems.bitcoincore.transactions.builder.LockTimeSetter
 import io.horizontalsystems.bitcoincore.transactions.builder.MutableTransaction
 import io.horizontalsystems.bitcoincore.transactions.extractors.TransactionMetadataExtractor
+import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
+import io.horizontalsystems.bitcoincore.utils.IAddressConverter
 import io.horizontalsystems.bitcoincore.utils.ShuffleSorter
 import kotlin.math.min
 
@@ -38,30 +40,37 @@ class ReplacementTransactionBuilder(
     private val conflictsResolver: TransactionConflictsResolver,
     private val transactionSerializer: BaseTransactionSerializer,
     private val lockTimeSetter: LockTimeSetter,
-    private val transactionVersion: Int
+    private val transactionVersion: Int,
+    private val addressConverter: IAddressConverter,
+    private val changeScriptType: ScriptType
 ) {
+
+    private fun minReplacementFee(replacedFee: Long, size: Long) = replacedFee + INCREMENTAL_RELAY_FEE_RATE * size
+
+    private fun requiredFee(replacedFee: Long, minFeeRate: Int, size: Long) =
+        maxOf((minFeeRate + INCREMENTAL_RELAY_FEE_RATE) * size, minReplacementFee(replacedFee, size))
+
+    // Signatures can be shorter than estimated, so the estimate understates the real rate; stored ones can't help, peer-fetched transactions lack witness.
+    private fun originalFeeRate(originalFee: Long, originalSize: Long, inputCount: Int) =
+        (originalFee / (originalSize - inputCount)).toInt()
 
     private fun replacementTransaction(
         minFee: Long,
+        replacedFee: Long,
         minFeeRate: Int,
         utxo: List<TransactionOutput>,
         fixedOutputs: List<TransactionOutput>,
         outputs: List<TransactionOutput>
     ): Pair<List<TransactionOutput>, /*Fee*/Long>? {
 
-        var minFee = minFee
         val size = sizeCalculator.transactionSize(previousOutputs = utxo, outputs = fixedOutputs + outputs)
 
         val inputsValue = utxo.sumOf { it.value }
         val outputsValue = (fixedOutputs + outputs).sumOf { it.value }
         val fee = inputsValue - outputsValue
-        val feeRate = fee / size
+        val required = maxOf(minFee, requiredFee(replacedFee, minFeeRate, size))
 
-        if (feeRate < minFeeRate) {
-            minFee = minFeeRate * size
-        }
-
-        if (fee >= minFee) {
+        if (fee == required || (fee > required && outputs.isEmpty())) {
             return Pair(outputs, fee)
         }
 
@@ -70,13 +79,49 @@ class ReplacementTransactionBuilder(
         }
 
         val output = TransactionOutput(outputs.first())
-        output.value = output.value - (minFee - fee)
+        output.value = output.value + fee - required
 
         if (output.value > dustCalculator.dust(output.scriptType)) {
-            return Pair(listOf(output) + outputs.drop(1), fee)
+            return Pair(listOf(output) + outputs.drop(1), required)
         }
 
         return null
+    }
+
+    private fun maxSpeedUpFee(
+        replacedFee: Long,
+        minFeeRate: Int,
+        fixedUtxo: List<TransactionOutput>,
+        fixedOutputs: List<TransactionOutput>
+    ): Long? {
+        val unusedUtxo = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sortedBy { it.output.value }
+
+        return (0..unusedUtxo.size).mapNotNull { utxoCount ->
+            replacementTransaction(
+                minFee = 0,
+                replacedFee = replacedFee,
+                minFeeRate = minFeeRate,
+                utxo = fixedUtxo + unusedUtxo.take(utxoCount).map { it.output },
+                fixedOutputs = fixedOutputs,
+                outputs = emptyList()
+            )?.second
+        }.maxOrNull()
+    }
+
+    private fun ownOutput(value: Long, address: Address, publicKey: PublicKey) = TransactionOutput(
+        value = value,
+        index = 0,
+        script = address.lockingScript,
+        type = address.scriptType,
+        address = address.stringValue,
+        lockingScriptPayload = address.lockingScriptPayload,
+        publicKey = publicKey
+    )
+
+    private fun newChangeOutput(value: Long): TransactionOutput {
+        val publicKey = publicKeyManager.changePublicKey()
+
+        return ownOutput(value, addressConverter.convert(publicKey, changeScriptType), publicKey)
     }
 
     private fun incrementedSequence(inputWithPreviousOutput: InputWithPreviousOutput): Long {
@@ -127,6 +172,7 @@ class ReplacementTransactionBuilder(
     private fun speedUpReplacement(
         originalFullInfo: FullTransactionInfo,
         minFee: Long,
+        replacedFee: Long,
         originalFeeRate: Int,
         fixedUtxo: List<TransactionOutput>
     ): MutableTransaction? {
@@ -144,34 +190,45 @@ class ReplacementTransactionBuilder(
         val unusedUtxo = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sortedBy { it.output.value }
         var optimalReplacement: Triple</*inputs*/ List<UnspentOutput>, /*outputs*/ List<TransactionOutput>, /*fee*/ Long>? = null
 
+        fun tryCandidate(utxo: List<UnspentOutput>, outputs: List<TransactionOutput>) {
+            replacementTransaction(
+                minFee = minFee,
+                replacedFee = replacedFee,
+                minFeeRate = originalFeeRate,
+                utxo = fixedUtxo + utxo.map { it.output },
+                fixedOutputs = fixedOutputs,
+                outputs = outputs
+            )?.let { (outputs, fee) ->
+                optimalReplacement.let { _optimalReplacement ->
+                    if (_optimalReplacement != null) {
+                        if (_optimalReplacement.third > fee) {
+                            optimalReplacement = Triple(utxo, outputs, fee)
+                        }
+                    } else {
+                        optimalReplacement = Triple(utxo, outputs, fee)
+                    }
+                }
+            }
+        }
+
+        // Stands in for a new change output, so no key is requested unless this candidate wins.
+        val changePlaceholder = TransactionOutput().apply { scriptType = changeScriptType }
+
         var utxoCount = 0
         do {
             val utxo = unusedUtxo.take(utxoCount)
             var outputsCount = sortedOutputs.size
 
             do {
-                val outputs = sortedOutputs.takeLast(outputsCount)
-
-                replacementTransaction(
-                    minFee = minFee,
-                    minFeeRate = originalFeeRate,
-                    utxo = fixedUtxo + utxo.map { it.output },
-                    fixedOutputs = fixedOutputs,
-                    outputs = outputs
-                )?.let { (outputs, fee) ->
-                    optimalReplacement.let { _optimalReplacement ->
-                        if (_optimalReplacement != null) {
-                            if (_optimalReplacement.third > fee) {
-                                optimalReplacement = Triple(utxo, outputs, fee)
-                            }
-                        } else {
-                            optimalReplacement = Triple(utxo, outputs, fee)
-                        }
-                    }
-                }
+                tryCandidate(utxo, sortedOutputs.takeLast(outputsCount))
 
                 outputsCount--
             } while (outputsCount >= 0)
+
+            // Tried last: on a fee tie the candidate without a new output must stay the winner.
+            if (utxo.isNotEmpty()) {
+                tryCandidate(utxo, listOf(changePlaceholder))
+            }
 
             utxoCount++
         } while (utxoCount <= unusedUtxo.size)
@@ -186,7 +243,7 @@ class ReplacementTransactionBuilder(
             )
             setOutputs(
                 mutableTransaction = mutableTransaction,
-                outputs = fixedOutputs + outputs
+                outputs = fixedOutputs + outputs.map { if (it.publicKeyPath == null) newChangeOutput(it.value) else it }
             )
             lockTimeSetter.setLockTime(mutableTransaction)
             mutableTransaction
@@ -196,6 +253,7 @@ class ReplacementTransactionBuilder(
     private fun cancelReplacement(
         originalFullInfo: FullTransactionInfo,
         minFee: Long,
+        replacedFee: Long,
         originalFeeRate: Int,
         fixedUtxo: List<TransactionOutput>,
         userAddress: Address,
@@ -207,17 +265,7 @@ class ReplacementTransactionBuilder(
         var optimalReplacement: Triple</*inputs*/ List<UnspentOutput>, /*outputs*/ List<TransactionOutput>, /*fee*/ Long>? = null
 
         var utxoCount = 0
-        val outputs = listOf(
-            TransactionOutput(
-                value = originalInputsValue - minFee,
-                index = 0,
-                script = userAddress.lockingScript,
-                type = userAddress.scriptType,
-                address = userAddress.stringValue,
-                lockingScriptPayload = userAddress.lockingScriptPayload,
-                publicKey = publicKey
-            )
-        )
+        val outputs = listOf(ownOutput(originalInputsValue - minFee, userAddress, publicKey))
         do {
             if (originalInputsValue - minFee < dustCalculator.dust(userAddress.scriptType)) {
                 utxoCount++
@@ -228,6 +276,7 @@ class ReplacementTransactionBuilder(
 
             replacementTransaction(
                 minFee = minFee,
+                replacedFee = replacedFee,
                 minFeeRate = originalFeeRate,
                 utxo = fixedUtxo + utxo.map { it.output },
                 fixedOutputs = listOf(),
@@ -286,7 +335,7 @@ class ReplacementTransactionBuilder(
 
         val originalSize = sizeCalculator.transactionSize(previousOutputs = fixedUtxo, outputs = originalFullInfo.outputs)
 
-        val originalFeeRate = (originalFee / originalSize).toInt()
+        val originalFeeRate = originalFeeRate(originalFee, originalSize, fixedUtxo.size)
         val descendantTransactions = storage.getDescendantTransactionsFullInfo(transactionHash.toReversedByteArray())
         val absoluteFee = descendantTransactions.sumOf { it.metadata.fee ?: 0 }
 
@@ -297,18 +346,20 @@ class ReplacementTransactionBuilder(
             throw BuildError.InvalidTransaction("Already replaced")
         }
 
-        check(absoluteFee <= minFee) { throw BuildError.FeeTooLow }
+        check(minReplacementFee(absoluteFee, originalSize) <= minFee) { throw BuildError.FeeTooLow }
 
         val mutableTransaction = when (type) {
             ReplacementType.SpeedUp -> speedUpReplacement(
                 originalFullInfo,
                 minFee,
+                absoluteFee,
                 originalFeeRate,
                 fixedUtxo
             )
             is ReplacementType.Cancel -> cancelReplacement(
                 originalFullInfo,
                 minFee,
+                absoluteFee,
                 originalFeeRate,
                 fixedUtxo,
                 type.address,
@@ -362,8 +413,11 @@ class ReplacementTransactionBuilder(
             return null
         }
 
+        val originalSize = sizeCalculator.transactionSize(previousOutputs = fixedUtxo, outputs = originalFullInfo.outputs)
+        val originalFeeRate = originalFeeRate(originalFee, originalSize, fixedUtxo.size)
+
         val replacementTxMinSize: Long
-        val removableOutputsValue: Long
+        val maxFeeAmount: Long?
 
         when (type) {
             ReplacementType.SpeedUp -> {
@@ -372,14 +426,13 @@ class ReplacementTransactionBuilder(
                 val myChangeOutputs = myOutputs.filter { it.changeOutput }.sortedBy { it.value }
                 val myExternalOutputs = myOutputs.filter { !it.changeOutput }.sortedBy { it.value }
 
-                var sortedOutputs = myChangeOutputs + myExternalOutputs
+                val sortedOutputs = myChangeOutputs + myExternalOutputs
                 if (fixedOutputs.isEmpty() && sortedOutputs.isNotEmpty()) {
                     fixedOutputs = listOf(sortedOutputs.last())
-                    sortedOutputs = sortedOutputs.dropLast(1)
                 }
 
                 replacementTxMinSize = sizeCalculator.transactionSize(fixedUtxo, fixedOutputs)
-                removableOutputsValue = sortedOutputs.sumOf { it.value }
+                maxFeeAmount = maxSpeedUpFee(absoluteFee, originalFeeRate, fixedUtxo, fixedOutputs)
             }
 
             is ReplacementType.Cancel -> {
@@ -395,17 +448,18 @@ class ReplacementTransactionBuilder(
                     )
                 )
                 replacementTxMinSize = sizeCalculator.transactionSize(fixedUtxo, fixedOutputs)
-                removableOutputsValue = originalFullInfo.outputs.sumOf { it.value } - dustValue
+                val removableOutputsValue = originalFullInfo.outputs.sumOf { it.value } - dustValue
+                val confirmedUtxoTotalValue = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sumOf { it.output.value }
+                maxFeeAmount = originalFee + removableOutputsValue + confirmedUtxoTotalValue
             }
         }
 
-        val confirmedUtxoTotalValue = unspentOutputProvider.getConfirmedSpendableUtxo(UtxoFilters()).sumOf { it.output.value }
-        val maxFeeAmount = originalFee + removableOutputsValue + confirmedUtxoTotalValue
+        val minFeeAmount = minReplacementFee(absoluteFee, originalSize)
 
-        return if (absoluteFee > maxFeeAmount) {
+        return if (maxFeeAmount == null || minFeeAmount > maxFeeAmount) {
             null
         } else {
-            ReplacementTransactionInfo(replacementTxMinSize, LongRange(absoluteFee, maxFeeAmount))
+            ReplacementTransactionInfo(replacementTxMinSize, LongRange(minFeeAmount, maxFeeAmount))
         }
     }
 
@@ -415,5 +469,10 @@ class ReplacementTransactionBuilder(
         object FeeTooLow : BuildError()
         object RbfNotEnabled : BuildError()
         object UnableToReplace : BuildError()
+    }
+
+    private companion object {
+        // sat/vB. BIP125 rule 4 minimum on Litecoin Core and older Bitcoin Core; also lifts a truncated fee rate above the true one.
+        const val INCREMENTAL_RELAY_FEE_RATE = 1L
     }
 }

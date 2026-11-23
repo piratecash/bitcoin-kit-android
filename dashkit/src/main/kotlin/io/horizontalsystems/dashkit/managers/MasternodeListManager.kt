@@ -1,5 +1,6 @@
 package io.horizontalsystems.dashkit.managers
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.core.HashBytes
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
 import io.horizontalsystems.bitcoincore.utils.HashUtils
@@ -9,7 +10,6 @@ import io.horizontalsystems.dashkit.masternodelist.MasternodeCbTxHasher
 import io.horizontalsystems.dashkit.masternodelist.MasternodeListMerkleRootCalculator
 import io.horizontalsystems.dashkit.messages.MasternodeListDiffMessage
 import io.horizontalsystems.dashkit.models.MasternodeListState
-import timber.log.Timber
 
 class MasternodeListManager(
     private val storage: IDashStorage,
@@ -20,6 +20,8 @@ class MasternodeListManager(
     private val quorumListManager: QuorumListManager,
     private val logTag: String
 ) {
+    private val log = Logger.withTag(logTag)
+
     private val updateLock = Any()
 
     open class ValidationError : Exception() {
@@ -47,7 +49,7 @@ class MasternodeListManager(
         // Check if we've already processed this block
         val currentState = storage.masternodeListState
         if (currentState?.baseBlockHash?.contentEquals(masternodeListDiffMessage.blockHash) == true) {
-            Timber.tag(logTag).d("Block ${masternodeListDiffMessage.blockHash.toReversedHex()} already processed, skipping")
+            log.d { "Block ${masternodeListDiffMessage.blockHash.toReversedHex()} already processed, skipping" }
             return
         }
 
@@ -67,7 +69,7 @@ class MasternodeListManager(
 
         //05.
         if (hash != null && !masternodeListDiffMessage.cbTx.merkleRootMNList.contentEquals(hash)) {
-            Timber.tag(logTag).e("=== MERKLE ROOT MISMATCH ===")
+            log.e { "=== MERKLE ROOT MISMATCH ===" }
             throw ValidationError.WrongMerkleRootList
         }
 

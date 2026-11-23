@@ -38,4 +38,6 @@ class MainNetECash : Network() {
     override val chainIdentityAnchorHash: ByteArray = lastCheckpoint.block.headerHash
 
     override val logTag = "ECASH"
+
+    override val usesPlainBlockHeaders = true
 }

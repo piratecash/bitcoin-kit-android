@@ -1,10 +1,10 @@
 package io.horizontalsystems.bitcoincore.managers
 
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.never
-import com.nhaarman.mockitokotlin2.times
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.BitcoinCore
 import io.horizontalsystems.bitcoincore.BitcoinCore.SyncMode
 import io.horizontalsystems.bitcoincore.core.IApiSyncer
@@ -183,6 +183,32 @@ class SyncManagerTest {
         syncManager.start()
 
         verify(peerGroup, times(2)).start()
+    }
+
+    // --- api syncer callbacks arriving after stop() must not resurrect the sync ---
+    // (The syncer's network calls block uninterruptibly, so a callback can land after
+    //  pauseNetwork(); any state but NotStarted makes the resuming start() an early return.)
+
+    @Test
+    fun onTransactionsFound_afterStop_keepsNotStartedState() {
+        syncManager.start()
+        syncManager.stop()
+
+        syncManager.onTransactionsFound(5)
+
+        val state = syncManager.syncState
+        assertTrue(state is BitcoinCore.KitState.NotSynced)
+        assertTrue((state as BitcoinCore.KitState.NotSynced).exception is BitcoinCore.StateError.NotStarted)
+    }
+
+    @Test
+    fun onSyncSuccess_afterStop_doesNotRestartPeerGroup() {
+        syncManager.start()
+        syncManager.stop()
+
+        syncManager.onSyncSuccess()
+
+        verify(peerGroup, times(1)).start()
     }
 
     // --- ownership acquisition when SharedPeerGroup is already running by a sibling ---

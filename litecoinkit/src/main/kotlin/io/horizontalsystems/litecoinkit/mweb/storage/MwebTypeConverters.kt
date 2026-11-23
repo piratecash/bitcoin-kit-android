@@ -1,19 +1,16 @@
 package io.horizontalsystems.litecoinkit.mweb.storage
 
 import androidx.room.TypeConverter
-import org.json.JSONArray
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
+
+private val stringListSerializer = ListSerializer(String.serializer())
 
 class MwebTypeConverters {
     @TypeConverter
-    fun toStringList(value: String): List<String> {
-        val jsonArray = JSONArray(value)
-        return List(jsonArray.length()) { index -> jsonArray.getString(index) }
-    }
+    fun toStringList(value: String): List<String> = Json.decodeFromString(stringListSerializer, value)
 
     @TypeConverter
-    fun fromStringList(value: List<String>): String {
-        val jsonArray = JSONArray()
-        value.forEach { item -> jsonArray.put(item) }
-        return jsonArray.toString()
-    }
+    fun fromStringList(value: List<String>): String = Json.encodeToString(stringListSerializer, value)
 }

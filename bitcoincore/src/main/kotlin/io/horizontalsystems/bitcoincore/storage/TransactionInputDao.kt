@@ -43,4 +43,19 @@ interface TransactionInputDao {
     @Query("SELECT * FROM TransactionInput where TransactionInput.previousOutputTxHash = :prevOutputTxHash and TransactionInput.previousOutputIndex = :prevOutputIndex")
     fun getInput(prevOutputTxHash: ByteArray, prevOutputIndex: Long): TransactionInput?
 
+    @Query("SELECT * FROM TransactionInput WHERE previousOutputTxHash = :prevOutputTxHash AND previousOutputIndex = :prevOutputIndex")
+    fun getInputs(prevOutputTxHash: ByteArray, prevOutputIndex: Long): List<TransactionInput>
+
+    @Query("""
+        SELECT EXISTS (
+            SELECT 1 FROM TransactionInput AS own
+            INNER JOIN TransactionInput AS other
+                ON other.previousOutputTxHash = own.previousOutputTxHash
+                AND other.previousOutputIndex = own.previousOutputIndex
+                AND other.transactionHash != own.transactionHash
+            WHERE own.transactionHash = :txHash
+        )
+    """)
+    fun hasConflictingInput(txHash: ByteArray): Boolean
+
 }

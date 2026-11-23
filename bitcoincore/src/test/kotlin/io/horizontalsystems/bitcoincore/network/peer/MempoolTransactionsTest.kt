@@ -1,11 +1,11 @@
 package io.horizontalsystems.bitcoincore.network.peer
 
-import com.nhaarman.mockitokotlin2.check
-import com.nhaarman.mockitokotlin2.doReturn
-import com.nhaarman.mockitokotlin2.mock
-import com.nhaarman.mockitokotlin2.never
-import com.nhaarman.mockitokotlin2.verify
-import com.nhaarman.mockitokotlin2.whenever
+import org.mockito.kotlin.check
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import io.horizontalsystems.bitcoincore.models.InventoryItem
 import io.horizontalsystems.bitcoincore.network.peer.task.PeerTask
 import io.horizontalsystems.bitcoincore.network.peer.task.RequestTransactionsTask
@@ -97,7 +97,7 @@ class MempoolTransactionsTest {
 
         mempoolTransactions.handleInventoryItems(peer, items)
 
-        verify(peer, never()).addTask(com.nhaarman.mockitokotlin2.any())
+        verify(peer, never()).addTask(org.mockito.kotlin.any())
     }
 
     // Null sender

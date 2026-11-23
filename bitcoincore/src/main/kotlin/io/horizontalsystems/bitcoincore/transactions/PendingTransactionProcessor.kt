@@ -10,6 +10,7 @@ import io.horizontalsystems.bitcoincore.managers.BloomFilterManager
 import io.horizontalsystems.bitcoincore.managers.IIrregularOutputFinder
 import io.horizontalsystems.bitcoincore.models.Transaction
 import io.horizontalsystems.bitcoincore.models.TransactionType
+import io.horizontalsystems.bitcoincore.rbf.ReplacementTransactionBuilder
 import io.horizontalsystems.bitcoincore.storage.FullTransaction
 import io.horizontalsystems.bitcoincore.transactions.extractors.TransactionExtractor
 
@@ -31,6 +32,8 @@ class PendingTransactionProcessor(
         val conflictingTransactions = conflictsResolver.getTransactionsConflictingWithPendingTransaction(transaction)
 
         for (conflictingTransaction in conflictingTransactions) {
+            storage.moveConflicts(conflictingTransaction.hash, transaction.header.hash)
+
             for (descendantTransaction in storage.getDescendantTransactions(conflictingTransaction.hash)) {
                 descendantTransaction.conflictingTxHash = transaction.header.hash
                 storage.updateTransaction(descendantTransaction)
@@ -42,6 +45,10 @@ class PendingTransactionProcessor(
     fun processCreated(transaction: FullTransaction) {
         if (storage.getTransaction(transaction.header.hash) != null) {
             throw TransactionCreator.TransactionAlreadyExists("hash = ${transaction.header.hash.toReversedHex()}")
+        }
+        // A replacement built from a screen left open: its inputs would stay locked until the retries run out.
+        if (conflictsResolver.isSpentByMinedTransaction(transaction)) {
+            throw ReplacementTransactionBuilder.BuildError.InvalidTransaction("Already mined")
         }
 
         processNew(transaction)

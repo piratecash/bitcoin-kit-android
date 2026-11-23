@@ -1,6 +1,6 @@
 package io.horizontalsystems.litecoinkit.mweb
 
-import android.content.Context
+import io.horizontalsystems.databasenaming.DatabaseNameResolver
 import io.horizontalsystems.litecoinkit.LitecoinKit
 import java.util.concurrent.ConcurrentHashMap
 
@@ -8,25 +8,31 @@ internal object LitecoinMwebEngineRegistry {
     private val entries = ConcurrentHashMap<Key, Entry>()
 
     fun acquire(
-        context: Context,
+        dataDir: String,
+        mwebDataDir: String,
         seed: ByteArray,
+        databaseKey: ByteArray?,
         walletId: String,
         networkType: LitecoinKit.NetworkType,
         config: MwebConfig,
+        nameResolver: DatabaseNameResolver = DatabaseNameResolver.Identity,
     ): LitecoinMwebEngineHandle {
         val key = Key(walletId, networkType)
         while (true) {
             val entry = entries[key] ?: Entry(
-                context = context,
+                dataDir = dataDir,
+                mwebDataDir = mwebDataDir,
                 seed = seed,
+                databaseKey = databaseKey,
                 walletId = walletId,
                 networkType = networkType,
                 config = config,
+                nameResolver = nameResolver,
             ).let { candidate ->
-                entries.putIfAbsent(key, candidate) ?: candidate
+                entries.putIfAbsent(key, candidate)?.also { candidate.dispose() } ?: candidate
             }
 
-            if (!entry.acquire(config)) {
+            if (!entry.acquire(config, databaseKey)) {
                 entries.remove(key, entry)
                 continue
             }
@@ -42,13 +48,15 @@ internal object LitecoinMwebEngineRegistry {
         }
     }
 
-    fun clear(context: Context, walletId: String, networkType: LitecoinKit.NetworkType) {
-        val key = Key(walletId, networkType)
-        val activeEntry = entries[key]
-        check(activeEntry == null) {
-            "Cannot clear active MWEB engine for $walletId ${networkType.name}; dispose all LitecoinKit instances first"
+    fun clear(dataDir: String, mwebDataDir: String, walletId: String, networkType: LitecoinKit.NetworkType) {
+        checkInactive(walletId, networkType)
+        MwebFiles.clear(dataDir, mwebDataDir, networkType, walletId)
+    }
+
+    fun checkInactive(walletId: String, networkType: LitecoinKit.NetworkType) {
+        check(entries[Key(walletId, networkType)] == null) {
+            "Dispose all active LitecoinKit instances for $walletId ${networkType.name} first"
         }
-        MwebFiles.clear(context.applicationContext, networkType, walletId)
     }
 
     internal fun start(key: Key) {
@@ -78,31 +86,42 @@ internal object LitecoinMwebEngineRegistry {
 
     /** Mutable lifecycle counters in this class are guarded by the entry monitor. */
     private class Entry(
-        context: Context,
+        private val dataDir: String,
+        private val mwebDataDir: String,
         seed: ByteArray,
+        databaseKey: ByteArray?,
         walletId: String,
         private val networkType: LitecoinKit.NetworkType,
         config: MwebConfig,
+        private val nameResolver: DatabaseNameResolver,
         var references: Int = 0,
         var starts: Int = 0,
     ) {
-        private val context = context.applicationContext
         private val seed = seed.copyOf()
+        private val databaseKey = databaseKey?.copyOf()
         private val restorePoint = config.restorePoint
         private val peerAddress = config.peerAddress
         private val dispatcherProvider = config.dispatcherProvider
         private val daemonClientFactory = config.daemonClientFactory
+        private val disableDebugLog = config.disableDebugLog
         private val walletId = walletId
         private var engine: LitecoinMwebEngine? = null
         private var disposed = false
         private var closing = false
 
         @Synchronized
-        fun acquire(config: MwebConfig): Boolean {
+        fun acquire(config: MwebConfig, databaseKey: ByteArray?): Boolean {
             if (disposed || closing) return false
 
-            check(config.restorePoint == restorePoint && config.peerAddress == peerAddress) {
+            check(
+                config.restorePoint == restorePoint &&
+                    config.peerAddress == peerAddress &&
+                    config.disableDebugLog == disableDebugLog
+            ) {
                 "Conflicting MWEB config for $walletId ${networkType.name}"
+            }
+            check(this.databaseKey.contentEqualsNullable(databaseKey)) {
+                "Conflicting MWEB database key for $walletId ${networkType.name}"
             }
             references += 1
             return true
@@ -114,14 +133,18 @@ internal object LitecoinMwebEngineRegistry {
             engine?.let { return it }
 
             return LitecoinMwebEngine(
-                context = context,
+                dataDir = dataDir,
+                mwebDataDir = mwebDataDir,
                 seed = seed,
+                databaseKey = databaseKey,
                 walletId = walletId,
                 dispatcherProvider = dispatcherProvider,
                 networkType = networkType,
                 restorePoint = restorePoint,
                 peerAddress = peerAddress,
                 daemonClientFactory = daemonClientFactory,
+                nameResolver = nameResolver,
+                disableDebugLog = disableDebugLog,
             ).also { engine = it }
         }
 
@@ -180,7 +203,15 @@ internal object LitecoinMwebEngineRegistry {
             starts = 0
             engine?.dispose()
             engine = null
+            seed.fill(0)
+            databaseKey?.fill(0)
         }
+    }
+
+    private fun ByteArray?.contentEqualsNullable(other: ByteArray?): Boolean = when {
+        this == null -> other == null
+        other == null -> false
+        else -> contentEquals(other)
     }
 }
 

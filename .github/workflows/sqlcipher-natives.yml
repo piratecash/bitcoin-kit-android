@@ -1,0 +1,131 @@
+name: SQLCipher natives
+
+on:
+  pull_request:
+    paths:
+      - 'sqlcipher-driver/**'
+      - 'gradle/natives.gradle'
+      - '.github/workflows/sqlcipher-natives.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'sqlcipher-driver/**'
+      - 'gradle/natives.gradle'
+      - '.github/workflows/sqlcipher-natives.yml'
+  workflow_call:
+    inputs:
+      linux_only:
+        description: Build only the Linux native, the one Android CI runs its JVM tests against.
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+env:
+  SQLCIPHER_COMMIT: 810db22f575ee7cf94ea96a3e91622b5fcece3dc
+  LIBTOMCRYPT_COMMIT: 7e7eb695d581782f04b24dc444cbfde86af59853
+
+# Every Gradle call below uses --configure-on-demand: the driver is a plain JVM module with
+# no project dependencies, while configuring the Android kits needs an SDK the glibc-compat
+# container does not have.
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-24.04
+    container: quay.io/pypa/manylinux_2_28_x86_64:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Install SQLCipher build tools
+        run: dnf install -y cmake git tcl
+
+      - name: Generate pinned SQLCipher amalgamation
+        run: |
+          set -euo pipefail
+          git clone https://github.com/sqlcipher/sqlcipher.git "$RUNNER_TEMP/sqlcipher"
+          git -C "$RUNNER_TEMP/sqlcipher" checkout "$SQLCIPHER_COMMIT"
+          cd "$RUNNER_TEMP/sqlcipher"
+          ./configure --with-tempstore=yes --disable-tcl \
+            CFLAGS='-O2 -fPIC -DSQLITE_HAS_CODEC -DSQLCIPHER_CRYPTO_LIBTOMCRYPT -DSQLITE_TEMP_STORE=2 -DSQLITE_THREADSAFE=1 -DSQLITE_EXTRA_INIT=sqlcipher_extra_init -DSQLITE_EXTRA_SHUTDOWN=sqlcipher_extra_shutdown'
+          make sqlite3.c
+          mkdir "$RUNNER_TEMP/sqlcipher-amalgamation"
+          cp sqlite3.c sqlite3.h "$RUNNER_TEMP/sqlcipher-amalgamation/"
+
+      - name: Check out pinned LibTomCrypt
+        run: |
+          git clone https://github.com/libtom/libtomcrypt.git "$RUNNER_TEMP/libtomcrypt"
+          git -C "$RUNNER_TEMP/libtomcrypt" checkout "$LIBTOMCRYPT_COMMIT"
+
+      # Two invocations, so `test` sees the binary buildNative just produced.
+      - name: Build and test Linux native
+        run: |
+          ./gradlew --configure-on-demand :sqlcipher-driver:buildNative \
+            -PsqlcipherSourceDir="$RUNNER_TEMP/sqlcipher-amalgamation" \
+            -PlibtomcryptSourceDir="$RUNNER_TEMP/libtomcrypt"
+          ./gradlew --configure-on-demand :sqlcipher-driver:test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-native-linux-x64
+          path: sqlcipher-driver/prebuilt/natives/linux-x64/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-amalgamation
+          path: ${{ runner.temp }}/sqlcipher-amalgamation/
+          if-no-files-found: error
+
+  desktop:
+    needs: linux-x64
+    if: ${{ !inputs.linux_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: windows-x64
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sqlcipher-amalgamation
+          path: ${{ runner.temp }}/sqlcipher-amalgamation
+
+      - name: Check out pinned LibTomCrypt
+        run: |
+          git clone https://github.com/libtom/libtomcrypt.git "$RUNNER_TEMP/libtomcrypt"
+          git -C "$RUNNER_TEMP/libtomcrypt" checkout "$LIBTOMCRYPT_COMMIT"
+
+      - name: Build and test ${{ matrix.target }} native
+        run: |
+          ./gradlew --configure-on-demand :sqlcipher-driver:buildNative \
+            -PnativeTarget=${{ matrix.target }} \
+            -PsqlcipherSourceDir="$RUNNER_TEMP/sqlcipher-amalgamation" \
+            -PlibtomcryptSourceDir="$RUNNER_TEMP/libtomcrypt"
+          ./gradlew --configure-on-demand :sqlcipher-driver:test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqlcipher-native-${{ matrix.target }}
+          path: sqlcipher-driver/prebuilt/natives/${{ matrix.target }}/
+          if-no-files-found: error

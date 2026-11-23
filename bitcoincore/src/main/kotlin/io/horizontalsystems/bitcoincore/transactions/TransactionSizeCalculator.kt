@@ -1,7 +1,6 @@
 package io.horizontalsystems.bitcoincore.transactions
 
 import io.horizontalsystems.bitcoincore.models.TransactionOutput
-import io.horizontalsystems.bitcoincore.transactions.scripts.OP_RETURN
 import io.horizontalsystems.bitcoincore.transactions.scripts.OpCodes
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
 
@@ -81,8 +80,7 @@ class TransactionSizeCalculator {
     private fun getMemoSize(memo: String?): Int {
         if (memo == null) return 0
 
-        val memoData = memo.toByteArray(Charsets.UTF_8)
-        val lockingScript = byteArrayOf(OP_RETURN.toByte()) + OpCodes.push(memoData)
+        val lockingScript = OpCodes.nullData(memo.toByteArray(Charsets.UTF_8))
         return outputSize(lockingScriptSize = lockingScript.size) * 4
     }
 

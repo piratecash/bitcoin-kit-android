@@ -1,5 +1,6 @@
 package io.horizontalsystems.bitcoincore.core
 
+import co.touchlab.kermit.Logger
 import io.horizontalsystems.bitcoincore.blocks.IBlockchainDataListener
 import io.horizontalsystems.bitcoincore.extensions.hexToByteArray
 import io.horizontalsystems.bitcoincore.extensions.toReversedHex
@@ -14,11 +15,11 @@ import io.horizontalsystems.bitcoincore.storage.FullTransactionInfo
 import io.horizontalsystems.bitcoincore.storage.TransactionWithBlock
 import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
+import io.reactivex.Maybe
 import io.reactivex.Single
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import java.util.concurrent.TimeUnit
-import timber.log.Timber
 
 class DataProvider(
         private val storage: IStorage,
@@ -26,6 +27,7 @@ class DataProvider(
         private val transactionInfoConverter: ITransactionInfoConverter,
         private val logTag: String
 ) : IBlockchainDataListener {
+    private val log = Logger.withTag(logTag)
 
     interface Listener {
         fun onTransactionsUpdate(inserted: List<TransactionInfo>, updated: List<TransactionInfo>)
@@ -66,12 +68,12 @@ class DataProvider(
         if (block.height > (lastBlockInfo?.height ?: 0)) {
             val blockInfo = blockInfo(block)
 
-//            Timber.tag(logTag).d("Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}")
+//            log.d { "Last block updated: hash=${block.headerHash.toHexString()}, height=${block.height}, previousHeight=${lastBlockInfo?.height}" }
             lastBlockInfo = blockInfo
             listener?.onLastBlockInfoUpdate(blockInfo)
             balanceUpdateSubject.onNext(true)
         } else {
-            Timber.tag(logTag).d("Block inserted but not updating last block: hash=${block.headerHash.toHexString()}, height=${block.height}, currentLastHeight=${lastBlockInfo?.height}")
+            log.d { "Block inserted but not updating last block: hash=${block.headerHash.toHexString()}, height=${block.height}, currentLastHeight=${lastBlockInfo?.height}" }
         }
     }
 
@@ -96,11 +98,17 @@ class DataProvider(
         balanceSubjectDisposable.dispose()
     }
 
-    fun transactions(fromUid: String?, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
+    fun transactions(
+        fromUid: String?,
+        type: TransactionFilterType? = null,
+        limit: Int? = null,
+        sinceTimestamp: Long? = null,
+        untilTimestamp: Long? = null
+    ): Single<List<TransactionInfo>> {
         return Single.create { emitter ->
             try {
                 val fromTransaction = fromUid?.let { storage.getValidOrInvalidTransaction(it) }
-                val transactions = storage.getFullTransactionInfo(fromTransaction, type, limit)
+                val transactions = storage.getFullTransactionInfo(fromTransaction, type, limit, sinceTimestamp, untilTimestamp)
                 val result = transactions.map { transactionInfoConverter.transactionInfo(it) }
 
                 if (!emitter.isDisposed) {
@@ -112,6 +120,10 @@ class DataProvider(
                 }
             }
         }
+    }
+
+    fun oldestTransactionTimestamp(type: TransactionFilterType?): Maybe<Long> {
+        return Maybe.fromCallable { storage.getOldestTransactionTimestamp(type) }
     }
 
     fun getRawTransaction(transactionHash: String): String? {

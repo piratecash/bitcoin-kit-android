@@ -1,7 +1,5 @@
 package io.horizontalsystems.bitcoincore.crypto;
 
-import androidx.annotation.NonNull;
-
 public class Bech32 {
     /** The Bech32 character set for encoding. */
     static final String CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
@@ -21,7 +19,6 @@ public class Bech32 {
     public static class Bech32Data {
         public final String hrp;
         public final byte[] data;
-        @NonNull
         public final Encoding encoding;
 
         Bech32Data(final String hrp, final byte[] data) {
