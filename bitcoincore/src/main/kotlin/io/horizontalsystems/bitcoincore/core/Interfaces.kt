@@ -108,8 +108,12 @@ interface IStorage {
     fun getFullTransactionInfo(
         fromTransaction: Transaction?,
         type: TransactionFilterType?,
-        limit: Int?
+        limit: Int?,
+        sinceTimestamp: Long? = null,
+        untilTimestamp: Long? = null
     ): List<FullTransactionInfo>
+
+    fun getOldestTransactionTimestamp(type: TransactionFilterType?): Long?
 
     fun getFullTransactionInfo(txHash: ByteArray): FullTransactionInfo?
 

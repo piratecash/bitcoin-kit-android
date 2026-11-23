@@ -73,6 +73,7 @@ import io.horizontalsystems.hdwalletkit.HDWallet
 import io.horizontalsystems.hdwalletkit.HDWallet.Purpose
 import io.horizontalsystems.hdwalletkit.HDWalletAccount
 import io.horizontalsystems.hdwalletkit.HDWalletAccountWatch
+import io.reactivex.Maybe
 import io.reactivex.Single
 import java.util.Date
 import java.util.concurrent.Executor
@@ -279,9 +280,19 @@ class BitcoinCore(
         connectionManager.onEnterBackground()
     }
 
-    fun transactions(fromUid: String? = null, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
-        return dataProvider.transactions(fromUid, type, limit)
+    fun transactions(
+        fromUid: String? = null,
+        type: TransactionFilterType? = null,
+        limit: Int? = null,
+        sinceTimestamp: Long? = null,
+        untilTimestamp: Long? = null
+    ): Single<List<TransactionInfo>> {
+        return dataProvider.transactions(fromUid, type, limit, sinceTimestamp, untilTimestamp)
             .doOnSuccess { updateInputAddressesIfNeed(it) }
+    }
+
+    fun oldestTransactionTimestamp(type: TransactionFilterType?): Maybe<Long> {
+        return dataProvider.oldestTransactionTimestamp(type)
     }
 
     private fun updateInputAddressesIfNeed(transactions: List<TransactionInfo>) {

@@ -21,6 +21,7 @@ import io.horizontalsystems.bitcoincore.storage.UnspentOutput
 import io.horizontalsystems.bitcoincore.storage.UnspentOutputInfo
 import io.horizontalsystems.bitcoincore.storage.UtxoFilters
 import io.horizontalsystems.bitcoincore.transactions.scripts.ScriptType
+import io.reactivex.Maybe
 import io.reactivex.Single
 
 abstract class AbstractKit {
@@ -90,8 +91,18 @@ abstract class AbstractKit {
         bitcoinCore.onEnterBackground()
     }
 
-    fun transactions(fromUid: String? = null, type: TransactionFilterType? = null, limit: Int? = null): Single<List<TransactionInfo>> {
-        return bitcoinCore.transactions(fromUid, type, limit)
+    fun transactions(
+        fromUid: String? = null,
+        type: TransactionFilterType? = null,
+        limit: Int? = null,
+        sinceTimestamp: Long? = null,
+        untilTimestamp: Long? = null
+    ): Single<List<TransactionInfo>> {
+        return bitcoinCore.transactions(fromUid, type, limit, sinceTimestamp, untilTimestamp)
+    }
+
+    fun oldestTransactionTimestamp(type: TransactionFilterType? = null): Maybe<Long> {
+        return bitcoinCore.oldestTransactionTimestamp(type)
     }
 
     fun getTransaction(hash: String): TransactionInfo? {

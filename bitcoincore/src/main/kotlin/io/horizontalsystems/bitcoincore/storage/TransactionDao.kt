@@ -33,6 +33,9 @@ interface TransactionDao {
     @RawQuery
     fun getTransactionWithBlockBySql(query: RoomRawQuery): List<TransactionWithBlock>
 
+    @RawQuery
+    fun getTransactionTimestampBySql(query: RoomRawQuery): Long?
+
     @Query("SELECT * FROM `Transaction` t LEFT JOIN Block b ON t.blockHash = b.headerHash WHERE hash = :hash")
     fun getTransactionWithBlock(hash: ByteArray): TransactionWithBlock?
 

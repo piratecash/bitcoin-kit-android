@@ -281,25 +281,14 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         }
     }
 
-    override fun getFullTransactionInfo(fromTransaction: Transaction?, type: TransactionFilterType?, limit: Int?): List<FullTransactionInfo> {
-        var query = "SELECT transactions.*, Block.*" +
-                " FROM (SELECT * FROM `Transaction` UNION ALL SELECT * FROM InvalidTransaction) as transactions" +
-                " LEFT JOIN Block ON transactions.blockHash = Block.headerHash" +
-                " LEFT JOIN TransactionMetadata ON transactions.hash = TransactionMetadata.transactionHash"
-
-        val whereConditions = mutableListOf<String>()
-        if (fromTransaction != null) {
-            whereConditions.add("(transactions.timestamp < ${fromTransaction.timestamp} OR (transactions.timestamp = ${fromTransaction.timestamp} AND transactions.`order` < ${fromTransaction.order}))")
-        }
-
-        type?.let { filterType ->
-            val types = filterType.types.map { it.value }.joinToString(", ")
-            whereConditions.add("TransactionMetadata.type IN ($types)")
-        }
-
-        if (whereConditions.isNotEmpty()) {
-            query += " WHERE " + whereConditions.joinToString(" AND ")
-        }
+    override fun getFullTransactionInfo(
+        fromTransaction: Transaction?,
+        type: TransactionFilterType?,
+        limit: Int?,
+        sinceTimestamp: Long?,
+        untilTimestamp: Long?
+    ): List<FullTransactionInfo> {
+        var query = "SELECT transactions.*, Block.*" + transactionsFilteredSql(fromTransaction, type, sinceTimestamp, untilTimestamp)
 
         query += " ORDER BY timestamp DESC, `order` DESC"
 
@@ -308,6 +297,38 @@ open class Storage(protected open val store: CoreDatabase) : IStorage {
         }
 
         return getFullTransactionInfo(store.transaction.getTransactionWithBlockBySql(RoomRawQuery(sql = query)))
+    }
+
+    override fun getOldestTransactionTimestamp(type: TransactionFilterType?): Long? {
+        val query = "SELECT MIN(transactions.timestamp)" + transactionsFilteredSql(null, type, null, null)
+
+        return store.transaction.getTransactionTimestampBySql(RoomRawQuery(sql = query))
+    }
+
+    private fun transactionsFilteredSql(
+        fromTransaction: Transaction?,
+        type: TransactionFilterType?,
+        sinceTimestamp: Long?,
+        untilTimestamp: Long?
+    ): String {
+        val whereConditions = mutableListOf<String>()
+        if (fromTransaction != null) {
+            whereConditions.add("(transactions.timestamp < ${fromTransaction.timestamp} OR (transactions.timestamp = ${fromTransaction.timestamp} AND transactions.`order` < ${fromTransaction.order}))")
+        }
+        sinceTimestamp?.let { whereConditions.add("transactions.timestamp >= $it") }
+        untilTimestamp?.let { whereConditions.add("transactions.timestamp < $it") }
+
+        type?.let { filterType ->
+            val types = filterType.types.map { it.value }.joinToString(", ")
+            whereConditions.add("TransactionMetadata.type IN ($types)")
+        }
+
+        val where = if (whereConditions.isEmpty()) "" else " WHERE " + whereConditions.joinToString(" AND ")
+
+        return " FROM (SELECT * FROM `Transaction` UNION ALL SELECT * FROM InvalidTransaction) as transactions" +
+                " LEFT JOIN Block ON transactions.blockHash = Block.headerHash" +
+                " LEFT JOIN TransactionMetadata ON transactions.hash = TransactionMetadata.transactionHash" +
+                where
     }
 
     override fun getFullTransactionInfo(txHash: ByteArray): FullTransactionInfo? {
